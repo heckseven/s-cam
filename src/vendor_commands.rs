@@ -1,11 +1,11 @@
 use core::convert::TryFrom;
 
 use cbor::reader::DecoderError;
-use locales::t;
-use vault_lite::ctap::hid::{send::HidPacketIterator, ChannelID, CtapHidCommand, Message};
-use vault_lite::vault_api::{
+use dc34_vault::ctap::hid::{send::HidPacketIterator, ChannelID, CtapHidCommand, Message};
+use dc34_vault::vault_api::{
     COMMAND_BACKUP_TOTP_CODES, COMMAND_RESET_SESSION, COMMAND_RESTORE_TOTP_CODES,
 };
+use locales::t;
 
 use crate::storage::{Error, PasswordRecord, TotpRecord};
 use crate::totp::TotpAlgorithm;

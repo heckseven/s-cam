@@ -243,7 +243,7 @@ impl VaultUi {
             true,
             true,
             Some(32),
-            Some(vault_lite::basis_change),
+            Some(dc34_vault::basis_change),
         ) {
             Ok(mut style_key) => {
                 style_key.write(style_to_name(&style).as_bytes()).ok();
@@ -261,7 +261,7 @@ impl VaultUi {
             true,
             true,
             Some(32),
-            Some(vault_lite::basis_change),
+            Some(dc34_vault::basis_change),
         ) {
             Ok(mut style_key) => {
                 let mut name_bytes = Vec::<u8>::new();
@@ -533,13 +533,13 @@ impl VaultUi {
 
         let mut record = pddb_binding
             .get(
-                vault_lite::VAULT_PASSWORD_DICT,
+                dc34_vault::VAULT_PASSWORD_DICT,
                 &guid,
                 None,
                 false,
                 false,
                 None,
-                Some(vault_lite::basis_change),
+                Some(dc34_vault::basis_change),
             )
             .map_err(|e| format!("couldn't access key {}: {:?}", guid, e))?;
         let mut data = Vec::<u8>::new();
@@ -560,13 +560,13 @@ impl VaultUi {
         // this get determines which basis the key is in
         let app_data = pddb_binding
             .get(
-                vault_lite::VAULT_PASSWORD_DICT,
+                dc34_vault::VAULT_PASSWORD_DICT,
                 &guid,
                 None,
                 true,
                 true,
                 Some(256),
-                Some(vault_lite::basis_change),
+                Some(dc34_vault::basis_change),
             )
             .map_err(|e| format!("error updating key atime: {:?}", e))?;
         let basis = app_data
@@ -576,19 +576,19 @@ impl VaultUi {
 
         // delete the old key
         pddb_binding
-            .delete_key(vault_lite::VAULT_PASSWORD_DICT, &guid, Some(&basis))
+            .delete_key(dc34_vault::VAULT_PASSWORD_DICT, &guid, Some(&basis))
             .map_err(|_| "Couldn't delete previous pw entry")?;
 
         // write the new key in
         let mut record = pddb_binding
             .get(
-                vault_lite::VAULT_PASSWORD_DICT,
+                dc34_vault::VAULT_PASSWORD_DICT,
                 &guid,
                 Some(&basis),
                 false,
                 true,
-                Some(vault_lite::VAULT_ALLOC_HINT),
-                Some(vault_lite::basis_change),
+                Some(dc34_vault::VAULT_ALLOC_HINT),
+                Some(dc34_vault::basis_change),
             )
             .map_err(|e| format!("couldn't update key {}: {:?}", guid, e))?;
         let ser: Vec<u8> = crate::storage::PasswordRecord::into(pw);

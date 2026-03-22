@@ -23,10 +23,10 @@ use locales::t;
 use num_traits::*;
 use pddb::Pddb;
 use totp::PumpOp;
-use vault_lite::ctap::main_hid::HidIterType;
-use vault_lite::env::xous::XousEnv;
-use vault_lite::env::Env;
-use vault_lite::Transport;
+use dc34_vault::ctap::main_hid::HidIterType;
+use dc34_vault::env::xous::XousEnv;
+use dc34_vault::env::Env;
+use dc34_vault::Transport;
 use xous::msg_blocking_scalar_unpack;
 use xous_ipc::Buffer;
 use xous_usb_hid::device::fido::*;
@@ -251,7 +251,7 @@ fn main() -> ! {
             pddb.is_mounted_blocking();
 
             let env = XousEnv::new(conn);
-            let mut ctap = vault_lite::Ctap::new(env, Instant::now());
+            let mut ctap = dc34_vault::Ctap::new(env, Instant::now());
             loop {
                 match ctap.env().main_hid_connection().u2f_wait_incoming() {
                     Ok(msg) => {

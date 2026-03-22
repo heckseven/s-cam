@@ -23,7 +23,7 @@ use num_traits::*;
 use passwords::PasswordGenerator;
 use pddb::BasisRetentionPolicy;
 use ux_api::widgets::TextEntryPayload;
-use vault_lite::{VAULT_PASSWORD_DICT, VAULT_TOTP_DICT, atime_to_str, utc_now};
+use dc34_vault::{VAULT_PASSWORD_DICT, VAULT_TOTP_DICT, atime_to_str, utc_now};
 use xous::{Message, send_message};
 
 use crate::VAULT_CONFIG_GENERATOR;

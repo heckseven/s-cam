@@ -633,6 +633,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "dc34-vault"
+version = "0.1.0"
+dependencies = [
+ "arrayref",
+ "backup-vault2",
+ "bao1x-api",
+ "bao1x-emu",
+ "bao1x-hal",
+ "bao1x-hal-service",
+ "base32",
+ "base45",
+ "blitstr2",
+ "byteorder",
+ "cbor-vault2",
+ "chrono",
+ "ctap-crypto-vault2",
+ "digest 0.9.0",
+ "ed25519-compact",
+ "enum-iterator",
+ "getrandom 0.2.12",
+ "hex 0.4.3",
+ "hmac",
+ "keystore",
+ "locales 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
+ "log",
+ "modals",
+ "num-derive",
+ "num-traits",
+ "passwords",
+ "pddb",
+ "persistent_store",
+ "rand",
+ "rand_core",
+ "random-pick",
+ "rkyv",
+ "sha1",
+ "sha2",
+ "sntpc",
+ "subtle",
+ "usb-bao1x",
+ "userprefs",
+ "ux-api",
+ "xous",
+ "xous-api-log",
+ "xous-api-names",
+ "xous-api-ticktimer",
+ "xous-ipc",
+ "xous-usb-hid",
+]
+
+[[package]]
 name = "der"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2654,57 +2705,6 @@ dependencies = [
  "xous-api-names",
  "xous-ipc",
  "zeroize",
-]
-
-[[package]]
-name = "vault-lite"
-version = "0.1.0"
-dependencies = [
- "arrayref",
- "backup-vault2",
- "bao1x-api",
- "bao1x-emu",
- "bao1x-hal",
- "bao1x-hal-service",
- "base32",
- "base45",
- "blitstr2",
- "byteorder",
- "cbor-vault2",
- "chrono",
- "ctap-crypto-vault2",
- "digest 0.9.0",
- "ed25519-compact",
- "enum-iterator",
- "getrandom 0.2.12",
- "hex 0.4.3",
- "hmac",
- "keystore",
- "locales 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
- "log",
- "modals",
- "num-derive",
- "num-traits",
- "passwords",
- "pddb",
- "persistent_store",
- "rand",
- "rand_core",
- "random-pick",
- "rkyv",
- "sha1",
- "sha2",
- "sntpc",
- "subtle",
- "usb-bao1x",
- "userprefs",
- "ux-api",
- "xous",
- "xous-api-log",
- "xous-api-names",
- "xous-api-ticktimer",
- "xous-ipc",
- "xous-usb-hid",
 ]
 
 [[package]]
