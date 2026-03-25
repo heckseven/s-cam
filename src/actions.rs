@@ -17,17 +17,20 @@ use bao1x_hal_service::api::TimeOp;
 use bao1x_hal_service::trng::Trng;
 #[cfg(feature = "board-baosec")]
 use chrono::{DateTime, Utc};
+use dc34_vault::{VAULT_PASSWORD_DICT, VAULT_TOTP_DICT, atime_to_str, utc_now};
 use keystore::Keystore;
 use locales::t;
 use num_traits::*;
 use passwords::PasswordGenerator;
 use pddb::BasisRetentionPolicy;
 use ux_api::widgets::TextEntryPayload;
-use dc34_vault::{VAULT_PASSWORD_DICT, VAULT_TOTP_DICT, atime_to_str, utc_now};
 use xous::{Message, send_message};
+use xous_ipc::Buffer;
 
+use crate::IpcString;
 use crate::VAULT_CONFIG_GENERATOR;
 use crate::VAULT_CONFIG_USERNAMES;
+use crate::VaultOp;
 use crate::generator::*;
 use crate::storage::{self, PasswordRecord, StorageContent};
 use crate::totp::TotpAlgorithm;
@@ -685,6 +688,7 @@ impl ActionManager {
                 let li = make_totp_item_from_record(&storage::hex(totp.hash()), totp);
                 self.item_lists.lock().unwrap().insert_unique(self.mode_cache, li);
             }
+            _ => return,
         }
     }
 
@@ -697,6 +701,7 @@ impl ActionManager {
             let choice = match entry.mode {
                 VaultMode::Password => Some(storage::ContentKind::Password),
                 VaultMode::Totp => Some(storage::ContentKind::TOTP),
+                _ => return,
             };
 
             // we're deleting either a password, or a totp
@@ -770,6 +775,7 @@ impl ActionManager {
         let choice = match entry.mode {
             VaultMode::Password => storage::ContentKind::Password,
             VaultMode::Totp => storage::ContentKind::TOTP,
+            _ => return,
         };
 
         let key_guid = entry.key_guid.as_str();
@@ -1261,6 +1267,10 @@ impl ActionManager {
                     }
                 }
             }
+            _ => {
+                // ignore request in other modes
+                return;
+            }
         }
         self.item_lists.lock().unwrap().filter_reset(self.mode_cache);
         log::debug!("heap usage B: {}", heap_usage());
@@ -1437,6 +1447,12 @@ impl ActionManager {
                             }
                             "search" => {
                                 // todo
+                            }
+                            "test" => {
+                                // pass a copy of the string on to the main loop for handling
+                                let msg = IpcString { s: qr_uri.to_owned() };
+                                let buf = Buffer::into_buf(msg).unwrap();
+                                buf.send(self.main_conn, VaultOp::HandleQr.to_u32().unwrap()).ok();
                             }
                             _ => {
                                 self.modals

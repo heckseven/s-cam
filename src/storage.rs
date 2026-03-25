@@ -6,7 +6,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use ctap_crypto::Hash256;
 
 use crate::totp::TotpAlgorithm;
@@ -84,8 +84,15 @@ impl Manager {
     pub fn new(_xns: &xous_names::XousNames) -> Manager { Manager { pddb: pddb::Pddb::new() } }
 
     fn pddb_exists(&self, dict: &str, key_name: &str, basis: Option<String>) -> bool {
-        match self.pddb.get(dict, &key_name, basis.as_deref(), false, false, None, Some(dc34_vault::basis_change))
-        {
+        match self.pddb.get(
+            dict,
+            &key_name,
+            basis.as_deref(),
+            false,
+            false,
+            None,
+            Some(dc34_vault::basis_change),
+        ) {
             Ok(_) => return true,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
             Err(e) => {
@@ -877,8 +884,7 @@ impl From<PasswordRecord> for Vec<u8> {
 /// target
 fn utc_now() -> DateTime<Utc> {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("system time before Unix epoch");
-    let naive = NaiveDateTime::from_timestamp_opt(now.as_secs() as i64, now.subsec_nanos() as u32).unwrap();
-    DateTime::from_naive_utc_and_offset(naive, Utc)
+    DateTime::from_timestamp(now.as_secs() as i64, now.subsec_nanos() as u32).unwrap()
 }
 
 pub fn hex(data: Vec<u8>) -> String {

@@ -17,6 +17,8 @@ const KEYUP_DELAY_MS: u64 = 100;
 /// How many elements to skip through on fast scroll
 const PAGE_INCREMENT: usize = 6;
 
+const FACTORY_QR_STRING: &'static str = "test://factory-test-data-lorem-ipsum-data-data";
+
 pub const DEFAULT_FONT: GlyphStyle = GlyphStyle::Regular;
 pub const FONT_LIST: [&'static str; 6] = ["regular", "tall", "mono", "bold", "large", "small"];
 pub fn name_to_style(name: &str) -> Option<GlyphStyle> {
@@ -46,10 +48,71 @@ fn style_to_name(style: &GlyphStyle) -> String {
 const VAULT_CONFIG_DICT: &'static str = "vault.config";
 const VAULT_CONFIG_KEY_FONT: &'static str = "fontstyle";
 
-pub enum NavDir {
-    Up,
-    Down,
-    Autotype,
+enum FactoryTestState {
+    JogPress { seen_press: bool },
+    UpDown { seen_up: bool, seen_down: bool },
+    LeftRight { seen_left: bool, seen_right: bool },
+    MiddleScan { seen_middle: bool, got_scan: bool },
+    Finish,
+    Error(String),
+}
+
+impl FactoryTestState {
+    fn handle_input(self, k: Option<char>, qr_result: Option<String>, err: Option<String>) -> Self {
+        if let Some(e) = err {
+            Self::Error(e)
+        } else {
+            match self {
+                Self::JogPress { seen_press } => {
+                    let seen_press = seen_press || k.unwrap_or('\0') == '∴';
+
+                    if seen_press {
+                        Self::UpDown { seen_up: false, seen_down: false }
+                    } else {
+                        Self::JogPress { seen_press }
+                    }
+                }
+
+                Self::UpDown { seen_up, seen_down } => {
+                    let seen_up = seen_up || k.unwrap_or('\0') == '↑';
+                    let seen_down = seen_down || k.unwrap_or('\0') == '↓';
+
+                    if seen_up && seen_down {
+                        Self::LeftRight { seen_left: false, seen_right: false }
+                    } else {
+                        Self::UpDown { seen_up, seen_down }
+                    }
+                }
+
+                Self::LeftRight { seen_left, seen_right } => {
+                    let seen_left = seen_left || k.unwrap_or('\0') == '←';
+                    let seen_right = seen_right || k.unwrap_or('\0') == '→';
+
+                    if seen_left && seen_right {
+                        Self::MiddleScan { seen_middle: false, got_scan: false }
+                    } else {
+                        Self::LeftRight { seen_left, seen_right }
+                    }
+                }
+
+                Self::MiddleScan { seen_middle, got_scan } => {
+                    let seen_middle = seen_middle || k.unwrap_or('\0') == '🔥';
+                    let got_scan =
+                        got_scan || if let Some(qr) = qr_result { &qr == FACTORY_QR_STRING } else { false };
+
+                    if seen_middle && got_scan {
+                        Self::Finish
+                    } else {
+                        Self::MiddleScan { seen_middle, got_scan }
+                    }
+                }
+
+                other => other,
+            }
+        }
+    }
+
+    fn is_terminal(&self) -> bool { matches!(self, FactoryTestState::Finish | FactoryTestState::Error(_)) }
 }
 
 /// Centralizes tunable UI parameters for TOTP
@@ -61,37 +124,28 @@ impl TotpLayout {
 
     /// Vertical margin for the font because the centering algorithm also aligns-top, and we want a little
     /// more verticale space for aesthetic reasons than the centering algorithm gives by default.
-    pub fn totp_font_vmargin() -> Point {
-        Point::new(0, 4)
-    }
+    pub fn totp_font_vmargin() -> Point { Point::new(0, 4) }
 
-    pub fn totp_margin() -> Point {
-        Point::new(10, 0)
-    }
+    pub fn totp_margin() -> Point { Point::new(10, 0) }
 
-    pub fn totp_font() -> GlyphStyle {
-        GlyphStyle::ExtraLarge
-    }
+    pub fn totp_font() -> GlyphStyle { GlyphStyle::ExtraLarge }
 
-    pub fn timer_box() -> Rectangle {
-        Rectangle::new(Point::new(0, 40), Point::new(127, 50))
-    }
+    pub fn timer_box() -> Rectangle { Rectangle::new(Point::new(0, 40), Point::new(127, 50)) }
 
-    pub fn list_box() -> Rectangle {
-        Rectangle::new(Point::new(0, 50), Point::new(127, 127))
-    }
+    pub fn list_box() -> Rectangle { Rectangle::new(Point::new(0, 50), Point::new(127, 127)) }
 
-    pub fn list_font() -> GlyphStyle {
-        GlyphStyle::Regular
-    }
+    pub fn list_font() -> GlyphStyle { GlyphStyle::Regular }
 }
 
 pub struct VaultUi {
     main_cid: CID,
+    pump_conn: CID,
+    actions_conn: CID,
     gfx: Gfx,
     display_list: ScrollableList,
     item_lists: Arc<Mutex<ItemLists>>,
     mode: Arc<Mutex<VaultMode>>,
+    allow_totp_rendering: Arc<AtomicBool>,
 
     /// totp redraw state
     totp_code: Option<String>,
@@ -106,6 +160,9 @@ pub struct VaultUi {
     last_key_time: u64,
     start_hold_time: u64,
     tt: ticktimer_server::Ticktimer,
+
+    // various state machines
+    factory_test: FactoryTestState,
 }
 
 impl VaultUi {
@@ -114,6 +171,9 @@ impl VaultUi {
         cid: xous::CID,
         item_lists: Arc<Mutex<ItemLists>>,
         mode: Arc<Mutex<VaultMode>>,
+        allow_totp_rendering: Arc<AtomicBool>,
+        pump_conn: xous::CID,
+        actions_conn: xous::CID,
     ) -> Self {
         let pddb = pddb::Pddb::new();
         let mut totp_list = ScrollableList::default();
@@ -131,13 +191,15 @@ impl VaultUi {
         let height = gfx.screen_size().unwrap().y;
         Self {
             main_cid: cid,
+            pump_conn,
+            actions_conn,
             gfx,
             display_list: totp_list,
             item_lists,
             mode,
+            allow_totp_rendering,
             totp_code: None,
-            last_epoch: crate::totp::get_current_unix_time().expect("couldn't get current time")
-                / 30,
+            last_epoch: crate::totp::get_current_unix_time().expect("couldn't get current time") / 30,
             pddb: RefCell::new(pddb),
             item_height: height / glyph_height,
             style,
@@ -146,6 +208,7 @@ impl VaultUi {
             tt,
             last_key_time: now,
             start_hold_time: now,
+            factory_test: FactoryTestState::JogPress { seen_press: false },
         }
     }
 
@@ -198,10 +261,7 @@ impl VaultUi {
             let selected = self.display_list.get_selected();
             let mut locked_lists = self.item_lists.lock().unwrap();
             let full_list = locked_lists.full_list(mode);
-            full_list
-                .iter()
-                .find(|&item| item.name() == selected)
-                .cloned()
+            full_list.iter().find(|&item| item.name() == selected).cloned()
         } else {
             None
         }
@@ -211,11 +271,7 @@ impl VaultUi {
         let mode = *self.mode.lock().unwrap();
         if let Some(li) = self.get_selected_item() {
             let name = li.name().to_owned();
-            Some(SelectedEntry {
-                key_guid: li.guid,
-                description: name,
-                mode,
-            })
+            Some(SelectedEntry { key_guid: li.guid, description: name, mode })
         } else {
             None
         }
@@ -229,11 +285,7 @@ impl VaultUi {
     pub(crate) fn store_glyph_style(&mut self, style: GlyphStyle) {
         self.pddb
             .borrow()
-            .delete_key(
-                VAULT_CONFIG_DICT,
-                VAULT_CONFIG_KEY_FONT,
-                Some(pddb::PDDB_DEFAULT_SYSTEM_BASIS),
-            )
+            .delete_key(VAULT_CONFIG_DICT, VAULT_CONFIG_KEY_FONT, Some(pddb::PDDB_DEFAULT_SYSTEM_BASIS))
             .ok();
 
         match self.pddb.borrow().get(
@@ -272,10 +324,8 @@ impl VaultUi {
                             name_bytes,
                             String::from_utf8(name_bytes.to_vec())
                         );
-                        name_to_style(
-                            &String::from_utf8(name_bytes).unwrap_or("regular".to_string()),
-                        )
-                        .unwrap_or(GlyphStyle::Regular)
+                        name_to_style(&String::from_utf8(name_bytes).unwrap_or("regular".to_string()))
+                            .unwrap_or(GlyphStyle::Regular)
                     }
                     Err(_) => GlyphStyle::Regular,
                 }
@@ -295,9 +345,7 @@ impl VaultUi {
     }
 
     /// Clear the entire screen.
-    pub fn clear_area(&self) {
-        self.gfx.clear().ok();
-    }
+    pub fn clear_area(&self) { self.gfx.clear().ok(); }
 
     /// Redraw the text view onto the screen.
     pub fn redraw(&mut self) {
@@ -307,6 +355,9 @@ impl VaultUi {
         self.clear_area();
 
         match mode_at_entry {
+            VaultMode::Idle => {
+                self.gfx.bitmap(&bitmaps::tour_welcome::BITMAP, None, None).ok();
+            }
             VaultMode::Totp => {
                 // decorative box around code
                 let mut totp_box = TotpLayout::totp_box();
@@ -317,9 +368,7 @@ impl VaultUi {
                 let mut tv = TextView::new(
                     Gid::dummy(),
                     TextBounds::CenteredTop(
-                        TotpLayout::totp_box()
-                            .border
-                            .translate_chain(TotpLayout::totp_font_vmargin()),
+                        TotpLayout::totp_box().border.translate_chain(TotpLayout::totp_font_vmargin()),
                     ),
                 );
                 tv.invert = true;
@@ -370,21 +419,13 @@ impl VaultUi {
                 let delta_width = (delta * width * 128) / (30 * 128 * 1000);
                 timer_remaining.br = Point::new(width - delta_width, timer_remaining.br().y);
                 timer_remaining.style = DrawStyle::new(PixelColor::Light, PixelColor::Light, 1);
-                object_list
-                    .push(ClipObjectType::Rect(timer_remaining))
-                    .unwrap();
+                object_list.push(ClipObjectType::Rect(timer_remaining)).unwrap();
                 self.gfx.draw_object_list(object_list).unwrap();
             }
             VaultMode::Password => {
                 let screensize = self.gfx.screen_size().unwrap();
                 // handle empty database case
-                if self
-                    .item_lists
-                    .lock()
-                    .unwrap()
-                    .filter_len(VaultMode::Password)
-                    == 0
-                {
+                if self.item_lists.lock().unwrap().filter_len(VaultMode::Password) == 0 {
                     log::debug!("no items");
                     let mut box_text = TextView::new(
                         Gid::dummy(),
@@ -398,9 +439,7 @@ impl VaultUi {
                     box_text.invert = true;
                     box_text.style = self.style;
                     write!(box_text, "{}", t!("vault.no_items", locales::LANG)).ok();
-                    self.gfx
-                        .draw_textview(&mut box_text)
-                        .expect("couldn't post empty notification");
+                    self.gfx.draw_textview(&mut box_text).expect("couldn't post empty notification");
                     self.gfx.flush().ok();
                     return;
                 }
@@ -423,14 +462,7 @@ impl VaultUi {
                     box_text.style = self.style;
                     box_text.invert = true;
                     // line 1
-                    write!(
-                        box_text,
-                        "{}/{} [{}]",
-                        &entry.name(),
-                        &entry.extra,
-                        entry.count
-                    )
-                    .ok();
+                    write!(box_text, "{}/{} [{}]", &entry.name(), &entry.extra, entry.count).ok();
                     self.gfx.draw_textview(&mut box_text).unwrap();
                     insert_at += box_text.bounds_computed.unwrap().height() as isize;
                 } else {
@@ -453,6 +485,40 @@ impl VaultUi {
                 };
                 self.display_list.draw(insert_at);
             }
+            VaultMode::FactoryTest => {
+                match &self.factory_test {
+                    FactoryTestState::JogPress { seen_press: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_jogpress::BITMAP, None, None).ok();
+                    }
+                    FactoryTestState::UpDown { seen_up: _, seen_down: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_updown::BITMAP, None, None).ok();
+                    }
+                    FactoryTestState::LeftRight { seen_left: _, seen_right: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_leftright::BITMAP, None, None).ok();
+                    }
+                    FactoryTestState::MiddleScan { seen_middle: _, got_scan: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_middlescan::BITMAP, None, None).ok();
+                    }
+                    FactoryTestState::Finish => {
+                        self.gfx.bitmap(&bitmaps::factory_pass::BITMAP, None, None).ok();
+                    }
+                    FactoryTestState::Error(e) => {
+                        self.gfx.bitmap(&bitmaps::factory_fail::BITMAP, None, None).ok();
+                        // render the error message below the graphic
+                        let mut msg = TextView::new(
+                            Gid::dummy(),
+                            TextBounds::CenteredTop(Rectangle::new(Point::new(0, 64), Point::new(127, 127))),
+                        );
+                        write!(msg, "{}", e).ok();
+                        msg.draw_border = false;
+                        msg.clear_area = false;
+                        msg.ellipsis = true;
+                        msg.invert = true;
+                        self.gfx.draw_textview(&mut msg).unwrap();
+                    }
+                }
+            }
+            _ => unimplemented!(),
         }
         self.gfx.flush().ok();
     }
@@ -467,66 +533,132 @@ impl VaultUi {
         now - self.start_hold_time > FAST_SCROLL_DELAY_MS
     }
 
-    pub(crate) fn nav(&mut self, dir: NavDir) {
+    pub(crate) fn test_string(&mut self, s: &str) {
+        let old =
+            std::mem::replace(&mut self.factory_test, FactoryTestState::Error("Transitioning".to_string()));
+        self.factory_test = old.handle_input(None, Some(s.to_owned()), None);
+        self.redraw();
+    }
+
+    pub(crate) fn handle_key(&mut self, k: char) -> Option<char> {
         let mode_at_entry = (*self.mode.lock().unwrap()).clone();
-        match mode_at_entry {
+        let filtered_k = match mode_at_entry {
+            VaultMode::FactoryTest => {
+                let old = std::mem::replace(
+                    &mut self.factory_test,
+                    FactoryTestState::Error("Transitioning".to_string()),
+                );
+                self.factory_test = old.handle_input(Some(k), None, None);
+                if k == '🔥' { Some(k) } else { None }
+            }
             VaultMode::Password => {
-                let increment = if self.manage_longpress() {
-                    PAGE_INCREMENT
-                } else {
-                    1
-                };
-                match dir {
-                    NavDir::Up => {
+                let increment = if self.manage_longpress() { PAGE_INCREMENT } else { 1 };
+                match k {
+                    '↑' => {
                         for _ in 0..increment {
                             self.display_list.key_action('↑');
                         }
                     }
-                    NavDir::Down => {
+                    '↓' => {
                         for _ in 0..increment {
                             self.display_list.key_action('↓');
                         }
                     }
-                    NavDir::Autotype => {
+                    '←' => {
                         if let Some(item) = self.get_selected_item() {
                             // print any errors within this function as a panic at this line
                             self.handle_autotype(item.guid, false).unwrap();
                         }
                     }
+                    '→' => {
+                        {
+                            *self.mode.lock().unwrap() = VaultMode::Totp;
+                        }
+                        // reload DB on mode switch
+                        xous::send_message(
+                            self.actions_conn,
+                            xous::Message::new_blocking_scalar(
+                                ActionOp::ReloadDb.to_usize().unwrap(),
+                                0,
+                                0,
+                                0,
+                                0,
+                            ),
+                        )
+                        .ok();
+                        self.refresh_draw_list();
+                        self.allow_totp_rendering.store(true, Ordering::SeqCst);
+                        xous::send_message(
+                            self.pump_conn,
+                            xous::Message::new_scalar(PumpOp::Pump.to_usize().unwrap(), 0, 0, 0, 0),
+                        )
+                        .expect("couldn't start the pumper");
+                    }
+                    _ => {
+                        log::warn!("Password unhandled char: {}", k)
+                    }
                 }
+                Some(k)
             }
             VaultMode::Totp => {
-                match dir {
-                    NavDir::Up => {
+                match k {
+                    '↑' => {
                         self.display_list.key_action('↑');
                     }
-                    NavDir::Down => {
+                    '↓' => {
                         self.display_list.key_action('↓');
                     }
-                    NavDir::Autotype => {
+                    '←' => {
                         if let Some(code) = self.update_selected_totp_code() {
                             // ignore USB errors while sending code
                             self.usb_dev.send_str(&code).ok();
                         }
                     }
+                    '→' => {
+                        {
+                            // lock needs to go out of scope so we don't hang the later ops
+                            *self.mode.lock().unwrap() = VaultMode::Idle;
+                        }
+                        self.allow_totp_rendering.store(false, Ordering::SeqCst);
+                        // reload DB on mode switch
+                        xous::send_message(
+                            self.actions_conn,
+                            xous::Message::new_blocking_scalar(
+                                ActionOp::ReloadDb.to_usize().unwrap(),
+                                0,
+                                0,
+                                0,
+                                0,
+                            ),
+                        )
+                        .ok();
+                    }
+                    _ => {
+                        log::warn!("Password unhandled char: {}", k)
+                    }
                 }
                 self.totp_code = None;
+                Some(k)
             }
-        }
+            VaultMode::Idle => {
+                {
+                    // lock needs to go out of scope so we don't hang the later ops
+                    *self.mode.lock().unwrap() = VaultMode::Password;
+                }
+                Some(k)
+            }
+            // catch-all for now
+            _ => Some(k),
+        };
+        self.redraw();
+        filtered_k
     }
 
     pub(crate) fn filter(&mut self, criteria: &String) {
-        self.item_lists
-            .lock()
-            .unwrap()
-            .filter(self.mode.lock().unwrap().clone(), criteria);
+        self.item_lists.lock().unwrap().filter(self.mode.lock().unwrap().clone(), criteria);
     }
 
-    pub(crate) fn handle_autotype(
-        &mut self,
-        guid: String,
-        type_username: bool,
-    ) -> Result<(), String> {
+    pub(crate) fn handle_autotype(&mut self, guid: String, type_username: bool) -> Result<(), String> {
         // we re-fetch the entry for autotype, because the PDDB could have unmounted a basis.
         let atime = utc_now().timestamp() as u64;
         let pddb_binding = self.pddb.borrow();
@@ -543,16 +675,10 @@ impl VaultUi {
             )
             .map_err(|e| format!("couldn't access key {}: {:?}", guid, e))?;
         let mut data = Vec::<u8>::new();
-        record
-            .read_to_end(&mut data)
-            .map_err(|_| format!("Couldn't access key {}", guid))?;
+        record.read_to_end(&mut data).map_err(|_| format!("Couldn't access key {}", guid))?;
         let mut pw = crate::storage::PasswordRecord::try_from(data)
             .map_err(|_| format!("Couldn't deserialize {}", guid))?;
-        let to_type = if type_username {
-            &pw.username
-        } else {
-            &pw.password
-        };
+        let to_type = if type_username { &pw.username } else { &pw.password };
         self.usb_dev.send_str(to_type).ok(); // ignore USB errors
         pw.count += 1;
         pw.atime = atime;
@@ -569,10 +695,7 @@ impl VaultUi {
                 Some(dc34_vault::basis_change),
             )
             .map_err(|e| format!("error updating key atime: {:?}", e))?;
-        let basis = app_data
-            .attributes()
-            .map_err(|_| "couldn't get attributes")?
-            .basis;
+        let basis = app_data.attributes().map_err(|_| "couldn't get attributes")?.basis;
 
         // delete the old key
         pddb_binding
@@ -592,9 +715,7 @@ impl VaultUi {
             )
             .map_err(|e| format!("couldn't update key {}: {:?}", guid, e))?;
         let ser: Vec<u8> = crate::storage::PasswordRecord::into(pw);
-        record
-            .write(&ser)
-            .map_err(|e| format!("couldn't update key {}: {:?}", guid, e))?;
+        record.write(&ser).map_err(|e| format!("couldn't update key {}: {:?}", guid, e))?;
 
         self.pddb.borrow().sync().ok();
         Ok(())

@@ -10,23 +10,25 @@ mod totp;
 pub mod vault_api;
 use ux_api::service::gfx::Gfx;
 pub use vault_api::*;
+mod bitmaps;
 mod generator;
 mod vendor_commands;
 
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::cell::RefCell;
+use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
 
+use dc34_vault::Transport;
+use dc34_vault::ctap::main_hid::HidIterType;
+use dc34_vault::env::Env;
+use dc34_vault::env::xous::XousEnv;
 use locales::t;
 use num_traits::*;
 use pddb::Pddb;
 use totp::PumpOp;
-use dc34_vault::ctap::main_hid::HidIterType;
-use dc34_vault::env::xous::XousEnv;
-use dc34_vault::env::Env;
-use dc34_vault::Transport;
 use xous::msg_blocking_scalar_unpack;
 use xous_ipc::Buffer;
 use xous_usb_hid::device::fido::*;
@@ -70,12 +72,174 @@ For rendering the data is then copied into a UI element, such as a `ScrollableLi
 the currently active mode.
   */
 
+/*
+  DC34 interactions
+
+  - Data / mode bits required:
+    - Developer mode -> from keystore
+    - Accel installed -> from power manager
+    - Settings -> from PDDB keys 'dc34.screen', 'dc34.powoff'
+    - Lightgene -> stored in 'dc34.lightgene', decrypted by key store
+    - Badge type -> stored in 'dc34.type', plaintext
+    - DC34 Ko -> stored in 'dc34.ko', decrypted by key store
+    - PIN code is the basis encryption key -> from existing PDDB api
+    - Show tour <bool> -> 'dc34.tour'
+    # - Factory test <bool> -> 'dc34.factory' <- replaced by presence of DC34 Ko key
+    - PIN type -> Enum that stores {None, Numeric, Qr} as options. this changes the API call to keystore for unwrapping system_keys.data
+
+  - Lifecycle elements:
+    - Ko provisioning - done by test jig in factory
+      - "test setko <base64>": run after PDDB is init
+      - base64 blob contains k0 plus hash
+    - Badge type - set by pull-downs on SAO. 1/1/1 = not mounted
+      - Memorized first time pull down encountered.
+      - Light pattern regenerated at this point
+
+  - If developer mode:
+    - Flash defcon logo between two inverse options, fade in and out
+    - Overlay 'dev mode' text
+    - No lightgene functions available - any mode press goes to vault mode options, as if no accel available
+
+  - Factory test:
+    - "press in on jog dial"
+    - "up/down/select"
+    - "left/right"
+    - "middle" -> qr scan
+
+  - First time "cold on":
+    - show tour
+      - "Welcome to your DC34 Badge! / [Press any button to continue]"
+      - "Push the jog wheel in to raise menus / Push again to select items"
+      - Raise Menu:
+         - continue -> next stage of tour
+         - skip tour -> operating mode
+         - never show again -> store never show again -> operating mode
+      - "Scan other attendees badges to 'breed' your lights with theirs [next screen]"
+      - "Breeding is a two step process. [next screen]"
+      - "First, share your KEY with your mate by pressing either of the two buttons below. [next screen]"
+      - "The mate scans your KEY by pressing the middle button on their badge. [next screen]"
+      - "The mate will show a QR code with their 'light gene'. Scan this code using the middle button on your badge. [next screen]"
+      - "A new QR code will show up on your badge. Your mate can scan this now if they also want your light gene. [next screen]"
+      - "After the conference, you can detach the badge module and use it as a FIDO token [next screen]"
+      - "In this mode, the left button will 'type' TOTP/passwords to a connected USB host [next screen]"
+         -- start of "Help" sequence in token mode
+      - "The right button will toggle between TOTP and password modes"
+      - "The middle button will scan QR codes to enroll TOTPs and passwords"
+      - "You can install a browser extension to help with password management."
+      - "Go to baochip.com/defcon34 for more information. Enjoy DEFCON34!"
+      - "don't show again" / "close" options
+
+  - If base board is detected:
+    - enable DC34 Idle screen
+    - return to Idle screen after INACTIVITY time
+
+  - If base board not detected:
+    - go to token mode immediately
+
+  - DC34 Idle screen: black background logo, fading in and out.
+    - Left/right buttons show up 'KEY'. KEY QR code is shown. Toggle "KEY" text on and off.
+    - Middle button starts scanning. Camera preview comes up. Any button aborts.
+    - After scanning, show 'GENE' qr code. Toggle 'GENE" text on and off in this mode. Any button closes.
+    - Menu options:
+       - Security token -> goes to security token mode
+       - About -> goes to about sequence
+       - Tour -> goes to tour sequence
+       - Settings -> goes to settings menu
+       - Close menu
+   - About sequence:
+     - Tech by bunnie [bunniestudios logo]
+     - Powered by Baochip [Baochip logo]
+     - Art by Cheeso [cheeso logo]
+   - Settings - as dynamic menu:
+     - Screen off: [] secs -> slider entry?
+     - Power save: [] secs -> slider entry?
+     - Close
+   - Token mode:
+     - Left button autotypes
+     - Right button toggles between PW -> TOTP when detached. When attached PW -> TOTP -> Idle loop.
+     - Middle button QR scans
+     - Menu has Edit / Delete / Usernames / About / Help / Close
+       - [optional - low priority] Filter -> if any entries, add filter string entry
+       - Edit edits the current entry, if any
+       - Delete deletes the current entry, if any
+       - Usernames brings up list of usernames. If empty, prompt to enter new username.
+       - [optional - medium priority] PIN code -> activates PIN menu
+       - [optional - lowest priority] Backups
+       - Help shows "Help" sequence in token mode
+       - About shows about sequence
+
+   PIN codes will require implementing the following:
+     - In the keystore, a PIN factor needs to be added to the key derivation
+     - This is a code supplied by the caller that is hashed into the master key, then used to unlock keys
+     - The system encryption basis is [systemkeys.data] - this is encrypted on init to a no-PIN situation
+     - if the PIN flag is set, then the PIN API has to be used to decrypt systemkeys.data
+     - every time the PIN is changed, systemkeys.data ciphertext has to be re-stored into the SCD structure, based on
+       the current wrapping of the systemkeys.data plaintext through the PIN configuration
+   - PIN menu - if no PIN set:
+     - Manual entry -> numeric entry
+     - Generate QR -> "Save this QR code now! You won't be able to login without it." / "Select PIN code->Remove QR PIN to undo QR code login" -> show code -> then close
+   - PIN menu - if manual PIN set:
+     - Go directly to an edit screen of the existing PIN
+   - PIN menu - if QR set:
+     - Show QR code
+     - Generate new QR code -> back to Generate QR sequence
+     - Remove QR code PIN
+*/
+
 pub(crate) const SERVER_NAME_VAULT2: &str = "_Vault2_";
+const DC34_DICT: &str = "dc34";
+const DC34_SECRET: &str = "k0";
+const DC34_TOUR: &str = "tour";
+const DC34_BADGE: &str = "badge";
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum VaultMode {
+    Idle, // has two variants, one for regular, other for developer mode
+    FactoryTest,
+    Tour,
+    About,
     Totp,
     Password,
+}
+
+pub enum LifeCycle {
+    // Exit condition: Ko provisioned
+    BoardTest,
+    // Exit condition: badge type assigned
+    AssemblyTest,
+    // Exit condition: dc34.tour is false
+    FirstTime,
+    Main,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+#[repr(u8)]
+pub enum BadgeType {
+    Human = 3,
+    Goon = 5,
+    Village = 6,
+    CtfContest = 1,
+    Uber = 0,
+    Community = 2,
+    Other = 4,
+    None = 7,
+}
+impl TryFrom<u8> for BadgeType {
+    type Error = u8;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            3 => Ok(BadgeType::Human),
+            5 => Ok(BadgeType::Goon),
+            6 => Ok(BadgeType::Village),
+            1 => Ok(BadgeType::CtfContest),
+            0 => Ok(BadgeType::Uber),
+            2 => Ok(BadgeType::Community),
+            4 => Ok(BadgeType::Other),
+            7 => Ok(BadgeType::None),
+            n => Err(n),
+        }
+    }
 }
 
 #[derive(Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone)]
@@ -91,24 +255,25 @@ fn main() -> ! {
     log::info!("Vault2 PID is {}", xous::process::id());
 
     let xns = xous_names::XousNames::new().unwrap();
+    let gfx = Gfx::new(&xns).unwrap();
+    gfx.clear().ok();
+    // show the DC logo
+    gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
+    gfx.flush().ok();
     let tt = ticktimer_server::Ticktimer::new().unwrap();
 
     // Register the server with xous
-    let sid = xns
-        .register_name(SERVER_NAME_VAULT2, None)
-        .expect("can't register server");
+    let sid = xns.register_name(SERVER_NAME_VAULT2, None).expect("can't register server");
     let conn = xous::connect(sid).unwrap();
 
     // global shared state
-    let mode = Arc::new(Mutex::new(VaultMode::Totp));
+    let mode = Arc::new(Mutex::new(VaultMode::Idle));
     let allow_totp_rendering = Arc::new(AtomicBool::new(true));
     let item_lists = Arc::new(Mutex::new(ItemLists::new()));
     let action_active = Arc::new(AtomicBool::new(false));
     // Protects access to the openSK PDDB entries from simultaneous readout on the UX while OpenSK is updating
     let opensk_mutex = Arc::new(Mutex::new(0));
     let allow_host = Arc::new(AtomicBool::new(false));
-
-    let mut vault_ui = VaultUi::new(&xns, conn, item_lists.clone(), mode.clone());
 
     // spawn the TOTP pumper
     let pump_sid = xous::create_server().unwrap();
@@ -117,16 +282,23 @@ fn main() -> ! {
 
     // respond to keyboard events - register with the `Gfx` subsystem, so we're getting keypresses
     // filtered by the modals interface
-    let gfx = Gfx::new(&xns).unwrap();
-    gfx.register_listener(
-        SERVER_NAME_VAULT2,
-        VaultOp::KeyPress.to_u32().unwrap() as usize,
-    );
+    gfx.register_listener(SERVER_NAME_VAULT2, VaultOp::KeyPress.to_u32().unwrap() as usize);
 
     // spawn the actions server. This is responsible for grooming the UX elements. It
     // has to be in its own thread because it uses blocking modal calls that would cause
     // redraws of the background list to block/fail.
     let actions_sid = xous::create_server().unwrap();
+    let actions_conn = xous::connect(actions_sid).unwrap();
+
+    let mut vault_ui = VaultUi::new(
+        &xns,
+        conn,
+        item_lists.clone(),
+        mode.clone(),
+        allow_totp_rendering.clone(),
+        pump_conn,
+        actions_conn,
+    );
 
     let _ = thread::spawn({
         let main_conn = conn.clone();
@@ -135,8 +307,7 @@ fn main() -> ! {
         let item_lists = item_lists.clone();
         let action_active = action_active.clone();
         move || {
-            let mut manager =
-                crate::actions::ActionManager::new(main_conn, mode, item_lists, action_active);
+            let mut manager = crate::actions::ActionManager::new(main_conn, mode, item_lists, action_active);
             loop {
                 let msg = xous::receive_message(sid).unwrap();
                 let opcode: Option<ActionOp> = FromPrimitive::from_usize(msg.body.id());
@@ -148,9 +319,8 @@ fn main() -> ! {
                         manager.deactivate();
                     }
                     Some(ActionOp::MenuDeleteStage2) => {
-                        let buffer = unsafe {
-                            Buffer::from_memory_message(msg.body.memory_message().unwrap())
-                        };
+                        let buffer =
+                            unsafe { Buffer::from_memory_message(msg.body.memory_message().unwrap()) };
                         let entry = buffer.to_original::<SelectedEntry, _>().unwrap();
                         manager.activate();
                         manager.menu_delete(entry);
@@ -158,9 +328,8 @@ fn main() -> ! {
                         manager.deactivate();
                     }
                     Some(ActionOp::MenuEditStage2) => {
-                        let buffer = unsafe {
-                            Buffer::from_memory_message(msg.body.memory_message().unwrap())
-                        };
+                        let buffer =
+                            unsafe { Buffer::from_memory_message(msg.body.memory_message().unwrap()) };
                         let entry = buffer.to_original::<SelectedEntry, _>().unwrap();
                         manager.activate();
                         manager.menu_edit(&entry); // this is responsible for updating the item cache
@@ -170,22 +339,14 @@ fn main() -> ! {
                     Some(ActionOp::MenuUnlockBasis) => {
                         manager.activate();
                         manager.unlock_basis();
-                        manager
-                            .item_lists
-                            .lock()
-                            .unwrap()
-                            .clear(VaultMode::Password); // clear the cached item list for passwords (totp/fido are not cached and don't need clearing)
+                        manager.item_lists.lock().unwrap().clear(VaultMode::Password); // clear the cached item list for passwords (totp/fido are not cached and don't need clearing)
                         manager.retrieve_db();
                         manager.deactivate();
                     }
                     Some(ActionOp::MenuManageBasis) => {
                         manager.activate();
                         manager.manage_basis();
-                        manager
-                            .item_lists
-                            .lock()
-                            .unwrap()
-                            .clear(VaultMode::Password); // clear the cached item list for passwords
+                        manager.item_lists.lock().unwrap().clear(VaultMode::Password); // clear the cached item list for passwords
                         manager.retrieve_db();
                         manager.deactivate();
                     }
@@ -196,9 +357,8 @@ fn main() -> ! {
                         manager.deactivate();
                     }
                     Some(ActionOp::UpdateOneItem) => {
-                        let buffer = unsafe {
-                            Buffer::from_memory_message(msg.body.memory_message().unwrap())
-                        };
+                        let buffer =
+                            unsafe { Buffer::from_memory_message(msg.body.memory_message().unwrap()) };
                         let entry = buffer.to_original::<SelectedEntry, _>().unwrap();
                         manager.activate();
                         manager.update_db_entry(&entry);
@@ -237,8 +397,6 @@ fn main() -> ! {
         }
     });
 
-    let actions_conn = xous::connect(actions_sid).unwrap();
-
     // spawn the FIDO2 USB handler
     let _ = thread::spawn({
         let allow_host = allow_host.clone();
@@ -258,11 +416,8 @@ fn main() -> ! {
                         ctap.update_timeouts(Instant::now());
                         let mutex = opensk_mutex.lock().unwrap();
                         log::trace!("Received U2F packet");
-                        let typed_reply = ctap.process_hid_packet(
-                            &msg.packet,
-                            Transport::MainHid,
-                            Instant::now(),
-                        );
+                        let typed_reply =
+                            ctap.process_hid_packet(&msg.packet, Transport::MainHid, Instant::now());
                         match typed_reply {
                             HidIterType::Ctap(reply) => {
                                 for pkt_reply in reply {
@@ -293,9 +448,7 @@ fn main() -> ! {
                                         match return_payload {
                                             Some(data) => data,
                                             None => {
-                                                log::debug!(
-                                                    "starting processing of vendor data..."
-                                                );
+                                                log::debug!("starting processing of vendor data...");
                                                 let resp = vendor_commands::handle_vendor_command(
                                                     &mut vendor_session,
                                                     allow_host.load(Ordering::SeqCst),
@@ -307,8 +460,7 @@ fn main() -> ! {
                                                         if vendor_session.has_backup_data() {
                                                             resp
                                                         } else {
-                                                            vendor_session =
-                                                                VendorSession::default();
+                                                            vendor_session = VendorSession::default();
                                                             resp
                                                         }
                                                     }
@@ -359,10 +511,47 @@ fn main() -> ! {
     let modals = modals::Modals::new(&xns).unwrap();
     vault_ui.apply_glyph_style();
 
+    let keystore = keystore::Keystore::new(&xns);
+    let is_developer = keystore.is_developer().expect("couldn't query developer mode");
+
     // give the system a second to stabilize, then try to mount
     tt.sleep_ms(1000).ok();
     let pddb = pddb::Pddb::new();
     pddb.try_mount();
+
+    // initialize the system state from the PDDB
+    let mut k0 = [0u8; 32];
+    let k0_len = read_pddb(&pddb, DC34_SECRET, &mut k0);
+    log::info!("k0_len {}, k0 {:x?}", k0_len, k0);
+
+    let mut skip_tour_buf = [0u8; 1];
+    read_pddb(&pddb, DC34_TOUR, &mut skip_tour_buf);
+    let skip_tour = skip_tour_buf[0] != 0;
+    log::info!("skip_tour {:?},  {:x?}", skip_tour, skip_tour_buf);
+
+    let mut badge_code = [BadgeType::None as u8; 1];
+    let badge_code_len = read_pddb(&pddb, DC34_BADGE, &mut badge_code);
+    let badge_type = if badge_code_len == 0 {
+        BadgeType::None
+    } else {
+        BadgeType::try_from(badge_code[0]).unwrap_or(BadgeType::None)
+    };
+
+    // set the initial mode based on the following state
+    *mode.lock().unwrap() = if badge_type == BadgeType::None {
+        VaultMode::FactoryTest
+    } else if skip_tour {
+        VaultMode::Password
+    } else {
+        VaultMode::Tour
+    };
+
+    #[cfg(feature = "production")]
+    if is_developer {
+        *mode.lock().unwrap() = VaultMode::Idle;
+    }
+
+    log::info!("initial mode: {:?}", *mode.lock().unwrap());
 
     // reload the database
     xous::send_message(
@@ -373,11 +562,8 @@ fn main() -> ! {
     vault_ui.refresh_draw_list();
 
     // kickstart the pumper
-    xous::send_message(
-        pump_conn,
-        xous::Message::new_scalar(PumpOp::Pump.to_usize().unwrap(), 0, 0, 0, 0),
-    )
-    .expect("couldn't start the pumper");
+    xous::send_message(pump_conn, xous::Message::new_scalar(PumpOp::Pump.to_usize().unwrap(), 0, 0, 0, 0))
+        .expect("couldn't start the pumper");
     let mut menu_active = false;
     loop {
         let msg = xous::receive_message(sid).unwrap();
@@ -389,13 +575,7 @@ fn main() -> ! {
             Some(VaultOp::ReloadDbAndFullRedraw) => {
                 xous::send_message(
                     actions_conn,
-                    xous::Message::new_blocking_scalar(
-                        ActionOp::ReloadDb.to_usize().unwrap(),
-                        0,
-                        0,
-                        0,
-                        0,
-                    ),
+                    xous::Message::new_blocking_scalar(ActionOp::ReloadDb.to_usize().unwrap(), 0, 0, 0, 0),
                 )
                 .ok();
                 vault_ui.refresh_draw_list();
@@ -414,81 +594,15 @@ fn main() -> ! {
                 if menu_active {
                     menu_mgr.key_press(k);
                 } else {
-                    match k {
+                    // let the UI get first whack at filtering keys - the '∴' key may be intercepted
+                    // by various test routines
+                    let k = vault_ui.handle_key(k);
+
+                    match k.unwrap_or('\0') {
                         '∴' => {
                             allow_totp_rendering.store(false, Ordering::SeqCst);
                             menu_mgr.redraw();
                             menu_active = true;
-                        }
-                        '↓' => {
-                            vault_ui.nav(NavDir::Down);
-                            vault_ui.redraw();
-                        }
-                        '↑' => {
-                            vault_ui.nav(NavDir::Up);
-                            vault_ui.redraw();
-                        }
-                        '←' => {
-                            vault_ui.nav(NavDir::Autotype);
-                            vault_ui.redraw();
-                        }
-                        '→' => {
-                            let current_mode = *mode.lock().unwrap();
-                            match current_mode {
-                                VaultMode::Password => {
-                                    {
-                                        *mode.lock().unwrap() = VaultMode::Totp;
-                                    }
-                                    // reload DB on mode switch
-                                    xous::send_message(
-                                        actions_conn,
-                                        xous::Message::new_blocking_scalar(
-                                            ActionOp::ReloadDb.to_usize().unwrap(),
-                                            0,
-                                            0,
-                                            0,
-                                            0,
-                                        ),
-                                    )
-                                    .ok();
-                                    vault_ui.refresh_draw_list();
-                                    allow_totp_rendering.store(true, Ordering::SeqCst);
-                                    xous::send_message(
-                                        pump_conn,
-                                        xous::Message::new_scalar(
-                                            PumpOp::Pump.to_usize().unwrap(),
-                                            0,
-                                            0,
-                                            0,
-                                            0,
-                                        ),
-                                    )
-                                    .expect("couldn't start the pumper");
-                                    vault_ui.redraw();
-                                }
-                                VaultMode::Totp => {
-                                    {
-                                        // lock needs to go out of scope so we don't hang the later ops
-                                        *mode.lock().unwrap() = VaultMode::Password;
-                                    }
-                                    allow_totp_rendering.store(false, Ordering::SeqCst);
-                                    // reload DB on mode switch
-                                    xous::send_message(
-                                        actions_conn,
-                                        xous::Message::new_blocking_scalar(
-                                            ActionOp::ReloadDb.to_usize().unwrap(),
-                                            0,
-                                            0,
-                                            0,
-                                            0,
-                                        ),
-                                    )
-                                    .ok();
-                                    vault_ui.redraw();
-                                }
-                            }
-
-                            vault_ui.redraw();
                         }
                         '🔥' => {
                             allow_totp_rendering.store(false, Ordering::SeqCst);
@@ -525,7 +639,7 @@ fn main() -> ! {
                             log::info!("accel event");
                         }
                         _ => {
-                            log::trace!("unhandled key {}", k);
+                            log::trace!("unhandled key {:?}", k);
                         }
                     }
                 }
@@ -541,17 +655,13 @@ fn main() -> ! {
                     buf.lend(actions_conn, ActionOp::MenuEditStage2.to_u32().unwrap())
                         .expect("messaging error");
                 } else {
-                    modals
-                        .show_notification(t!("vault.error.nothing_selected", locales::LANG), None)
-                        .ok();
+                    modals.show_notification(t!("vault.error.nothing_selected", locales::LANG), None).ok();
                 }
                 allow_totp_rendering.store(true, Ordering::SeqCst);
             }
             Some(VaultOp::MenuChangeFont) => {
                 for item in FONT_LIST {
-                    modals
-                        .add_list_item(item)
-                        .expect("couldn't build radio item list");
+                    modals.add_list_item(item).expect("couldn't build radio item list");
                 }
                 allow_totp_rendering.store(false, Ordering::SeqCst);
                 match modals.get_radiobutton(t!("vault.select_font", locales::LANG)) {
@@ -570,19 +680,11 @@ fn main() -> ! {
                     buf.lend(actions_conn, ActionOp::MenuDeleteStage2.to_u32().unwrap())
                         .expect("messaging error");
                 } else {
-                    modals
-                        .show_notification(t!("vault.error.nothing_selected", locales::LANG), None)
-                        .ok();
+                    modals.show_notification(t!("vault.error.nothing_selected", locales::LANG), None).ok();
                 }
                 xous::send_message(
                     actions_conn,
-                    xous::Message::new_blocking_scalar(
-                        ActionOp::ReloadDb.to_usize().unwrap(),
-                        0,
-                        0,
-                        0,
-                        0,
-                    ),
+                    xous::Message::new_blocking_scalar(ActionOp::ReloadDb.to_usize().unwrap(), 0, 0, 0, 0),
                 )
                 .ok();
                 allow_totp_rendering.store(true, Ordering::SeqCst);
@@ -616,9 +718,30 @@ fn main() -> ! {
                 modals.show_notification("", Some(&encoded)).ok();
                 allow_totp_rendering.store(previous, Ordering::SeqCst);
             }
+            Some(VaultOp::HandleQr) => {
+                // this routine mainly exists to repatriate QR data from the ActionManager into the
+                // top-level context. This avoids us having to share every object into the ActionManager.
+                let buffer = unsafe { Buffer::from_memory_message(msg.body.memory_message().unwrap()) };
+                let s: IpcString = buffer.to_original::<IpcString, _>().unwrap();
+                if let Some((request, _data)) = s.s.split_once("://") {
+                    match request {
+                        "test" => {
+                            vault_ui.test_string(&s.s);
+                        }
+                        _ => log::warn!("Unhandled string in main: {}", &s.s),
+                    }
+                }
+            }
             _ => {
                 log::error!("Got unknown message: {:?}", msg);
             }
         }
     }
+}
+
+pub fn read_pddb(pddb: &Pddb, key: &str, buf: &mut [u8]) -> usize {
+    let mut key = pddb
+        .get(DC34_DICT, key, None, true, true, Some(buf.len()), None::<fn()>)
+        .expect("couldn't get PDDB key");
+    key.read(buf).expect("couldn't read key")
 }

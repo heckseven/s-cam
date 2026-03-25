@@ -285,10 +285,17 @@ impl FilteredListView {
 pub struct ItemLists {
     totp: FilteredListView,
     pw: FilteredListView,
+    idle: FilteredListView,
 }
 #[allow(dead_code)]
 impl ItemLists {
-    pub fn new() -> Self { ItemLists { totp: FilteredListView::new(), pw: FilteredListView::new() } }
+    pub fn new() -> Self {
+        ItemLists {
+            totp: FilteredListView::new(),
+            pw: FilteredListView::new(),
+            idle: FilteredListView::new(),
+        }
+    }
 
     pub fn is_db_empty(&self, list_type: VaultMode) -> bool { self.li(list_type).is_db_empty() }
 
@@ -296,6 +303,7 @@ impl ItemLists {
         let view = match mode {
             VaultMode::Password => &self.pw,
             VaultMode::Totp => &self.totp,
+            _ => &self.idle,
         };
         view.find_by_name(name)
     }
@@ -304,6 +312,7 @@ impl ItemLists {
         match list_type {
             VaultMode::Totp => &mut self.totp,
             VaultMode::Password => &mut self.pw,
+            _ => &mut self.idle,
         }
     }
 
@@ -311,6 +320,7 @@ impl ItemLists {
         match list_type {
             VaultMode::Totp => &self.totp,
             VaultMode::Password => &self.pw,
+            _ => &self.idle,
         }
     }
 

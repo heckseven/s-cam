@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use locales::t;
 use num_traits::*;
 
@@ -42,6 +42,13 @@ pub(crate) enum VaultOp {
     BasisChange,
 
     ShowQr,
+    // for QR responses not handled by the action manager
+    HandleQr,
+}
+
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub struct IpcString {
+    pub s: String,
 }
 
 pub fn atime_to_str(req_atime: u64) -> String {
@@ -57,10 +64,7 @@ pub fn atime_to_str(req_atime: u64) -> String {
         request_str.push_str(t!("vault.u2f.appinfo.never", locales::LANG));
     } else {
         let now = utc_now();
-        let atime = DateTime::<Utc>::from_naive_utc_and_offset(
-            NaiveDateTime::from_timestamp_opt(req_atime as i64, 0).unwrap(),
-            Utc,
-        );
+        let atime = DateTime::<Utc>::from_timestamp(req_atime as i64, 0).unwrap_or_default();
         // avoid format! macro, it is too slow.
         if now.signed_duration_since(atime).num_days() > 1 {
             request_str.push_str(t!("vault.u2f.appinfo.last_authtime", locales::LANG));
@@ -87,8 +91,7 @@ pub fn atime_to_str(req_atime: u64) -> String {
 /// target
 pub fn utc_now() -> DateTime<Utc> {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("system time before Unix epoch");
-    let naive = NaiveDateTime::from_timestamp_opt(now.as_secs() as i64, now.subsec_nanos() as u32).unwrap();
-    DateTime::from_naive_utc_and_offset(naive, Utc)
+    DateTime::<Utc>::from_timestamp(now.as_secs() as i64, now.subsec_nanos() as u32).unwrap_or_default()
 }
 
 /// app info format:
