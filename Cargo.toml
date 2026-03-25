@@ -78,7 +78,7 @@ rev = "616bf65f6e379165464f50b1e79ec42aff77a683"
 [profile.release]
 codegen-units = 1  # 1 better optimizations
 debug = false
-strip = true
+strip = false
 lto = "fat"
 incremental = true
 #panic = "abort" # Remove panic output, which can reduce file size
@@ -96,8 +96,13 @@ ux-api = { path = "../xous-core/libs/ux-api" }
 bio-lib = { path = "../xous-core/libs/bio-lib" }
 xous-api-susres = { path = "../xous-core/api/xous-api-susres" }
 blitstr2 = { path = "../xous-core/libs/blitstr2" }
+pddb = { path = "../xous-core/services/pddb", features = ["board-baosec"] }
+keystore-api = { path = "../xous-core/libs/keystore-api", features = ["gen2"] }
+keystore = { path = "../xous-core/services/keystore", features = ["board-baosec"] }
 
 [features]
+# turns on production-mode handling (ie. faults on developer mode flag being set)
+production = []
 board-baosec = [
     "bao1x-hal-service",
     "ux-api/board-baosec",

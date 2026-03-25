@@ -15,6 +15,15 @@ dependencies = [
 [[package]]
 name = "aes"
 version = "0.8.4"
+dependencies = [
+ "cipher",
+ "hex 0.4.3",
+ "rand_chacha",
+]
+
+[[package]]
+name = "aes"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b169f7a6d4742236a0a00c541b845991d0ac43e546831af1249753ab4c3aa3a0"
 dependencies = [
@@ -29,8 +38,6 @@ version = "0.8.4"
 source = "git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683#616bf65f6e379165464f50b1e79ec42aff77a683"
 dependencies = [
  "cipher",
- "hex 0.4.3",
- "rand_chacha",
 ]
 
 [[package]]
@@ -737,7 +744,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "once_cell",
- "precursor-hal",
+ "precursor-hal 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
  "rkyv",
  "spinor",
  "xous",
@@ -1328,7 +1335,6 @@ dependencies = [
 [[package]]
 name = "keystore"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683#616bf65f6e379165464f50b1e79ec42aff77a683"
 dependencies = [
  "aes-gcm-siv",
  "aes-kw",
@@ -1342,7 +1348,7 @@ dependencies = [
  "hex 0.4.3",
  "hkdf",
  "keystore-api",
- "locales 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
+ "locales 0.1.0",
  "log",
  "num-derive",
  "num-traits",
@@ -1363,13 +1369,12 @@ dependencies = [
 [[package]]
 name = "keystore-api"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683#616bf65f6e379165464f50b1e79ec42aff77a683"
 dependencies = [
  "cipher",
- "locales 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
+ "locales 0.1.0",
  "num-derive",
  "num-traits",
- "precursor-hal",
+ "precursor-hal 0.1.0",
  "rkyv",
  "xous",
  "xous-api-names",
@@ -1456,9 +1461,8 @@ dependencies = [
 [[package]]
 name = "loader"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683#616bf65f6e379165464f50b1e79ec42aff77a683"
 dependencies = [
- "aes 0.8.4 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
+ "aes 0.8.4",
  "aes-gcm-siv",
  "bao1x-api",
  "bao1x-hal",
@@ -1767,9 +1771,8 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 [[package]]
 name = "pddb"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683#616bf65f6e379165464f50b1e79ec42aff77a683"
 dependencies = [
- "aes 0.8.4 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
+ "aes 0.8.4",
  "aes-gcm-siv",
  "bao1x-hal",
  "bao1x-hal-service",
@@ -1782,7 +1785,7 @@ dependencies = [
  "hkdf",
  "keystore",
  "keystore-api",
- "locales 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
+ "locales 0.1.0",
  "log",
  "modals",
  "num-derive",
@@ -1861,6 +1864,10 @@ checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
 dependencies = [
  "zerocopy",
 ]
+
+[[package]]
+name = "precursor-hal"
+version = "0.1.0"
 
 [[package]]
 name = "precursor-hal"
@@ -2442,7 +2449,7 @@ dependencies = [
  "log",
  "num-derive",
  "num-traits",
- "precursor-hal",
+ "precursor-hal 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
  "rkyv",
  "trng",
  "xous",
@@ -3240,9 +3247,8 @@ checksum = "906500be0c4ed13afc3c8743e4d40337bfbe08e7dadfa216c39907aaa06cc8c2"
 [[package]]
 name = "xous-swapper"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683#616bf65f6e379165464f50b1e79ec42aff77a683"
 dependencies = [
- "aes 0.8.4 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
+ "aes 0.8.4",
  "aes-gcm-siv",
  "bao1x-api",
  "bao1x-hal",
