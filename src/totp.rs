@@ -178,7 +178,7 @@ pub(crate) fn pumper(
                         let mode_cache = { (*mode.lock().unwrap()).clone() };
                         {
                             // we really want mode.lock() to be in a different scope so...
-                            if mode_cache == VaultMode::Totp {
+                            if mode_cache == VaultMode::Totp || mode_cache == VaultMode::FactoryTest {
                                 tt.sleep_ms(250).unwrap();
                                 send_message(
                                     self_conn,

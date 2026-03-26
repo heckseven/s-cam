@@ -1,6 +1,7 @@
 use core::fmt::Write as TextViewWrite;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use blitstr2::GlyphStyle;
 use ux_api::minigfx::*;
@@ -18,6 +19,7 @@ const KEYUP_DELAY_MS: u64 = 100;
 const PAGE_INCREMENT: usize = 6;
 
 const FACTORY_QR_STRING: &'static str = "test://factory-test-data-lorem-ipsum-data-data";
+const FACTORY_TIMEOUT_S: u64 = 60;
 
 pub const DEFAULT_FONT: GlyphStyle = GlyphStyle::Regular;
 pub const FONT_LIST: [&'static str; 6] = ["regular", "tall", "mono", "bold", "large", "small"];
@@ -162,6 +164,7 @@ pub struct VaultUi {
     tt: ticktimer_server::Ticktimer,
 
     // various state machines
+    start_time: Option<Instant>,
     factory_test: FactoryTestState,
 }
 
@@ -208,6 +211,7 @@ impl VaultUi {
             tt,
             last_key_time: now,
             start_hold_time: now,
+            start_time: None,
             factory_test: FactoryTestState::JogPress { seen_press: false },
         }
     }
@@ -488,6 +492,10 @@ impl VaultUi {
             VaultMode::FactoryTest => {
                 match &self.factory_test {
                     FactoryTestState::JogPress { seen_press: _ } => {
+                        if self.start_time.is_none() {
+                            self.start_time = Some(Instant::now());
+                        }
+                        self.allow_totp_rendering.store(true, Ordering::SeqCst);
                         self.gfx.bitmap(&bitmaps::factory_jogpress::BITMAP, None, None).ok();
                     }
                     FactoryTestState::UpDown { seen_up: _, seen_down: _ } => {
@@ -517,6 +525,21 @@ impl VaultUi {
                         self.gfx.draw_textview(&mut msg).unwrap();
                     }
                 }
+                let elapsed = Instant::now().duration_since(self.start_time.unwrap_or(Instant::now()));
+                if elapsed.as_secs() > FACTORY_TIMEOUT_S {
+                    self.factory_test = FactoryTestState::Error("Timeout!".to_string());
+                }
+                let mut timer = TextView::new(
+                    Gid::dummy(),
+                    TextBounds::CenteredBot(Rectangle::new(Point::new(32, 115), Point::new(96, 128))),
+                );
+                timer.style = GlyphStyle::Small;
+                write!(timer, "{:.1}s", elapsed.as_secs_f32()).ok();
+                timer.draw_border = false;
+                timer.clear_area = false;
+                timer.ellipsis = false;
+                timer.invert = true;
+                self.gfx.draw_textview(&mut timer).unwrap();
             }
             _ => unimplemented!(),
         }

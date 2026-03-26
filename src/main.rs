@@ -73,6 +73,10 @@ the currently active mode.
   */
 
 /*
+  Note on factory test:
+    - Use console tests (`test [foo]`) routines to check voltages, accelerometer ID
+    - UI test is just for testing UI elements!
+
   DC34 interactions
 
   - Data / mode bits required:
