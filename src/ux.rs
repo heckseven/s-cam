@@ -1,7 +1,6 @@
 use core::fmt::Write as TextViewWrite;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use blitstr2::GlyphStyle;
 use ux_api::minigfx::*;
@@ -113,10 +112,134 @@ impl FactoryTestState {
             }
         }
     }
-
-    fn is_terminal(&self) -> bool { matches!(self, FactoryTestState::Finish | FactoryTestState::Error(_)) }
 }
 
+macro_rules! tour_advance {
+    ($self:expr, $k:expr;
+     auto { $($from:ident => $to:ident),* $(,)? }
+     custom { $($pat:pat => $body:expr),* $(,)? }
+    ) => {
+        match $self {
+            $(
+                Self::$from { seen_press } => {
+                    if seen_press || is_tour_advance_key($k) {
+                        Self::$to { seen_press: false }
+                    } else {
+                        Self::$from { seen_press }
+                    }
+                }
+            )*
+            $(
+                $pat => $body,
+            )*
+        }
+    }
+}
+
+fn is_tour_advance_key(k: char) -> bool {
+    k == '←' || k == '→' || k == '🔥' || k == '↑' || k == '↓'
+}
+
+enum TourState {
+    Welcome { seen_press: bool },
+    LightGeneExplainer1 { seen_press: bool },
+    LightGeneExplainer2 { seen_press: bool },
+    Breeding1 { seen_press: bool },
+    Breeding2 { seen_press: bool },
+    Breeding3 { seen_press: bool },
+    Breeding4 { seen_press: bool },
+    BadgeRecap { seen_press: bool },
+    TokenIntro1 { seen_press: bool },
+    TokenIntro2 { seen_press: bool },
+    TokenIntro3 { seen_press: bool },
+    InfoScreen { seen_press: bool },
+    End { seen_press: bool },
+    Error(String),
+}
+
+impl TourState {
+    fn handle_input(self, k: char) -> Self {
+        tour_advance!(self, k;
+            auto {
+                LightGeneExplainer1 => LightGeneExplainer2,
+                LightGeneExplainer2 => Breeding1,
+                Breeding1          => Breeding2,
+                Breeding2          => Breeding3,
+                Breeding3          => Breeding4,
+                Breeding4          => BadgeRecap,
+                BadgeRecap         => TokenIntro1,
+                TokenIntro1        => TokenIntro2,
+                TokenIntro2        => TokenIntro3,
+                TokenIntro3        => InfoScreen,
+                InfoScreen         => End,
+                End                => End,  // terminal — stays put
+            }
+            custom {
+                Self::Welcome { seen_press } => {
+                    // only advance if the jog dial press in is discovered: the point
+                    // of this screen is to make sure users are aware of this interaction
+                    // pattern.
+                    let seen_press = seen_press || k == '∴';
+                    log::info!("k: {}, seen_press: {:?}", k, seen_press);
+                    if seen_press {
+                        Self::LightGeneExplainer1 { seen_press: false }
+                    } else {
+                        Self::Welcome { seen_press }
+                    }
+                },
+                Self::Error(e) => Self::Error(e)
+            }
+        )
+    }
+
+    fn is_terminal(&self) -> bool { matches!(self, TourState::End { seen_press: _ } | TourState::Error(_)) }
+}
+
+enum TokenTourState {
+    TokenTour1 { seen_press: bool },
+    TokenTour2 { seen_press: bool },
+    TokenTour3 { seen_press: bool },
+    TokenRecap { seen_press: bool },
+    BrowserExtension { seen_press: bool },
+    InfoScreen { seen_press: bool },
+    End { seen_press: bool },
+    Error(String),
+}
+
+impl TokenTourState {
+    fn handle_input(self, k: char) -> Self {
+        tour_advance!(self, k;
+            auto {
+                TokenTour1         => TokenTour2,
+                TokenTour2         => TokenTour3,
+                TokenTour3         => TokenRecap,
+                TokenRecap         => BrowserExtension,
+                BrowserExtension   => InfoScreen,
+                End                => End,  // terminal — stays put
+            }
+            custom {
+                Self::InfoScreen { seen_press } => {
+                    if seen_press || is_tour_advance_key(k) {
+                        // disable repeating the tour - show it only once
+                        let pddb = pddb::Pddb::new();
+                        let mut key = pddb
+                            .get(DC34_DICT, DC34_TOKEN_TOUR, None, true, true, Some(1), None::<fn()>)
+                            .expect("couldn't get PDDB key");
+                        key.write(&[1]).ok();
+                        Self::End { seen_press: false }
+                    } else {
+                        Self::InfoScreen { seen_press }
+                    }
+                },
+                Self::Error(e) => Self::Error(e)
+            }
+        )
+    }
+
+    fn is_terminal(&self) -> bool {
+        matches!(self, TokenTourState::End { seen_press: _ } | TokenTourState::Error(_))
+    }
+}
 /// Centralizes tunable UI parameters for TOTP
 struct TotpLayout {}
 impl TotpLayout {
@@ -166,6 +289,8 @@ pub struct VaultUi {
     // various state machines
     start_time: Option<Instant>,
     factory_test: FactoryTestState,
+    tour_state: TourState,
+    token_tour_state: TokenTourState,
 }
 
 impl VaultUi {
@@ -213,6 +338,8 @@ impl VaultUi {
             start_hold_time: now,
             start_time: None,
             factory_test: FactoryTestState::JogPress { seen_press: false },
+            tour_state: TourState::Welcome { seen_press: false },
+            token_tour_state: TokenTourState::TokenTour1 { seen_press: false },
         }
     }
 
@@ -355,12 +482,13 @@ impl VaultUi {
     pub fn redraw(&mut self) {
         // to reduce locking thrash, we cache a copy of the current mode at the top of redraw.
         let mode_at_entry = (*self.mode.lock().unwrap()).clone();
+        log::info!("redraw mode: {:?}", mode_at_entry);
 
         self.clear_area();
 
         match mode_at_entry {
             VaultMode::Idle => {
-                self.gfx.bitmap(&bitmaps::tour_welcome::BITMAP, None, None).ok();
+                self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
             }
             VaultMode::Totp => {
                 // decorative box around code
@@ -541,6 +669,66 @@ impl VaultUi {
                 timer.invert = true;
                 self.gfx.draw_textview(&mut timer).unwrap();
             }
+            VaultMode::Tour => match &self.tour_state {
+                TourState::Welcome { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_welcome::BITMAP, None, None).ok();
+                }
+                TourState::LightGeneExplainer1 { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_light_gene_explainer1::BITMAP, None, None).ok();
+                }
+                TourState::LightGeneExplainer2 { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_light_gene_explainer2::BITMAP, None, None).ok();
+                }
+                TourState::Breeding1 { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_breeding1::BITMAP, None, None).ok();
+                }
+                TourState::Breeding2 { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_breeding2::BITMAP, None, None).ok();
+                }
+                TourState::Breeding3 { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_breeding3::BITMAP, None, None).ok();
+                }
+                TourState::Breeding4 { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_breeding4::BITMAP, None, None).ok();
+                }
+                TourState::BadgeRecap { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_recap::BITMAP, None, None).ok();
+                }
+                TourState::TokenIntro1 { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_token_intro1::BITMAP, None, None).ok();
+                }
+                TourState::TokenIntro2 { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_token_intro2::BITMAP, None, None).ok();
+                }
+                TourState::TokenIntro3 { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_token_intro3::BITMAP, None, None).ok();
+                }
+                TourState::InfoScreen { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
+                }
+                _ => {}
+            },
+            VaultMode::TokenTour => match &self.token_tour_state {
+                TokenTourState::TokenTour1 { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_token_tour1::BITMAP, None, None).ok();
+                }
+                TokenTourState::TokenTour2 { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_token_tour2::BITMAP, None, None).ok();
+                }
+                TokenTourState::TokenTour3 { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_token_tour3::BITMAP, None, None).ok();
+                }
+                TokenTourState::TokenRecap { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_token_recap::BITMAP, None, None).ok();
+                }
+                TokenTourState::BrowserExtension { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_browser_extension::BITMAP, None, None).ok();
+                }
+                TokenTourState::InfoScreen { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
+                }
+                _ => {}
+            },
             _ => unimplemented!(),
         }
         self.gfx.flush().ok();
@@ -572,7 +760,28 @@ impl VaultUi {
                     FactoryTestState::Error("Transitioning".to_string()),
                 );
                 self.factory_test = old.handle_input(Some(k), None, None);
-                if k == '🔥' { Some(k) } else { None }
+                // allow menu raising during the tour, otherwise, eat all the keys
+                if k == '∴' { Some(k) } else { None }
+            }
+            VaultMode::Tour => {
+                let old =
+                    std::mem::replace(&mut self.tour_state, TourState::Error("transitioning".to_string()));
+                self.tour_state = old.handle_input(k);
+                if self.tour_state.is_terminal() {
+                    *self.mode.lock().unwrap() = VaultMode::Idle;
+                }
+                Some(k)
+            }
+            VaultMode::TokenTour => {
+                let old = std::mem::replace(
+                    &mut self.token_tour_state,
+                    TokenTourState::Error("transitioning".to_string()),
+                );
+                self.token_tour_state = old.handle_input(k);
+                if self.token_tour_state.is_terminal() {
+                    *self.mode.lock().unwrap() = VaultMode::Password;
+                }
+                Some(k)
             }
             VaultMode::Password => {
                 let increment = if self.manage_longpress() { PAGE_INCREMENT } else { 1 };

@@ -7,6 +7,7 @@ use actions::ActionOp;
 mod storage;
 mod submenu;
 mod totp;
+mod tourmenu;
 pub mod vault_api;
 use ux_api::service::gfx::Gfx;
 pub use vault_api::*;
@@ -16,7 +17,7 @@ mod vendor_commands;
 
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::cell::RefCell;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
@@ -118,20 +119,23 @@ the currently active mode.
          - continue -> next stage of tour
          - skip tour -> operating mode
          - never show again -> store never show again -> operating mode
-      - "Scan other attendees badges to 'breed' your lights with theirs [next screen]"
-      - "Breeding is a two step process. [next screen]"
-      - "First, share your KEY with your mate by pressing either of the two buttons below. [next screen]"
-      - "The mate scans your KEY by pressing the middle button on their badge. [next screen]"
-      - "The mate will show a QR code with their 'light gene'. Scan this code using the middle button on your badge. [next screen]"
-      - "A new QR code will show up on your badge. Your mate can scan this now if they also want your light gene. [next screen]"
-      - "After the conference, you can detach the badge module and use it as a FIDO token [next screen]"
-      - "In this mode, the left button will 'type' TOTP/passwords to a connected USB host [next screen]"
+      - "Your badge's light pattern is unique, encoded in a 'light gene'!"
+      - "You can 'breed' your light gene, evolving new patterns. Here's how:"
+      - "First, share your KEY by pressing either of the left or right buttons."
+      - "A mate shows consent by scanning your KEY using their middle button."
+      - "Finally, scan your mate's QR code using the middle button on your badge."
+      - "Your mate can scan your new QR code if they also want your light genes."
+      - "Badge Recap: (show KEY, down arrows) / (scan code, down arrow)"
+      - "Your badge is also a FIDO token and password manager!"
+      - "Detach the core module by removing two screws on the backside."
+      - "Then, connect to a USB host to use your security token."
          -- start of "Help" sequence in token mode
-      - "The right button will toggle between TOTP and password modes"
-      - "The middle button will scan QR codes to enroll TOTPs and passwords"
-      - "You can install a browser extension to help with password management."
-      - "Go to baochip.com/defcon34 for more information. Enjoy DEFCON34!"
-      - "don't show again" / "close" options
+      - "The right button toggles between TOTP and password mode."
+      - "The middle button scans QR codes to enroll TOTPs."
+      - "The left button 'auto-types' credentials into the USB host."
+      - "Token Recap: (type) (scan) (mode)"
+      - "You'll need a browser extension to set time and manage passwords."
+      - "Go to baochip.com/defcon34 for more information. Enjoy the conference!"
 
   - If base board is detected:
     - enable DC34 Idle screen
@@ -194,6 +198,7 @@ pub(crate) const SERVER_NAME_VAULT2: &str = "_Vault2_";
 const DC34_DICT: &str = "dc34";
 const DC34_SECRET: &str = "k0";
 const DC34_TOUR: &str = "tour";
+const DC34_TOKEN_TOUR: &str = "tokentour";
 const DC34_BADGE: &str = "badge";
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -201,6 +206,7 @@ pub enum VaultMode {
     Idle, // has two variants, one for regular, other for developer mode
     FactoryTest,
     Tour,
+    TokenTour,
     About,
     Totp,
     Password,
@@ -512,11 +518,19 @@ fn main() -> ! {
 
     let menu_sid = xous::create_server().unwrap();
     let menu_mgr = submenu::create_submenu(conn, actions_conn, menu_sid);
+    let tour_menu_sid = xous::create_server().unwrap();
+    let tour_menu_mgr = tourmenu::create_submenu(conn, actions_conn, tour_menu_sid);
+
     let modals = modals::Modals::new(&xns).unwrap();
     vault_ui.apply_glyph_style();
 
     let keystore = keystore::Keystore::new(&xns);
     let is_developer = keystore.is_developer().expect("couldn't query developer mode");
+
+    // TODO: replace with a function that actually checks the attachment pins
+    let badge_attached = true;
+    // TODO: replace with a function that actually checks cold boot status
+    let cold_boot = true;
 
     // give the system a second to stabilize, then try to mount
     tt.sleep_ms(1000).ok();
@@ -533,6 +547,11 @@ fn main() -> ! {
     let skip_tour = skip_tour_buf[0] != 0;
     log::info!("skip_tour {:?},  {:x?}", skip_tour, skip_tour_buf);
 
+    let mut skip_token_tour_buf = [0u8; 1];
+    read_pddb(&pddb, DC34_TOKEN_TOUR, &mut skip_token_tour_buf);
+    let skip_token_tour = skip_token_tour_buf[0] != 0;
+    log::info!("skip_token_tour {:?},  {:x?}", skip_token_tour, skip_token_tour_buf);
+
     let mut badge_code = [BadgeType::None as u8; 1];
     let badge_code_len = read_pddb(&pddb, DC34_BADGE, &mut badge_code);
     let badge_type = if badge_code_len == 0 {
@@ -544,16 +563,17 @@ fn main() -> ! {
     // set the initial mode based on the following state
     *mode.lock().unwrap() = if badge_type == BadgeType::None {
         VaultMode::FactoryTest
-    } else if skip_tour {
-        VaultMode::Password
+    } else if badge_attached {
+        if skip_tour || !cold_boot { VaultMode::Idle } else { VaultMode::Tour }
     } else {
-        VaultMode::Tour
+        if skip_token_tour { VaultMode::Password } else { VaultMode::TokenTour }
     };
 
     #[cfg(feature = "production")]
     if is_developer {
         *mode.lock().unwrap() = VaultMode::Idle;
     }
+    *mode.lock().unwrap() = VaultMode::Tour;
 
     log::info!("initial mode: {:?}", *mode.lock().unwrap());
 
@@ -596,7 +616,11 @@ fn main() -> ! {
                 let k = char::from_u32(k1 as u32).unwrap_or('\u{0000}');
                 log::debug!("key {:x}", k1);
                 if menu_active {
-                    menu_mgr.key_press(k);
+                    if *mode.lock().unwrap() == VaultMode::Tour {
+                        tour_menu_mgr.key_press(k);
+                    } else {
+                        menu_mgr.key_press(k);
+                    }
                 } else {
                     // let the UI get first whack at filtering keys - the '∴' key may be intercepted
                     // by various test routines
@@ -605,7 +629,11 @@ fn main() -> ! {
                     match k.unwrap_or('\0') {
                         '∴' => {
                             allow_totp_rendering.store(false, Ordering::SeqCst);
-                            menu_mgr.redraw();
+                            if *mode.lock().unwrap() == VaultMode::Tour {
+                                tour_menu_mgr.redraw();
+                            } else {
+                                menu_mgr.redraw();
+                            }
                             menu_active = true;
                         }
                         '🔥' => {
@@ -735,6 +763,54 @@ fn main() -> ! {
                         _ => log::warn!("Unhandled string in main: {}", &s.s),
                     }
                 }
+            }
+            Some(VaultOp::TourContinue) => {
+                // do nothing, the slide show will continue
+            }
+            Some(VaultOp::TourLater) => {
+                if badge_attached {
+                    *mode.lock().unwrap() = VaultMode::Idle;
+                } else {
+                    *mode.lock().unwrap() = VaultMode::Password;
+                    xous::send_message(
+                        actions_conn,
+                        xous::Message::new_blocking_scalar(
+                            ActionOp::ReloadDb.to_usize().unwrap(),
+                            0,
+                            0,
+                            0,
+                            0,
+                        ),
+                    )
+                    .ok();
+                    vault_ui.refresh_draw_list();
+                }
+                log::info!("tour_later redraw");
+                vault_ui.redraw();
+            }
+            Some(VaultOp::TourNever) => {
+                let mut key = pddb
+                    .get(DC34_DICT, DC34_TOUR, None, true, true, Some(1), None::<fn()>)
+                    .expect("couldn't get PDDB key");
+                key.write(&[1]).ok();
+                if badge_attached {
+                    *mode.lock().unwrap() = VaultMode::Idle;
+                } else {
+                    *mode.lock().unwrap() = VaultMode::Password;
+                    xous::send_message(
+                        actions_conn,
+                        xous::Message::new_blocking_scalar(
+                            ActionOp::ReloadDb.to_usize().unwrap(),
+                            0,
+                            0,
+                            0,
+                            0,
+                        ),
+                    )
+                    .ok();
+                    vault_ui.refresh_draw_list();
+                }
+                vault_ui.redraw();
             }
             _ => {
                 log::error!("Got unknown message: {:?}", msg);

@@ -53,6 +53,6 @@ pub fn create_submenu(vault_conn: xous::CID, actions_conn: xous::CID, menu_mgr: 
         close_on_select: true,
     });
 
-    menu_matic(menu_items, "Vault Menu", Some(menu_mgr), vault_conn, VaultOp::MenuDone.to_usize().unwrap())
+    menu_matic(menu_items, "Token Menu", Some(menu_mgr), vault_conn, VaultOp::MenuDone.to_usize().unwrap())
         .expect("couldn't create MenuMatic manager")
 }

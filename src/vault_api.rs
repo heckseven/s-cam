@@ -29,7 +29,7 @@ pub(crate) enum VaultOp {
     ReloadDbAndFullRedraw,
     KeyPress,
 
-    /// Partial menu
+    /// Main menu
     MenuChangeFont,
     MenuDeleteStage1,
     MenuEditStage1,
@@ -38,6 +38,11 @@ pub(crate) enum VaultOp {
     MenuAutotypeRate,
     MenuLeftyMode,
     MenuDone,
+
+    /// Tour menu
+    TourContinue,
+    TourLater,
+    TourNever,
 
     BasisChange,
 
