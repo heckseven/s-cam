@@ -222,12 +222,7 @@ impl TokenTourState {
             custom {
                 Self::InfoScreen { seen_press } => {
                     if seen_press || is_tour_advance_key(k) {
-                        // disable repeating the tour - show it only once
-                        let pddb = pddb::Pddb::new();
-                        let mut key = pddb
-                            .get(DC34_DICT, DC34_TOKEN_TOUR, None, true, true, Some(1), None::<fn()>)
-                            .expect("couldn't get PDDB key");
-                        key.write(&[1]).ok();
+                        crate::config::side_effect_skip_token_tour(true);
                         Self::End { seen_press: false }
                     } else {
                         Self::InfoScreen { seen_press }
@@ -755,6 +750,7 @@ impl VaultUi {
 
     pub(crate) fn handle_key(&mut self, k: char) -> Option<char> {
         let mode_at_entry = (*self.mode.lock().unwrap()).clone();
+        log::info!("handle_key: {:?}", mode_at_entry);
         let filtered_k = match mode_at_entry {
             VaultMode::FactoryTest => {
                 let old = std::mem::replace(
@@ -884,7 +880,10 @@ impl VaultUi {
             // catch-all for now
             _ => Some(k),
         };
-        self.redraw();
+        // don't redraw if menu is being raised
+        if k != '∴' {
+            self.redraw();
+        }
         filtered_k
     }
 

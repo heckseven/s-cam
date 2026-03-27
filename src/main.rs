@@ -12,13 +12,13 @@ use ux_api::service::gfx::Gfx;
 pub use vault_api::*;
 mod action_handler;
 mod bitmaps;
+mod config;
 mod fido2;
 mod generator;
 mod tests;
 mod vendor_commands;
 
 use core::sync::atomic::{AtomicBool, Ordering};
-use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -29,6 +29,7 @@ use totp::PumpOp;
 use xous_ipc::Buffer;
 
 use crate::actions::ActionOp;
+use crate::config::GlobalConfig;
 
 /*
 Dev status & notes --
@@ -189,11 +190,6 @@ the currently active mode.
 */
 
 pub(crate) const SERVER_NAME_VAULT2: &str = "_Vault2_";
-const DC34_DICT: &str = "dc34";
-const DC34_SECRET: &str = "k0";
-const DC34_TOUR: &str = "tour";
-const DC34_TOKEN_TOUR: &str = "tokentour";
-const DC34_BADGE: &str = "badge";
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum VaultMode {
@@ -204,46 +200,6 @@ pub enum VaultMode {
     About,
     Totp,
     Password,
-}
-
-pub enum LifeCycle {
-    // Exit condition: Ko provisioned
-    BoardTest,
-    // Exit condition: badge type assigned
-    AssemblyTest,
-    // Exit condition: dc34.tour is false
-    FirstTime,
-    Main,
-}
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-#[repr(u8)]
-pub enum BadgeType {
-    Human = 5,
-    Goon = 3,
-    Village = 6,
-    CtfContest = 1,
-    Uber = 0,
-    Community = 2,
-    Other = 4,
-    None = 7,
-}
-impl TryFrom<u8> for BadgeType {
-    type Error = u8;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            3 => Ok(BadgeType::Human),
-            5 => Ok(BadgeType::Goon),
-            6 => Ok(BadgeType::Village),
-            1 => Ok(BadgeType::CtfContest),
-            0 => Ok(BadgeType::Uber),
-            2 => Ok(BadgeType::Community),
-            4 => Ok(BadgeType::Other),
-            7 => Ok(BadgeType::None),
-            n => Err(n),
-        }
-    }
 }
 
 fn main() -> ! {
@@ -299,7 +255,7 @@ fn main() -> ! {
 
     action_handler::action_handler(
         conn.clone(),
-        sid.clone(),
+        actions_sid,
         mode.clone(),
         item_lists.clone(),
         action_active.clone(),
@@ -315,51 +271,18 @@ fn main() -> ! {
     let modals = modals::Modals::new(&xns).unwrap();
     vault_ui.apply_glyph_style();
 
-    let keystore = keystore::Keystore::new(&xns);
-    let is_developer = keystore.is_developer().expect("couldn't query developer mode");
-
-    // TODO: replace with a function that actually checks the attachment pins
-    let badge_attached = true;
-    // TODO: replace with a function that actually checks cold boot status
-    let cold_boot = true;
-
     // give the system a second to stabilize, then try to mount
     tt.sleep_ms(1000).ok();
     let pddb = pddb::Pddb::new();
     pddb.try_mount();
 
-    // initialize the system state from the PDDB
-    let mut k0 = [0u8; 32];
-    let k0_len = read_pddb(&pddb, DC34_SECRET, &mut k0);
-    log::info!("k0_len {}, k0 {:x?}", k0_len, k0);
+    #[cfg(feature = "factory-new")]
+    tests::reset_lifecycle();
 
-    let mut skip_tour_buf = [0u8; 1];
-    read_pddb(&pddb, DC34_TOUR, &mut skip_tour_buf);
-    let skip_tour = skip_tour_buf[0] != 0;
-    log::info!("skip_tour {:?},  {:x?}", skip_tour, skip_tour_buf);
+    let (mut global_config, init_mode) = GlobalConfig::init();
+    *mode.lock().unwrap() = init_mode;
 
-    let mut skip_token_tour_buf = [0u8; 1];
-    read_pddb(&pddb, DC34_TOKEN_TOUR, &mut skip_token_tour_buf);
-    let skip_token_tour = skip_token_tour_buf[0] != 0;
-    log::info!("skip_token_tour {:?},  {:x?}", skip_token_tour, skip_token_tour_buf);
-
-    let mut badge_code = [BadgeType::None as u8; 1];
-    let badge_code_len = read_pddb(&pddb, DC34_BADGE, &mut badge_code);
-    let badge_type = if badge_code_len == 0 {
-        BadgeType::None
-    } else {
-        BadgeType::try_from(badge_code[0]).unwrap_or(BadgeType::None)
-    };
-
-    // set the initial mode based on the following state
-    *mode.lock().unwrap() = if badge_type == BadgeType::None {
-        VaultMode::FactoryTest
-    } else if badge_attached {
-        if skip_tour || !cold_boot { VaultMode::Idle } else { VaultMode::Tour }
-    } else {
-        if skip_token_tour { VaultMode::Password } else { VaultMode::TokenTour }
-    };
-
+    // overrides for testing
     #[cfg(feature = "production")]
     if is_developer {
         *mode.lock().unwrap() = VaultMode::Idle;
@@ -559,7 +482,7 @@ fn main() -> ! {
                 // do nothing, the slide show will continue
             }
             Some(VaultOp::TourLater) => {
-                if badge_attached {
+                if global_config.is_badge_attached() {
                     *mode.lock().unwrap() = VaultMode::Idle;
                 } else {
                     *mode.lock().unwrap() = VaultMode::Password;
@@ -580,14 +503,9 @@ fn main() -> ! {
                 vault_ui.redraw();
             }
             Some(VaultOp::TourNever) => {
-                let mut key = pddb
-                    .get(DC34_DICT, DC34_TOUR, None, true, true, Some(1), None::<fn()>)
-                    .expect("couldn't get PDDB key");
-                key.write(&[1]).ok();
-                if badge_attached {
-                    *mode.lock().unwrap() = VaultMode::Idle;
-                } else {
-                    *mode.lock().unwrap() = VaultMode::Password;
+                *mode.lock().unwrap() = global_config.set_skip_tour(false);
+
+                if *mode.lock().unwrap() == VaultMode::Password {
                     xous::send_message(
                         actions_conn,
                         xous::Message::new_blocking_scalar(
@@ -608,11 +526,4 @@ fn main() -> ! {
             }
         }
     }
-}
-
-pub fn read_pddb(pddb: &Pddb, key: &str, buf: &mut [u8]) -> usize {
-    let mut key = pddb
-        .get(DC34_DICT, key, None, true, true, Some(buf.len()), None::<fn()>)
-        .expect("couldn't get PDDB key");
-    key.read(buf).expect("couldn't read key")
 }

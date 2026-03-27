@@ -133,6 +133,10 @@ osk-upgrade = [
 xous = [
 ] # marks xous-specific code segments deep inside the CTAP crate. Mostly to help evaluate if a patch is even feasible in the future.
 ed25519 = ["ed25519-compact"]
+
+# when selected, resets the badge state to factory new
+factory-new = []
+
 default = [
     "with_ctap1",
     "ed25519",
