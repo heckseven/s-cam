@@ -1,4 +1,5 @@
 use core::fmt::Write as TextViewWrite;
+use std::cell::RefCell;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 
@@ -9,6 +10,7 @@ use ux_api::service::gfx::Gfx;
 use ux_api::widgets::ScrollableList;
 use xous::CID;
 
+use crate::action_handler::SelectedEntry;
 use crate::storage::Manager;
 use crate::*;
 

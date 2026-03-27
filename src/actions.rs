@@ -34,7 +34,7 @@ use crate::VaultOp;
 use crate::generator::*;
 use crate::storage::{self, PasswordRecord, StorageContent};
 use crate::totp::TotpAlgorithm;
-use crate::{ItemLists, SelectedEntry, VaultMode};
+use crate::{ItemLists, VaultMode, action_handler::SelectedEntry};
 use crate::{ListItem, ListKey, storage::TotpRecord};
 
 const VAULT_PASSWORD_REC_VERSION: u32 = 1;
