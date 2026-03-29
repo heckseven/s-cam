@@ -182,7 +182,7 @@ impl TourState {
                     // of this screen is to make sure users are aware of this interaction
                     // pattern.
                     let seen_press = seen_press || k == '∴';
-                    log::info!("k: {}, seen_press: {:?}", k, seen_press);
+                    // log::info!("k: {}, seen_press: {:?}", k, seen_press);
                     if seen_press {
                         Self::LightGeneExplainer1 { seen_press: false }
                     } else {
@@ -479,7 +479,7 @@ impl VaultUi {
     pub fn redraw(&mut self) {
         // to reduce locking thrash, we cache a copy of the current mode at the top of redraw.
         let mode_at_entry = (*self.mode.lock().unwrap()).clone();
-        log::info!("redraw mode: {:?}", mode_at_entry);
+        log::debug!("redraw mode: {:?}", mode_at_entry);
 
         self.clear_area();
 
@@ -750,7 +750,7 @@ impl VaultUi {
 
     pub(crate) fn handle_key(&mut self, k: char) -> Option<char> {
         let mode_at_entry = (*self.mode.lock().unwrap()).clone();
-        log::info!("handle_key: {:?}", mode_at_entry);
+        log::debug!("handle_key: {:?}", mode_at_entry);
         let filtered_k = match mode_at_entry {
             VaultMode::FactoryTest => {
                 let old = std::mem::replace(

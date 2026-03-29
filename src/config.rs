@@ -1,5 +1,7 @@
 use std::io::{Read, Write};
 
+use bao1x_api::{IoSetup, IoxPort, IoxValue};
+use dc34_api::BadgeType;
 use pddb::Pddb;
 
 use crate::VaultMode;
@@ -10,41 +12,15 @@ pub(crate) const DC34_TOUR: &str = "tour";
 pub(crate) const DC34_TOKEN_TOUR: &str = "tokentour";
 pub(crate) const DC34_BADGE: &str = "badge";
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-#[repr(u8)]
-pub enum BadgeType {
-    Human = 5,
-    Goon = 3,
-    Village = 6,
-    CtfContest = 1,
-    Uber = 0,
-    Community = 2,
-    Other = 4,
-    None = 7,
-}
-impl TryFrom<u8> for BadgeType {
-    type Error = u8;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            3 => Ok(BadgeType::Human),
-            5 => Ok(BadgeType::Goon),
-            6 => Ok(BadgeType::Village),
-            1 => Ok(BadgeType::CtfContest),
-            0 => Ok(BadgeType::Uber),
-            2 => Ok(BadgeType::Community),
-            4 => Ok(BadgeType::Other),
-            7 => Ok(BadgeType::None),
-            n => Err(n),
-        }
-    }
-}
+pub(crate) const SAO_GPIO: [(IoxPort, u8); 4] =
+    [(IoxPort::PC, 5), (IoxPort::PC, 6), (IoxPort::PC, 14), (IoxPort::PC, 15)];
 
 /// Structure for tracking global shared state. Everything in here
 /// needs to be suitable for sticking in an Arc/Mutex
 pub(crate) struct GlobalConfig {
     is_developer: bool,
     badge_attached: bool,
+    attachment_match: bool,
     was_cold_boot: bool,
     k0: [u8; 32],
     skip_tour: bool,
@@ -59,10 +35,12 @@ impl GlobalConfig {
         let is_developer = keystore.is_developer().expect("couldn't query developer mode");
         let pddb = pddb::Pddb::new();
 
-        // TODO: replace with a function that actually checks the attachment pins
-        let badge_attached = true;
-        // TODO: replace with a function that actually checks cold boot status
-        let was_cold_boot = true;
+        let mut flags = keystore.get_flags().expect("couldn't get flags");
+        let was_cold_boot = !flags.warm_boot();
+        // now set the warm boot field as true - so if we go into deep sleep we can detect that
+        flags.set_warm_boot(true);
+        keystore.set_flags(flags).unwrap();
+
         // initialize the system state from the PDDB
         let mut k0 = [0u8; 32];
         let k0_len = read_pddb(&pddb, DC34_SECRET, &mut k0);
@@ -80,11 +58,23 @@ impl GlobalConfig {
 
         let mut badge_code = [BadgeType::None as u8; 1];
         let badge_code_len = read_pddb(&pddb, DC34_BADGE, &mut badge_code);
+        let stored_type = BadgeType::try_from(badge_code[0]).unwrap_or(BadgeType::None);
+        let badge_type_measured = read_badgetype_pins();
         let badge_type = if badge_code_len == 0 {
-            BadgeType::None
+            // none stored, init from pins
+            badge_type_measured
         } else {
-            BadgeType::try_from(badge_code[0]).unwrap_or(BadgeType::None)
+            if stored_type == BadgeType::None {
+                // if the stored type is None, check and see if something new has been mated
+                badge_type_measured
+            } else {
+                // just return the previously stored type, ignore the pins - so if the badge is re-mated, it
+                // doesn't overwrite the factory-initialized type
+                stored_type
+            }
         };
+        let attachment_match = stored_type == badge_type_measured;
+        let badge_attached = badge_type_measured != BadgeType::None;
 
         let initial_mode = if badge_type == BadgeType::None {
             VaultMode::FactoryTest
@@ -98,6 +88,7 @@ impl GlobalConfig {
             GlobalConfig {
                 is_developer,
                 badge_attached,
+                attachment_match,
                 was_cold_boot,
                 k0,
                 skip_tour,
@@ -152,4 +143,27 @@ pub fn side_effect_skip_token_tour(state: bool) {
     } else {
         key.write(&[0]).ok();
     }
+}
+
+pub fn read_badgetype_pins() -> BadgeType {
+    let iox = bao1x_api::iox::IoxHal::new();
+    for &(port, pin) in SAO_GPIO[..3].iter() {
+        iox.setup_pin(
+            port,
+            pin,
+            Some(bao1x_api::IoxDir::Input),
+            Some(bao1x_api::IoxFunction::Gpio),
+            Some(bao1x_api::IoxEnable::Enable),
+            Some(bao1x_api::IoxEnable::Enable),
+            None,
+            None,
+        );
+    }
+    let mut bits: u8 = 0;
+    for (i, &(port, pin)) in SAO_GPIO[..3].iter().enumerate() {
+        if iox.get_gpio_pin_value(port, pin) == IoxValue::High {
+            bits |= 1 << (i as u8);
+        }
+    }
+    BadgeType::try_from(bits).unwrap_or(BadgeType::None)
 }
