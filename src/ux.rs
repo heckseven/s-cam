@@ -4,6 +4,7 @@ use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 
 use blitstr2::GlyphStyle;
+use qrcode::{Color, QrCode};
 use ux_api::minigfx::*;
 use ux_api::service::api::Gid;
 use ux_api::service::gfx::Gfx;
@@ -267,7 +268,8 @@ pub struct VaultUi {
     display_list: ScrollableList,
     item_lists: Arc<Mutex<ItemLists>>,
     mode: Arc<Mutex<VaultMode>>,
-    allow_totp_rendering: Arc<AtomicBool>,
+    animate: Arc<AtomicBool>,
+    global_config: Option<Arc<Mutex<GlobalConfig>>>,
 
     /// totp redraw state
     totp_code: Option<String>,
@@ -288,6 +290,9 @@ pub struct VaultUi {
     factory_test: FactoryTestState,
     tour_state: TourState,
     token_tour_state: TokenTourState,
+
+    // when Some(), override the display state with this String in QR code format
+    pub qr_override: Option<QrCode>,
 }
 
 impl VaultUi {
@@ -296,7 +301,7 @@ impl VaultUi {
         cid: xous::CID,
         item_lists: Arc<Mutex<ItemLists>>,
         mode: Arc<Mutex<VaultMode>>,
-        allow_totp_rendering: Arc<AtomicBool>,
+        animate: Arc<AtomicBool>,
         pump_conn: xous::CID,
         actions_conn: xous::CID,
     ) -> Self {
@@ -322,7 +327,7 @@ impl VaultUi {
             display_list: totp_list,
             item_lists,
             mode,
-            allow_totp_rendering,
+            animate,
             totp_code: None,
             last_epoch: crate::totp::get_current_unix_time().expect("couldn't get current time") / 30,
             pddb: RefCell::new(pddb),
@@ -337,7 +342,13 @@ impl VaultUi {
             factory_test: FactoryTestState::JogPress { seen_press: false },
             tour_state: TourState::Welcome { seen_press: false },
             token_tour_state: TokenTourState::TokenTour1 { seen_press: false },
+            global_config: None,
+            qr_override: None,
         }
+    }
+
+    pub fn set_global_config(&mut self, config: Arc<Mutex<GlobalConfig>>) {
+        self.global_config = Some(config);
     }
 
     pub(crate) fn refresh_draw_list(&mut self) {
@@ -481,13 +492,58 @@ impl VaultUi {
         let mode_at_entry = (*self.mode.lock().unwrap()).clone();
         log::debug!("redraw mode: {:?}", mode_at_entry);
 
-        self.clear_area();
-
         match mode_at_entry {
             VaultMode::Idle => {
                 self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
             }
+            VaultMode::ShowKey { quantum }
+            | VaultMode::ShowGene { quantum }
+            | VaultMode::ShowGene2 { quantum } => {
+                if let Some(code) = &self.qr_override {
+                    if quantum & 7 == 0 {
+                        self.clear_area();
+                        let width = code.width();
+                        let modules: Vec<bool> =
+                            code.to_colors().into_iter().map(|c| c != Color::Light).collect();
+                        self.gfx.render_qr(&modules, width, Point::new(0, 0)).ok();
+                    }
+                    if quantum & 7 == 6 {
+                        let width = if matches!(mode_at_entry, VaultMode::ShowKey { .. }) { 14 } else { 16 };
+                        let mut tv = TextView::new(
+                            Gid::dummy(),
+                            TextBounds::BoundingBox(Rectangle::new(
+                                Point::new(64 - width, 64 - 8),
+                                Point::new(64 + width, 64 + 8),
+                            )),
+                        );
+                        tv.invert = true;
+                        tv.margin = Point::new(2, 2);
+                        tv.style = GlyphStyle::Bold;
+                        tv.draw_border = false;
+                        if matches!(mode_at_entry, VaultMode::ShowKey { .. }) {
+                            write!(tv, "KEY").ok();
+                        } else {
+                            write!(tv, "GENE").ok();
+                        }
+                        self.gfx.draw_textview(&mut tv).ok();
+                    }
+                    if matches!(mode_at_entry, VaultMode::ShowKey { .. }) {
+                        *self.mode.lock().unwrap() = VaultMode::ShowKey { quantum: quantum + 1 }
+                    } else if matches!(mode_at_entry, VaultMode::ShowGene { .. }) {
+                        *self.mode.lock().unwrap() = VaultMode::ShowGene { quantum: quantum + 1 }
+                    } else {
+                        *self.mode.lock().unwrap() = VaultMode::ShowGene2 { quantum: quantum + 1 }
+                    }
+                } else {
+                    // if no code, go back to idle mode
+                    *self.mode.lock().unwrap() = VaultMode::Idle;
+                }
+            }
+            VaultMode::GeneScan => {
+                // do nothing, should be handled by the qr acquisition code
+            }
             VaultMode::Totp => {
+                self.clear_area();
                 // decorative box around code
                 let mut totp_box = TotpLayout::totp_box();
                 totp_box.border.style = DrawStyle::new(PixelColor::Dark, PixelColor::Light, 1);
@@ -552,6 +608,7 @@ impl VaultUi {
                 self.gfx.draw_object_list(object_list).unwrap();
             }
             VaultMode::Password => {
+                self.clear_area();
                 let screensize = self.gfx.screen_size().unwrap();
                 // handle empty database case
                 if self.item_lists.lock().unwrap().filter_len(VaultMode::Password) == 0 {
@@ -615,12 +672,13 @@ impl VaultUi {
                 self.display_list.draw(insert_at);
             }
             VaultMode::FactoryTest => {
+                self.clear_area();
                 match &self.factory_test {
                     FactoryTestState::JogPress { seen_press: _ } => {
                         if self.start_time.is_none() {
                             self.start_time = Some(Instant::now());
                         }
-                        self.allow_totp_rendering.store(true, Ordering::SeqCst);
+                        self.animate.store(true, Ordering::SeqCst);
                         self.gfx.bitmap(&bitmaps::factory_jogpress::BITMAP, None, None).ok();
                     }
                     FactoryTestState::UpDown { seen_up: _, seen_down: _ } => {
@@ -817,12 +875,7 @@ impl VaultUi {
                         )
                         .ok();
                         self.refresh_draw_list();
-                        self.allow_totp_rendering.store(true, Ordering::SeqCst);
-                        xous::send_message(
-                            self.pump_conn,
-                            xous::Message::new_scalar(PumpOp::Pump.to_usize().unwrap(), 0, 0, 0, 0),
-                        )
-                        .expect("couldn't start the pumper");
+                        self.animate.store(true, Ordering::SeqCst);
                     }
                     _ => {
                         log::warn!("Password unhandled char: {}", k)
@@ -849,7 +902,7 @@ impl VaultUi {
                             // lock needs to go out of scope so we don't hang the later ops
                             *self.mode.lock().unwrap() = VaultMode::Idle;
                         }
-                        self.allow_totp_rendering.store(false, Ordering::SeqCst);
+                        self.animate.store(false, Ordering::SeqCst);
                         // reload DB on mode switch
                         xous::send_message(
                             self.actions_conn,
@@ -864,19 +917,77 @@ impl VaultUi {
                         .ok();
                     }
                     _ => {
-                        log::warn!("Password unhandled char: {}", k)
+                        log::warn!("TOTP unhandled char: {}", k)
                     }
                 }
                 self.totp_code = None;
                 Some(k)
             }
             VaultMode::Idle => {
-                {
-                    // lock needs to go out of scope so we don't hang the later ops
-                    *self.mode.lock().unwrap() = VaultMode::Password;
+                match k {
+                    '←' | '→' => {
+                        if let Some(config) = self.global_config.as_mut() {
+                            let mut c = config.lock().unwrap();
+                            let data = c.nonce_data();
+                            let encoded = base45::encode(&data);
+                            let code =
+                                QrCode::with_error_correction_level(encoded.as_bytes(), qrcode::EcLevel::M)
+                                    .expect("couldn't build QR code");
+                            log::info!(
+                                "Nonce encoded {} bytes to Qrcode version {:?}",
+                                encoded.as_bytes().len(),
+                                code.version()
+                            );
+
+                            self.qr_override = Some(code);
+                            {
+                                *self.mode.lock().unwrap() = VaultMode::ShowKey { quantum: 0 };
+                            }
+                            self.animate.store(true, Ordering::SeqCst);
+                        }
+                    }
+                    '🔥' => {
+                        *self.mode.lock().unwrap() = VaultMode::GeneScan;
+                    }
+                    _ => {
+                        log::debug!("Not handled in dc34 idle: {}", k)
+                    }
                 }
                 Some(k)
             }
+            VaultMode::ShowKey { quantum: _ } => {
+                *self.mode.lock().unwrap() = VaultMode::GeneScan;
+                // pass on the "fire" key to activate QR scanning
+                Some('🔥')
+            }
+            VaultMode::ShowGene { quantum: _ } => match k {
+                '🔥' => {
+                    *self.mode.lock().unwrap() = VaultMode::GeneScan;
+                    Some('🔥')
+                }
+                _ => {
+                    self.global_config.as_mut().unwrap().lock().unwrap().clear_nonces();
+                    self.animate.store(false, Ordering::SeqCst);
+                    *self.mode.lock().unwrap() = VaultMode::Idle;
+                    None
+                }
+            },
+            VaultMode::ShowGene2 { quantum: _ } => match k {
+                '∴' => {
+                    // send on the menu
+                    Some('∴')
+                }
+                '🔥' => {
+                    *self.mode.lock().unwrap() = VaultMode::GeneScan;
+                    Some('🔥')
+                }
+                _ => {
+                    self.global_config.as_mut().unwrap().lock().unwrap().clear_nonces();
+                    self.animate.store(false, Ordering::SeqCst);
+                    *self.mode.lock().unwrap() = VaultMode::Idle;
+                    None
+                }
+            },
             // catch-all for now
             _ => Some(k),
         };

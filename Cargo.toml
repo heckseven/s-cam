@@ -47,7 +47,14 @@ blitstr2 = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6
 usb-bao1x = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 xous-usb-hid = { git = "https://github.com/betrusted-io/xous-usb-hid.git", branch = "main" }
 keystore = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
+qrcode = { version = "0.12", default-features = false }
 
+aes-gcm-siv = { version = "0.11.1", default-features = false, features = [
+    "aes",
+] }
+aes = { default-features = false, features = [
+    "chaffing",
+], git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 
 # ux formatting
 hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
@@ -75,6 +82,9 @@ getrandom = "=0.2.12"
 [patch.crates-io.getrandom]
 git = "https://github.com/betrusted-io/xous-core"
 rev = "616bf65f6e379165464f50b1e79ec42aff77a683"
+
+[patch.crates-io.aes]
+path = "../xous-core/services/aes"
 
 [profile.release]
 codegen-units = 1  # 1 better optimizations

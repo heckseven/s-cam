@@ -145,17 +145,11 @@ pub fn generate_totp_code(unix_timestamp: u64, totp_entry: &TotpEntry) -> Result
     Ok(truncated_code)
 }
 
-#[derive(Debug, num_derive::FromPrimitive, num_derive::ToPrimitive)]
-pub(crate) enum PumpOp {
-    Pump,
-    Quit,
-}
-
 pub(crate) fn pumper(
     mode: Arc<Mutex<VaultMode>>,
     sid: xous::SID,
     main_conn: xous::CID,
-    allow_totp_rendering: Arc<core::sync::atomic::AtomicBool>,
+    animate: Arc<core::sync::atomic::AtomicBool>,
 ) {
     let _ = thread::spawn({
         move || {
@@ -163,40 +157,16 @@ pub(crate) fn pumper(
             let self_conn = xous::connect(sid).unwrap();
             loop {
                 let msg = xous::receive_message(sid).unwrap();
-                let opcode: Option<PumpOp> = FromPrimitive::from_usize(msg.body.id());
-                log::trace!("{:?}", opcode);
-                match opcode {
-                    Some(PumpOp::Pump) => {
-                        if allow_totp_rendering.load(core::sync::atomic::Ordering::SeqCst) {
-                            // don't redraw if we're in host access mode
-                            xous::try_send_message(
-                                main_conn,
-                                Message::new_scalar(crate::VaultOp::Redraw.to_usize().unwrap(), 0, 0, 0, 0),
-                            )
-                            .ok(); // don't panic if the queue overflows
-                        }
-                        let mode_cache = { (*mode.lock().unwrap()).clone() };
-                        {
-                            // we really want mode.lock() to be in a different scope so...
-                            if mode_cache == VaultMode::Totp || mode_cache == VaultMode::FactoryTest {
-                                tt.sleep_ms(250).unwrap();
-                                send_message(
-                                    self_conn,
-                                    Message::new_scalar(PumpOp::Pump.to_usize().unwrap(), 0, 0, 0, 0),
-                                )
-                                .expect("couldn't restart pump");
-                            }
-                        }
-                        // if not in Totp mode, the restart message doesn't go through, and the redraws
-                        // automatically stop.
-                    }
-                    Some(PumpOp::Quit) => {
-                        break;
-                    }
-                    _ => log::warn!("couldn't parse message: {:?}", msg),
+                if animate.load(core::sync::atomic::Ordering::SeqCst) {
+                    xous::try_send_message(
+                        main_conn,
+                        Message::new_scalar(crate::VaultOp::Redraw.to_usize().unwrap(), 0, 0, 0, 0),
+                    )
+                    .ok(); // don't panic if the queue overflows
                 }
+                tt.sleep_ms(250).unwrap();
+                send_message(self_conn, Message::new_scalar(0, 0, 0, 0, 0)).expect("couldn't restart pump");
             }
-            xous::destroy_server(sid).ok();
         }
     });
 }

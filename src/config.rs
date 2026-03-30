@@ -1,19 +1,13 @@
 use std::io::{Read, Write};
 
-use bao1x_api::{IoSetup, IoxPort, IoxValue};
-use dc34_api::BadgeType;
+use aes_gcm_siv::{Aes256GcmSiv, KeyInit, Nonce};
+use bao1x_api::{IoSetup, IoxValue};
+use dc34_api::*;
+use num_traits::*;
 use pddb::Pddb;
+use rand::RngCore;
 
 use crate::VaultMode;
-
-pub(crate) const DC34_DICT: &str = "dc34";
-pub(crate) const DC34_SECRET: &str = "k0";
-pub(crate) const DC34_TOUR: &str = "tour";
-pub(crate) const DC34_TOKEN_TOUR: &str = "tokentour";
-pub(crate) const DC34_BADGE: &str = "badge";
-
-pub(crate) const SAO_GPIO: [(IoxPort, u8); 4] =
-    [(IoxPort::PC, 5), (IoxPort::PC, 6), (IoxPort::PC, 14), (IoxPort::PC, 15)];
 
 /// Structure for tracking global shared state. Everything in here
 /// needs to be suitable for sticking in an Arc/Mutex
@@ -26,6 +20,19 @@ pub(crate) struct GlobalConfig {
     skip_tour: bool,
     skip_token_tour: bool,
     badge_type: BadgeType,
+    led_server: xous::CID,
+    /// This is a cached copy of the gene - it sits in between the permanent copy
+    /// in the PDDB, and the expressed copy inside the LightGene on the LED server.
+    /// any changes to this are ephemeral and are also invisible until pushed to
+    /// an endpoint. However, by keeping the gene in a volatile cached copy, we speed
+    /// up the manipulation of the gene by reducing pressure on swap memory - we avoid
+    /// pulling in the code segments to e.g. read/write PDDB.
+    gene_cache: Option<Diploid>,
+    /// This storage allows someone to "undo" a new pattern if they don't like it
+    prior_gene: Option<Diploid>,
+    mutation_rate: MutationRate,
+    nonce_mine: Option<[u8; 12]>,
+    nonce_theirs: Option<[u8; 12]>,
 }
 
 impl GlobalConfig {
@@ -56,16 +63,28 @@ impl GlobalConfig {
         let skip_token_tour = skip_token_tour_buf[0] != 0;
         log::info!("skip_token_tour {:?},  {:x?}", skip_token_tour, skip_token_tour_buf);
 
+        let conn = xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
+
         let mut badge_code = [BadgeType::None as u8; 1];
         let badge_code_len = read_pddb(&pddb, DC34_BADGE, &mut badge_code);
-        let stored_type = BadgeType::try_from(badge_code[0]).unwrap_or(BadgeType::None);
+        let stored_type = if badge_code_len != 0 {
+            BadgeType::try_from(badge_code[0]).unwrap_or(BadgeType::None)
+        } else {
+            BadgeType::None
+        };
         let badge_type_measured = read_badgetype_pins();
         let badge_type = if badge_code_len == 0 {
+            if badge_type_measured != BadgeType::None {
+                init_light_gene(badge_type_measured);
+            }
             // none stored, init from pins
             badge_type_measured
         } else {
             if stored_type == BadgeType::None {
                 // if the stored type is None, check and see if something new has been mated
+                if badge_type_measured != BadgeType::None {
+                    init_light_gene(badge_type_measured);
+                }
                 badge_type_measured
             } else {
                 // just return the previously stored type, ignore the pins - so if the badge is re-mated, it
@@ -75,6 +94,22 @@ impl GlobalConfig {
         };
         let attachment_match = stored_type == badge_type_measured;
         let badge_attached = badge_type_measured != BadgeType::None;
+        log::info!(
+            "badge type measured: {:?}, stored type: {:?}, attachment_match: {:?}, attached: {:?}",
+            badge_type_measured,
+            stored_type,
+            attachment_match,
+            badge_attached
+        );
+
+        // at this point, a light gene should be initialized, if the module has been
+        // mated with a badge. Tell the led server to read the initial copy.
+        // blocks until complete. Safe to call if no gene is on disk, falls back to
+        // a `None` representation which puts up the test pattern.
+        let gene = get_light_gene();
+        if let Some(gene) = gene {
+            gene.send(conn, LedManagerOp::SetGene.to_usize().unwrap());
+        }
 
         let initial_mode = if badge_type == BadgeType::None {
             VaultMode::FactoryTest
@@ -94,6 +129,12 @@ impl GlobalConfig {
                 skip_tour,
                 skip_token_tour,
                 badge_type,
+                led_server: conn,
+                gene_cache: gene,
+                prior_gene: None,
+                mutation_rate: MutationRate::Baseline,
+                nonce_mine: None,
+                nonce_theirs: None,
             },
             initial_mode,
         )
@@ -113,7 +154,97 @@ impl GlobalConfig {
     }
 
     pub fn is_badge_attached(&self) -> bool { self.badge_attached }
+
+    pub fn badge_type(&self) -> BadgeType { self.badge_type }
+
+    pub fn set_mutation_rate(&mut self, new_rate: MutationRate) { self.mutation_rate = new_rate; }
+
+    pub fn generate_my_nonce(&mut self) {
+        loop {
+            let mut nonce = [0u8; 12];
+            rand::thread_rng().fill_bytes(&mut nonce);
+            if nonce == DC34_HEADER[..12] {
+                // generate a new one
+                continue;
+            }
+            if let Some(prev) = self.nonce_mine {
+                if prev != nonce {
+                    self.nonce_mine = Some(nonce);
+                    break;
+                } else {
+                    // generate a new one
+                }
+            } else {
+                self.nonce_mine = Some(nonce);
+                break;
+            }
+        }
+    }
+
+    pub fn get_my_nonce(&self) -> Option<Nonce> {
+        if let Some(n) = self.nonce_mine { Some(Nonce::clone_from_slice(&n)) } else { None }
+    }
+
+    pub fn get_padded_gamete(&self) -> Option<[u8; 16]> {
+        if let Some(gene) = self.gene_cache {
+            let mut d = [0u8; 16];
+            let mut gamete = gene.meiosis();
+            mutate(&mut gamete, self.mutation_rate);
+            let serialized = gamete.serialize();
+            let len = serialized.len().min(15); // save last byte for badge type
+            d[..len].copy_from_slice(&serialized[..len]);
+            d[15] = self.badge_type as u8;
+            Some(d)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_egg(&self) -> Option<Haploid> {
+        if let Some(gene) = self.gene_cache {
+            let mut gamete = gene.meiosis();
+            mutate(&mut gamete, self.mutation_rate);
+            Some(gamete)
+        } else {
+            None
+        }
+    }
+
+    // this automatically copies the old gene to the backup location
+    pub fn replace_gene(&mut self, egg: Haploid, sperm: Haploid) {
+        self.prior_gene = self.gene_cache.take();
+        self.gene_cache = Some(Diploid([egg, sperm]))
+    }
+
+    pub fn render_gene(&self) {
+        if let Some(gene) = self.gene_cache {
+            gene.send(self.led_server, LedManagerOp::SetGene.to_usize().unwrap());
+        }
+    }
+
+    pub fn set_their_nonce(&mut self, nonce: &Nonce) {
+        let mut storage = [0u8; 12];
+        storage.copy_from_slice(nonce.as_slice());
+        self.nonce_theirs = Some(storage)
+    }
+
+    pub fn nonce_data(&mut self) -> Vec<u8> {
+        self.generate_my_nonce();
+        [DC34_HEADER.as_slice(), self.nonce_mine.unwrap().as_slice()].concat()
+    }
+
+    pub fn cipher(&self) -> Aes256GcmSiv { Aes256GcmSiv::new((&self.k0).into()) }
+
+    pub fn clear_nonces(&mut self) {
+        self.nonce_mine.take();
+        self.nonce_theirs.take();
+    }
 }
+
+// GlobalConfig *must* be thread-safe. Don't add stuff to it that's not Send + Sync
+#[allow(dead_code)]
+trait AssertSendSync: Send + Sync {}
+impl AssertSendSync for GlobalConfig {}
 
 pub fn read_pddb(pddb: &Pddb, key: &str, buf: &mut [u8]) -> usize {
     let mut key = pddb

@@ -49,6 +49,7 @@ pub(crate) enum VaultOp {
     ShowQr,
     // for QR responses not handled by the action manager
     HandleQr,
+    AbortQr,
 }
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]

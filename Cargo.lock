@@ -24,20 +24,11 @@ dependencies = [
 [[package]]
 name = "aes"
 version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b169f7a6d4742236a0a00c541b845991d0ac43e546831af1249753ab4c3aa3a0"
-dependencies = [
- "cfg-if",
- "cipher",
- "cpufeatures",
-]
-
-[[package]]
-name = "aes"
-version = "0.8.4"
 source = "git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683#616bf65f6e379165464f50b1e79ec42aff77a683"
 dependencies = [
  "cipher",
+ "hex 0.4.3",
+ "rand_chacha",
 ]
 
 [[package]]
@@ -47,7 +38,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae0784134ba9375416d469ec31e7c5f9fa94405049cf08c5ce5b4698be673e0d"
 dependencies = [
  "aead",
- "aes 0.8.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "aes 0.8.4",
  "cipher",
  "ctr",
  "polyval",
@@ -61,7 +52,7 @@ version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69fa2b352dcefb5f7f3a5fb840e02665d311d878955380515e4fd50095dd3d8c"
 dependencies = [
- "aes 0.8.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "aes 0.8.4",
 ]
 
 [[package]]
@@ -643,15 +634,27 @@ dependencies = [
 name = "dc34-api"
 version = "0.1.0"
 dependencies = [
+ "bao1x-api",
+ "bytemuck",
+ "getrandom 0.2.12",
+ "hex-literal",
+ "log",
  "num-derive",
  "num-traits",
+ "pddb",
+ "rand",
+ "rand_core",
  "rkyv",
+ "xous",
+ "xous-ipc",
 ]
 
 [[package]]
 name = "dc34-vault"
 version = "0.1.0"
 dependencies = [
+ "aes 0.8.4 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
+ "aes-gcm-siv",
  "arrayref",
  "backup-vault2",
  "bao1x-api",
@@ -681,6 +684,7 @@ dependencies = [
  "passwords",
  "pddb",
  "persistent_store",
+ "qrcode",
  "rand",
  "rand_core",
  "random-pick",
@@ -1223,6 +1227,12 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hex-literal"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e712f64ec3850b98572bffac52e2c6f282b29fe6c5fa6d42334b30be438d95c1"
 
 [[package]]
 name = "hkdf"
