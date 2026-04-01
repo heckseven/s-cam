@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::{
     convert::TryFrom,
@@ -10,8 +10,6 @@ use locales::t;
 use num_traits::*;
 use sha1::Sha1;
 use xous::{Message, send_message};
-
-use crate::VaultMode;
 
 // Derived from https://github.com/blakesmith/xous-core/blob/xtotp-time/apps/xtotp/src/main.rs
 #[derive(Clone, Copy)]
@@ -145,18 +143,13 @@ pub fn generate_totp_code(unix_timestamp: u64, totp_entry: &TotpEntry) -> Result
     Ok(truncated_code)
 }
 
-pub(crate) fn pumper(
-    mode: Arc<Mutex<VaultMode>>,
-    sid: xous::SID,
-    main_conn: xous::CID,
-    animate: Arc<core::sync::atomic::AtomicBool>,
-) {
+pub(crate) fn pumper(sid: xous::SID, main_conn: xous::CID, animate: Arc<core::sync::atomic::AtomicBool>) {
     let _ = thread::spawn({
         move || {
             let tt = ticktimer_server::Ticktimer::new().unwrap();
             let self_conn = xous::connect(sid).unwrap();
             loop {
-                let msg = xous::receive_message(sid).unwrap();
+                let _msg = xous::receive_message(sid).unwrap();
                 if animate.load(core::sync::atomic::Ordering::SeqCst) {
                     xous::try_send_message(
                         main_conn,

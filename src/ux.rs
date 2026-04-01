@@ -198,6 +198,30 @@ impl TourState {
     fn is_terminal(&self) -> bool { matches!(self, TourState::End { seen_press: _ } | TourState::Error(_)) }
 }
 
+enum HelpState {
+    BadgeRecap { seen_press: bool },
+    InfoScreen { seen_press: bool },
+    End { seen_press: bool },
+    Error(String),
+}
+
+impl HelpState {
+    fn handle_input(self, k: char) -> Self {
+        tour_advance!(self, k;
+            auto {
+                BadgeRecap         => InfoScreen,
+                InfoScreen         => End,
+                End                => End,  // terminal — stays put
+            }
+            custom {
+                Self::Error(e) => Self::Error(e)
+            }
+        )
+    }
+
+    fn is_terminal(&self) -> bool { matches!(self, HelpState::End { seen_press: _ } | HelpState::Error(_)) }
+}
+
 enum TokenTourState {
     TokenTour1 { seen_press: bool },
     TokenTour2 { seen_press: bool },
@@ -238,6 +262,35 @@ impl TokenTourState {
         matches!(self, TokenTourState::End { seen_press: _ } | TokenTourState::Error(_))
     }
 }
+
+enum AboutState {
+    BaochipLogo { seen_press: bool },
+    Bunnie { seen_press: bool },
+    Cheeso { seen_press: bool },
+    InfoScreen { seen_press: bool },
+    End { seen_press: bool },
+    Error(String),
+}
+
+impl AboutState {
+    fn handle_input(self, k: char) -> Self {
+        tour_advance!(self, k;
+            auto {
+                Bunnie             => BaochipLogo,
+                BaochipLogo        => Cheeso,
+                Cheeso             => InfoScreen,
+                InfoScreen         => End,
+                End                => End,  // terminal — stays put
+            }
+            custom {
+                Self::Error(e) => Self::Error(e)
+            }
+        )
+    }
+
+    fn is_terminal(&self) -> bool { matches!(self, AboutState::End { seen_press: _ } | AboutState::Error(_)) }
+}
+
 /// Centralizes tunable UI parameters for TOTP
 struct TotpLayout {}
 impl TotpLayout {
@@ -279,6 +332,7 @@ pub struct VaultUi {
     item_height: isize,
     style: GlyphStyle,
     storage_manager: Manager,
+    screen_size: Point,
 
     usb_dev: usb_bao1x::UsbHid,
     last_key_time: u64,
@@ -290,6 +344,8 @@ pub struct VaultUi {
     factory_test: FactoryTestState,
     tour_state: TourState,
     token_tour_state: TokenTourState,
+    help_state: HelpState,
+    about_state: AboutState,
 
     // when Some(), override the display state with this String in QR code format
     pub qr_override: Option<QrCode>,
@@ -318,12 +374,14 @@ impl VaultUi {
         let gfx = Gfx::new(&xns).unwrap();
         let style = DEFAULT_FONT;
         let glyph_height = gfx.glyph_height_hint(style).unwrap() as isize;
-        let height = gfx.screen_size().unwrap().y;
+        let screen_size = gfx.screen_size().unwrap();
+        let height = screen_size.y;
         Self {
             main_cid: cid,
             pump_conn,
             actions_conn,
             gfx,
+            screen_size,
             display_list: totp_list,
             item_lists,
             mode,
@@ -342,9 +400,19 @@ impl VaultUi {
             factory_test: FactoryTestState::JogPress { seen_press: false },
             tour_state: TourState::Welcome { seen_press: false },
             token_tour_state: TokenTourState::TokenTour1 { seen_press: false },
+            help_state: HelpState::BadgeRecap { seen_press: false },
+            about_state: AboutState::Bunnie { seen_press: false },
             global_config: None,
             qr_override: None,
         }
+    }
+
+    pub fn reset_help_state(&mut self) { self.help_state = HelpState::BadgeRecap { seen_press: false }; }
+
+    pub fn reset_about_state(&mut self) { self.about_state = AboutState::Bunnie { seen_press: false }; }
+
+    pub fn reset_token_tour_state(&mut self) {
+        self.token_tour_state = TokenTourState::TokenTour1 { seen_press: false };
     }
 
     pub fn set_global_config(&mut self, config: Arc<Mutex<GlobalConfig>>) {
@@ -490,15 +558,21 @@ impl VaultUi {
     pub fn redraw(&mut self) {
         // to reduce locking thrash, we cache a copy of the current mode at the top of redraw.
         let mode_at_entry = (*self.mode.lock().unwrap()).clone();
+
+        // this check is can run at the top of every loop because the underlying implementation
+        // caches the setting and only sends a message to the manager thread if there's a state change.
+        if mode_at_entry == VaultMode::Idle {
+            self.global_config.as_mut().unwrap().lock().unwrap().display_fading(true);
+        } else {
+            self.global_config.as_mut().unwrap().lock().unwrap().display_fading(false);
+        }
         log::debug!("redraw mode: {:?}", mode_at_entry);
 
         match mode_at_entry {
-            VaultMode::Idle => {
+            VaultMode::Idle | VaultMode::ConfirmGene => {
                 self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
             }
-            VaultMode::ShowKey { quantum }
-            | VaultMode::ShowGene { quantum }
-            | VaultMode::ShowGene2 { quantum } => {
+            VaultMode::ShowKey { quantum } | VaultMode::ResponseGene { quantum } => {
                 if let Some(code) = &self.qr_override {
                     if quantum & 7 == 0 {
                         self.clear_area();
@@ -508,16 +582,16 @@ impl VaultUi {
                         self.gfx.render_qr(&modules, width, Point::new(0, 0)).ok();
                     }
                     if quantum & 7 == 6 {
-                        let width = if matches!(mode_at_entry, VaultMode::ShowKey { .. }) { 14 } else { 16 };
+                        let width = if matches!(mode_at_entry, VaultMode::ShowKey { .. }) { 14 } else { 17 };
                         let mut tv = TextView::new(
                             Gid::dummy(),
-                            TextBounds::BoundingBox(Rectangle::new(
-                                Point::new(64 - width, 64 - 8),
-                                Point::new(64 + width, 64 + 8),
+                            TextBounds::CenteredTop(Rectangle::new(
+                                Point::new(64 - width, 127 - 12),
+                                Point::new(64 + width, 130),
                             )),
                         );
                         tv.invert = true;
-                        tv.margin = Point::new(2, 2);
+                        tv.margin = Point::new(3, -2);
                         tv.style = GlyphStyle::Bold;
                         tv.draw_border = false;
                         if matches!(mode_at_entry, VaultMode::ShowKey { .. }) {
@@ -529,10 +603,8 @@ impl VaultUi {
                     }
                     if matches!(mode_at_entry, VaultMode::ShowKey { .. }) {
                         *self.mode.lock().unwrap() = VaultMode::ShowKey { quantum: quantum + 1 }
-                    } else if matches!(mode_at_entry, VaultMode::ShowGene { .. }) {
-                        *self.mode.lock().unwrap() = VaultMode::ShowGene { quantum: quantum + 1 }
-                    } else {
-                        *self.mode.lock().unwrap() = VaultMode::ShowGene2 { quantum: quantum + 1 }
+                    } else if matches!(mode_at_entry, VaultMode::ResponseGene { .. }) {
+                        *self.mode.lock().unwrap() = VaultMode::ResponseGene { quantum: quantum + 1 }
                     }
                 } else {
                     // if no code, go back to idle mode
@@ -763,6 +835,30 @@ impl VaultUi {
                 }
                 _ => {}
             },
+            VaultMode::DefconHelp => match &self.help_state {
+                HelpState::BadgeRecap { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_recap::BITMAP, None, None).ok();
+                }
+                HelpState::InfoScreen { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
+                }
+                _ => {}
+            },
+            VaultMode::About => match &self.about_state {
+                AboutState::Bunnie { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::bunnie::BITMAP, None, None).ok();
+                }
+                AboutState::BaochipLogo { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::baochip_about::BITMAP, None, None).ok();
+                }
+                AboutState::Cheeso { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::cheeso::BITMAP, None, None).ok();
+                }
+                AboutState::InfoScreen { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
+                }
+                _ => {}
+            },
             VaultMode::TokenTour => match &self.token_tour_state {
                 TokenTourState::TokenTour1 { seen_press: _ } => {
                     self.gfx.bitmap(&bitmaps::tour_token_tour1::BITMAP, None, None).ok();
@@ -784,7 +880,7 @@ impl VaultUi {
                 }
                 _ => {}
             },
-            _ => unimplemented!(),
+            // _ => unimplemented!(),
         }
         self.gfx.flush().ok();
     }
@@ -826,7 +922,8 @@ impl VaultUi {
                 if self.tour_state.is_terminal() {
                     *self.mode.lock().unwrap() = VaultMode::Idle;
                 }
-                Some(k)
+                // don't allow scanning to start during the tour
+                if k != '🔥' { Some(k) } else { None }
             }
             VaultMode::TokenTour => {
                 let old = std::mem::replace(
@@ -837,7 +934,28 @@ impl VaultUi {
                 if self.token_tour_state.is_terminal() {
                     *self.mode.lock().unwrap() = VaultMode::Password;
                 }
-                Some(k)
+                // don't allow scanning to start during the tour
+                if k != '🔥' { Some(k) } else { None }
+            }
+            VaultMode::DefconHelp => {
+                let old =
+                    std::mem::replace(&mut self.help_state, HelpState::Error("transitioning".to_string()));
+                self.help_state = old.handle_input(k);
+                if self.help_state.is_terminal() {
+                    *self.mode.lock().unwrap() = VaultMode::Idle;
+                }
+                // don't allow scanning to start during the tour
+                if k != '🔥' { Some(k) } else { None }
+            }
+            VaultMode::About => {
+                let old =
+                    std::mem::replace(&mut self.about_state, AboutState::Error("transitioning".to_string()));
+                self.about_state = old.handle_input(k);
+                if self.about_state.is_terminal() {
+                    *self.mode.lock().unwrap() = VaultMode::Idle;
+                }
+                // don't allow scanning to start during the tour
+                if k != '🔥' { Some(k) } else { None }
             }
             VaultMode::Password => {
                 let increment = if self.manage_longpress() { PAGE_INCREMENT } else { 1 };
@@ -900,7 +1018,7 @@ impl VaultUi {
                     '→' => {
                         {
                             // lock needs to go out of scope so we don't hang the later ops
-                            *self.mode.lock().unwrap() = VaultMode::Idle;
+                            *self.mode.lock().unwrap() = VaultMode::Password;
                         }
                         self.animate.store(false, Ordering::SeqCst);
                         // reload DB on mode switch
@@ -923,71 +1041,60 @@ impl VaultUi {
                 self.totp_code = None;
                 Some(k)
             }
-            VaultMode::Idle => {
-                match k {
-                    '←' | '→' => {
-                        if let Some(config) = self.global_config.as_mut() {
-                            let mut c = config.lock().unwrap();
-                            let data = c.nonce_data();
-                            let encoded = base45::encode(&data);
-                            let code =
-                                QrCode::with_error_correction_level(encoded.as_bytes(), qrcode::EcLevel::M)
-                                    .expect("couldn't build QR code");
-                            log::info!(
-                                "Nonce encoded {} bytes to Qrcode version {:?}",
-                                encoded.as_bytes().len(),
-                                code.version()
-                            );
+            VaultMode::Idle => match k {
+                '←' | '→' => {
+                    if let Some(config) = self.global_config.as_mut() {
+                        let mut c = config.lock().unwrap();
+                        let data = c.nonce_data();
+                        let encoded = base45::encode(&data);
+                        let code =
+                            QrCode::with_error_correction_level(encoded.as_bytes(), qrcode::EcLevel::M)
+                                .expect("couldn't build QR code");
+                        log::info!(
+                            "Nonce encoded {} bytes to Qrcode version {:?}",
+                            encoded.as_bytes().len(),
+                            code.version()
+                        );
 
-                            self.qr_override = Some(code);
-                            {
-                                *self.mode.lock().unwrap() = VaultMode::ShowKey { quantum: 0 };
-                            }
-                            self.animate.store(true, Ordering::SeqCst);
+                        self.qr_override = Some(code);
+                        {
+                            *self.mode.lock().unwrap() = VaultMode::ShowKey { quantum: 0 };
                         }
+                        self.animate.store(true, Ordering::SeqCst);
                     }
+                    None
+                }
+                '🔥' => {
+                    *self.mode.lock().unwrap() = VaultMode::GeneScan;
+                    Some(k)
+                }
+                _ => Some(k),
+            },
+            VaultMode::ShowKey { quantum: _ } => {
+                match k {
                     '🔥' => {
                         *self.mode.lock().unwrap() = VaultMode::GeneScan;
+                        // pass on the "fire" key to activate QR scanning
+                        Some('🔥')
                     }
                     _ => {
-                        log::debug!("Not handled in dc34 idle: {}", k)
+                        // cancel out and return to idle screen
+                        *self.mode.lock().unwrap() = VaultMode::Idle;
+                        Some(k)
                     }
                 }
-                Some(k)
             }
-            VaultMode::ShowKey { quantum: _ } => {
-                *self.mode.lock().unwrap() = VaultMode::GeneScan;
-                // pass on the "fire" key to activate QR scanning
-                Some('🔥')
+            // this is the next state of the recipient after showing the key
+            VaultMode::ConfirmGene => Some(k),
+            // this is the state of the donor in response to query
+            VaultMode::ResponseGene { quantum: _ } => {
+                self.global_config.as_mut().unwrap().lock().unwrap().clear_nonces();
+                self.animate.store(false, Ordering::SeqCst);
+                *self.mode.lock().unwrap() = VaultMode::Idle;
+                // eat the 'fire' button if it's pressed - we just want to go back to the idle
+                // screen in all button presses
+                if k != '🔥' { Some(k) } else { None }
             }
-            VaultMode::ShowGene { quantum: _ } => match k {
-                '🔥' => {
-                    *self.mode.lock().unwrap() = VaultMode::GeneScan;
-                    Some('🔥')
-                }
-                _ => {
-                    self.global_config.as_mut().unwrap().lock().unwrap().clear_nonces();
-                    self.animate.store(false, Ordering::SeqCst);
-                    *self.mode.lock().unwrap() = VaultMode::Idle;
-                    None
-                }
-            },
-            VaultMode::ShowGene2 { quantum: _ } => match k {
-                '∴' => {
-                    // send on the menu
-                    Some('∴')
-                }
-                '🔥' => {
-                    *self.mode.lock().unwrap() = VaultMode::GeneScan;
-                    Some('🔥')
-                }
-                _ => {
-                    self.global_config.as_mut().unwrap().lock().unwrap().clear_nonces();
-                    self.animate.store(false, Ordering::SeqCst);
-                    *self.mode.lock().unwrap() = VaultMode::Idle;
-                    None
-                }
-            },
             // catch-all for now
             _ => Some(k),
         };
@@ -996,6 +1103,21 @@ impl VaultUi {
             self.redraw();
         }
         filtered_k
+    }
+
+    pub(crate) fn camera_transition(&mut self) {
+        self.gfx.clear().ok();
+        let mut tv = TextView::new(
+            Gid::dummy(),
+            TextBounds::CenteredTop(Rectangle::new(Point::new(0, 52), Point::new(127, 96))),
+        );
+        tv.invert = true;
+        tv.margin = Point::new(2, 2);
+        tv.style = GlyphStyle::Bold;
+        tv.draw_border = false;
+        write!(tv, "Starting\ncamera...").ok();
+        self.gfx.draw_textview(&mut tv).ok();
+        self.redraw();
     }
 
     pub(crate) fn filter(&mut self, criteria: &String) {

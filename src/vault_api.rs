@@ -38,11 +38,22 @@ pub(crate) enum VaultOp {
     MenuAutotypeRate,
     MenuLeftyMode,
     MenuDone,
+    BadgeMode,
+    MenuTokenHelp,
 
     /// Tour menu
     TourContinue,
     TourLater,
     TourNever,
+
+    /// Gene menu
+    KeepGene,
+    RevertGene,
+
+    /// Badge menu
+    DefconHelp,
+    About,
+    TokenMode,
 
     BasisChange,
 

@@ -107,9 +107,9 @@ ux-api = { path = "../xous-core/libs/ux-api" }
 bio-lib = { path = "../xous-core/libs/bio-lib" }
 xous-api-susres = { path = "../xous-core/api/xous-api-susres" }
 blitstr2 = { path = "../xous-core/libs/blitstr2" }
-pddb = { path = "../xous-core/services/pddb", features = ["board-baosec"] }
-keystore-api = { path = "../xous-core/libs/keystore-api", features = ["gen2"] }
-keystore = { path = "../xous-core/services/keystore", features = ["board-baosec"] }
+pddb = { path = "../xous-core/services/pddb" }
+keystore-api = { path = "../xous-core/libs/keystore-api" }
+keystore = { path = "../xous-core/services/keystore" }
 
 [features]
 # turns on production-mode handling (ie. faults on developer mode flag being set)
@@ -152,5 +152,5 @@ default = [
     "with_ctap1",
     "ed25519",
     "xous",
-    "vault-testing", # testing removed for release tag
+    # "vault-testing", # testing removed for release tag
 ]

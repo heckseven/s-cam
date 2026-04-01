@@ -21,6 +21,8 @@ pub(crate) struct GlobalConfig {
     skip_token_tour: bool,
     badge_type: BadgeType,
     led_server: xous::CID,
+    power_server: xous::CID,
+    display_fade_cache: bool,
     /// This is a cached copy of the gene - it sits in between the permanent copy
     /// in the PDDB, and the expressed copy inside the LightGene on the LED server.
     /// any changes to this are ephemeral and are also invisible until pushed to
@@ -32,7 +34,6 @@ pub(crate) struct GlobalConfig {
     prior_gene: Option<Diploid>,
     mutation_rate: MutationRate,
     nonce_mine: Option<[u8; 12]>,
-    nonce_theirs: Option<[u8; 12]>,
 }
 
 impl GlobalConfig {
@@ -50,8 +51,8 @@ impl GlobalConfig {
 
         // initialize the system state from the PDDB
         let mut k0 = [0u8; 32];
-        let k0_len = read_pddb(&pddb, DC34_SECRET, &mut k0);
-        log::info!("k0_len {}, k0 {:x?}", k0_len, k0);
+        let _k0_len = read_pddb(&pddb, DC34_SECRET, &mut k0);
+        // log::info!("k0_len {}, k0 {:x?}", _k0_len, k0);
 
         let mut skip_tour_buf = [0u8; 1];
         read_pddb(&pddb, DC34_TOUR, &mut skip_tour_buf);
@@ -119,6 +120,8 @@ impl GlobalConfig {
             if skip_token_tour { VaultMode::Password } else { VaultMode::TokenTour }
         };
 
+        let power_server = xns.request_connection_blocking(dc34_api::POWER_MANAGER_SERVER).unwrap();
+
         (
             GlobalConfig {
                 is_developer,
@@ -130,11 +133,12 @@ impl GlobalConfig {
                 skip_token_tour,
                 badge_type,
                 led_server: conn,
+                power_server,
+                display_fade_cache: false,
                 gene_cache: gene,
                 prior_gene: None,
                 mutation_rate: MutationRate::Baseline,
                 nonce_mine: None,
-                nonce_theirs: None,
             },
             initial_mode,
         )
@@ -216,16 +220,18 @@ impl GlobalConfig {
         self.gene_cache = Some(Diploid([egg, sperm]))
     }
 
+    pub fn revert_gene(&mut self) {
+        if let Some(backup_gene) = self.prior_gene.take() {
+            self.gene_cache = Some(backup_gene);
+        }
+    }
+
+    pub fn gene(&self) -> Option<Diploid> { self.gene_cache }
+
     pub fn render_gene(&self) {
         if let Some(gene) = self.gene_cache {
             gene.send(self.led_server, LedManagerOp::SetGene.to_usize().unwrap());
         }
-    }
-
-    pub fn set_their_nonce(&mut self, nonce: &Nonce) {
-        let mut storage = [0u8; 12];
-        storage.copy_from_slice(nonce.as_slice());
-        self.nonce_theirs = Some(storage)
     }
 
     pub fn nonce_data(&mut self) -> Vec<u8> {
@@ -235,9 +241,24 @@ impl GlobalConfig {
 
     pub fn cipher(&self) -> Aes256GcmSiv { Aes256GcmSiv::new((&self.k0).into()) }
 
-    pub fn clear_nonces(&mut self) {
-        self.nonce_mine.take();
-        self.nonce_theirs.take();
+    pub fn clear_nonces(&mut self) { self.nonce_mine.take(); }
+
+    pub fn display_fading(&mut self, enable: bool) {
+        if self.display_fade_cache != enable {
+            log::info!("setting fade: {:?}", enable);
+            xous::send_message(
+                self.power_server,
+                xous::Message::new_scalar(
+                    PowerManagerOp::SetFadeMode.to_usize().unwrap(),
+                    if enable { 1 } else { 0 },
+                    0,
+                    0,
+                    0,
+                ),
+            )
+            .ok();
+            self.display_fade_cache = enable;
+        }
     }
 }
 

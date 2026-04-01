@@ -1,7 +1,7 @@
 mod ux;
 use aes::{Aes256, cipher::BlockSizeUser};
 use aes_gcm_siv::aead::{Aead, Payload};
-use aes_gcm_siv::{Aes256GcmSiv, Nonce, Tag};
+use aes_gcm_siv::{Nonce, Tag};
 use ux::*;
 mod itemcache;
 use itemcache::*;
@@ -17,7 +17,9 @@ mod action_handler;
 mod bitmaps;
 mod config;
 mod fido2;
+mod genemenu;
 mod generator;
+mod idlemenu;
 mod tests;
 mod vendor_commands;
 
@@ -199,13 +201,14 @@ pub(crate) const SERVER_NAME_VAULT2: &str = "_Vault2_";
 pub enum VaultMode {
     Idle, // has two variants, one for regular, other for developer mode
     ShowKey { quantum: u32 },
-    ShowGene { quantum: u32 },
-    // second phase which also involves accepting the current pattern
-    ShowGene2 { quantum: u32 },
+    ResponseGene { quantum: u32 },
+    // state for confirming the current pattern
+    ConfirmGene,
     GeneScan,
     FactoryTest,
     Tour,
     TokenTour,
+    DefconHelp,
     About,
     Totp,
     Password,
@@ -239,7 +242,7 @@ fn main() -> ! {
 
     // spawn the TOTP pumper
     let pump_sid = xous::create_server().unwrap();
-    crate::totp::pumper(mode.clone(), pump_sid, conn, animate.clone());
+    crate::totp::pumper(pump_sid, conn, animate.clone());
     let pump_conn = xous::connect(pump_sid).unwrap();
 
     // respond to keyboard events - register with the `Gfx` subsystem, so we're getting keypresses
@@ -276,6 +279,10 @@ fn main() -> ! {
     let menu_mgr = submenu::create_submenu(conn, actions_conn, menu_sid);
     let tour_menu_sid = xous::create_server().unwrap();
     let tour_menu_mgr = tourmenu::create_submenu(conn, actions_conn, tour_menu_sid);
+    let gene_menu_sid = xous::create_server().unwrap();
+    let gene_menu_mgr = genemenu::create_submenu(conn, actions_conn, gene_menu_sid);
+    let idle_menu_sid = xous::create_server().unwrap();
+    let idle_menu_mgr = idlemenu::create_submenu(conn, actions_conn, idle_menu_sid);
 
     let modals = modals::Modals::new(&xns).unwrap();
 
@@ -338,11 +345,16 @@ fn main() -> ! {
                 vault_ui.redraw();
             }
             Some(VaultOp::KeyPress) => xous::msg_scalar_unpack!(msg, k1, _k2, _k3, _k4, {
+                let mode_now = *mode.lock().unwrap();
                 let k = char::from_u32(k1 as u32).unwrap_or('\u{0000}');
                 log::debug!("key {:x}", k1);
                 if menu_active {
-                    if *mode.lock().unwrap() == VaultMode::Tour {
+                    if matches!(mode_now, VaultMode::Tour) {
                         tour_menu_mgr.key_press(k);
+                    } else if matches!(mode_now, VaultMode::ConfirmGene) {
+                        gene_menu_mgr.key_press(k);
+                    } else if matches!(mode_now, VaultMode::Idle) {
+                        idle_menu_mgr.key_press(k);
                     } else {
                         menu_mgr.key_press(k);
                     }
@@ -354,14 +366,19 @@ fn main() -> ! {
                     match k.unwrap_or('\0') {
                         '∴' => {
                             animate.store(false, Ordering::SeqCst);
-                            if *mode.lock().unwrap() == VaultMode::Tour {
+                            if matches!(mode_now, VaultMode::Tour) {
                                 tour_menu_mgr.redraw();
+                            } else if matches!(mode_now, VaultMode::ConfirmGene) {
+                                gene_menu_mgr.redraw();
+                            } else if matches!(mode_now, VaultMode::Idle) {
+                                idle_menu_mgr.redraw();
                             } else {
                                 menu_mgr.redraw();
                             }
                             menu_active = true;
                         }
                         '🔥' => {
+                            vault_ui.camera_transition();
                             let prior_mode = animate.swap(false, Ordering::SeqCst);
                             xous::send_message(
                                 actions_conn,
@@ -377,7 +394,7 @@ fn main() -> ! {
                             // wait a moment for the last frame to clear before redrawing the UI
                             tt.sleep_ms(100).ok();
                             animate.store(prior_mode, Ordering::SeqCst);
-                            let mode_now = *mode.lock().unwrap();
+
                             if mode_now == VaultMode::Totp || mode_now == VaultMode::Password {
                                 // reload DB to pickup the new data
                                 xous::send_message(
@@ -498,12 +515,11 @@ fn main() -> ! {
 
                 match mode_now {
                     VaultMode::GeneScan
-                    | VaultMode::ShowGene { quantum: _ }
-                    | VaultMode::ShowGene2 { quantum: _ }
+                    | VaultMode::ResponseGene { quantum: _ }
                     | VaultMode::ShowKey { quantum: _ } => {
                         match base45::decode(&s.s.as_bytes()) {
                             Ok(data) => {
-                                log::info!("b45dec: {:x?}", data);
+                                log::debug!("b45dec: {:x?}", data);
                                 if data[..DC34_HEADER.len()] == DC34_HEADER {
                                     // assume we're scanning their key
                                     if data.len() < DC34_HEADER.len() + size_of::<Nonce>() {
@@ -515,24 +531,23 @@ fn main() -> ! {
                                     let their_nonce = Nonce::from_slice(
                                         &data[DC34_HEADER.len()..DC34_HEADER.len() + size_of::<Nonce>()],
                                     );
-                                    global_config.lock().unwrap().set_their_nonce(their_nonce);
                                     // also generate a new nonce for myself now
                                     global_config.lock().unwrap().generate_my_nonce();
-                                    let my_nonce = global_config.lock().unwrap().get_my_nonce().unwrap();
                                     let gene = global_config.lock().unwrap().get_padded_gamete().unwrap();
                                     let aead = global_config.lock().unwrap().cipher();
-                                    let payload = Payload { msg: &gene, aad: my_nonce.as_slice() };
+                                    let payload = Payload { msg: &gene, aad: &[] };
                                     // encrypt returns ciphertext || nonce
                                     let ct_nonce = aead.encrypt(their_nonce, payload).unwrap();
 
                                     let mut response = Vec::new();
-                                    response.extend_from_slice(my_nonce.as_slice());
                                     response.extend_from_slice(&ct_nonce);
 
+                                    log::debug!("raw {} bytes", response.len());
                                     let encoded = base45::encode(&response);
+                                    log::debug!("encoding {} bytes", encoded.as_bytes().len());
                                     let code = QrCode::with_error_correction_level(
                                         encoded.as_bytes(),
-                                        qrcode::EcLevel::L,
+                                        qrcode::EcLevel::M,
                                     )
                                     .expect("couldn't build QR code");
                                     log::info!(
@@ -542,16 +557,14 @@ fn main() -> ! {
                                     );
                                     vault_ui.qr_override = Some(code);
                                     {
-                                        *mode.lock().unwrap() = VaultMode::ShowGene { quantum: 0 };
+                                        *mode.lock().unwrap() = VaultMode::ResponseGene { quantum: 0 };
                                     }
                                     animate.store(true, Ordering::SeqCst);
                                 } else {
-                                    log::info!("attempting gene decryption");
+                                    log::info!("Attempting gene decryption...");
                                     // try to decrypt a gene - could be either round 1 or round 2 of gene
                                     // decryption
-                                    if data.len()
-                                        < size_of::<Nonce>() + Aes256::block_size() + size_of::<Tag>()
-                                    {
+                                    if data.len() < Aes256::block_size() + size_of::<Tag>() {
                                         log::error!("Protocol error: gene data too short");
                                         *mode.lock().unwrap() = VaultMode::Idle;
                                         animate.store(false, Ordering::SeqCst);
@@ -569,19 +582,14 @@ fn main() -> ! {
                                         log::error!("nonce1 missing");
                                         continue;
                                     };
-                                    log::info!("nonce1: {:x?}", nonce1);
+                                    log::debug!("nonce1: {:x?}", nonce1);
                                     // extract & save their nonce
-                                    let nonce2 = Nonce::from_slice(&data[..size_of::<Nonce>()]);
-                                    global_config.lock().unwrap().set_their_nonce(nonce2);
-                                    log::info!("nonce2: {:x?}", nonce2);
-
                                     let aead = global_config.lock().unwrap().cipher();
-                                    let payload =
-                                        Payload { msg: &data[size_of::<Nonce>()..], aad: nonce2.as_slice() };
-                                    log::info!("payload: {:x?} {:x?}", payload.msg, payload.aad);
+                                    let payload = Payload { msg: &data, aad: &[] };
+                                    log::debug!("payload: {:x?} {:x?}", payload.msg, payload.aad);
                                     match aead.decrypt(&nonce1, payload) {
                                         Ok(msg) => {
-                                            log::info!("decrypted {:x?}", msg);
+                                            log::debug!("decrypted {:x?}", msg);
                                             if let Some(mut sperm) =
                                                 Haploid::deserialize(&msg[..size_of::<Haploid>()])
                                             {
@@ -594,7 +602,7 @@ fn main() -> ! {
                                                 if incoming_type == global_config.lock().unwrap().badge_type()
                                                 {
                                                     log::info!(
-                                                        "inbreeding detected, elevating mutation rate"
+                                                        "Inbreeding detected, elevating mutation rate"
                                                     );
                                                     mutate(&mut sperm, MutationRate::Elevated);
                                                 }
@@ -602,18 +610,38 @@ fn main() -> ! {
                                                 // perform syngamy
                                                 let egg = global_config.lock().unwrap().get_egg().unwrap();
                                                 log::info!(
-                                                    "replacing individual with {:x?}, {:x?}",
+                                                    "Replacing individual with {:x?}, {:x?}",
                                                     egg,
                                                     sperm
                                                 );
                                                 global_config.lock().unwrap().replace_gene(egg, sperm);
                                                 global_config.lock().unwrap().render_gene();
-                                                // now show my gene for the mate to potentially use
+
+                                                // raise the confirmation menu
                                                 {
-                                                    *mode.lock().unwrap() =
-                                                        VaultMode::ShowGene2 { quantum: 0 };
+                                                    *mode.lock().unwrap() = VaultMode::ConfirmGene;
                                                 }
-                                                animate.store(true, Ordering::SeqCst);
+                                                // raise the menu for confirmation
+                                                std::thread::spawn(move || {
+                                                    std::thread::sleep(std::time::Duration::from_millis(500));
+                                                    xous::send_message(
+                                                        conn,
+                                                        xous::Message::new_scalar(
+                                                            VaultOp::KeyPress.to_usize().unwrap(),
+                                                            '∴' as u32 as usize,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                        ),
+                                                    )
+                                                    .ok();
+                                                });
+                                                /*
+                                                animate.store(false, Ordering::SeqCst);
+                                                menu_active = true;
+
+                                                gene_menu_mgr.redraw();
+                                                */
                                             } else {
                                                 log::error!("Failed to deserialize gene");
                                                 *mode.lock().unwrap() = VaultMode::Idle;
@@ -700,6 +728,46 @@ fn main() -> ! {
                     .ok();
                     vault_ui.refresh_draw_list();
                 }
+                vault_ui.redraw();
+            }
+            Some(VaultOp::KeepGene) => {
+                if let Some(gene) = global_config.lock().unwrap().gene() {
+                    save_light_gene(gene);
+                }
+                *mode.lock().unwrap() = VaultMode::Idle;
+            }
+            Some(VaultOp::RevertGene) => {
+                global_config.lock().unwrap().revert_gene();
+                global_config.lock().unwrap().render_gene();
+                *mode.lock().unwrap() = VaultMode::Idle;
+            }
+            Some(VaultOp::TokenMode) => {
+                *mode.lock().unwrap() = VaultMode::Password;
+                xous::send_message(
+                    actions_conn,
+                    xous::Message::new_blocking_scalar(ActionOp::ReloadDb.to_usize().unwrap(), 0, 0, 0, 0),
+                )
+                .ok();
+                vault_ui.refresh_draw_list();
+                vault_ui.redraw();
+            }
+            Some(VaultOp::DefconHelp) => {
+                *mode.lock().unwrap() = VaultMode::DefconHelp;
+                vault_ui.reset_help_state();
+                vault_ui.redraw();
+            }
+            Some(VaultOp::MenuTokenHelp) => {
+                *mode.lock().unwrap() = VaultMode::TokenTour;
+                vault_ui.reset_token_tour_state();
+                vault_ui.redraw();
+            }
+            Some(VaultOp::BadgeMode) => {
+                *mode.lock().unwrap() = VaultMode::Idle;
+                vault_ui.redraw();
+            }
+            Some(VaultOp::About) => {
+                *mode.lock().unwrap() = VaultMode::About;
+                vault_ui.reset_about_state();
                 vault_ui.redraw();
             }
             _ => {

@@ -13,7 +13,7 @@ use std::{fs::File, io, io::BufRead};
 use bao1x_emu::trng::Trng;
 #[cfg(feature = "board-baosec")]
 use bao1x_hal_service::api::TimeOp;
-#[cfg(feature = "board-baosec")]
+#[cfg(all(feature = "board-baosec", feature = "vault-testing"))]
 use bao1x_hal_service::trng::Trng;
 #[cfg(feature = "board-baosec")]
 use chrono::{DateTime, Utc};
@@ -1311,8 +1311,7 @@ impl ActionManager {
             log::info!("got qr data: {}, mode: {:?}", qr_uri, mode_now);
             match mode_now {
                 VaultMode::GeneScan
-                | VaultMode::ShowGene { quantum: _ }
-                | VaultMode::ShowGene2 { quantum: _ }
+                | VaultMode::ResponseGene { quantum: _ }
                 | VaultMode::ShowKey { quantum: _ } => {
                     // pass a copy of the string on to the main loop for handling
                     let msg = IpcString { s: qr_uri.to_owned() };
