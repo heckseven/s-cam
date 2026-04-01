@@ -145,57 +145,68 @@
          style="fill:#ffffff;fill-opacity:1;stroke-width:1.69454" /></text>
     <text
        xml:space="preserve"
-       style="font-size:16px;line-height:1.1;font-family:sans-serif"
-       x="64.661331"
-       y="19.022085"
+       style="font-size:16px;line-height:1;font-family:sans-serif;text-align:start;text-anchor:start"
+       x="13.726415"
+       y="28.04759"
        id="text5523"><tspan
          sodipodi:role="line"
-         x="64.661331"
-         y="19.022085"
-         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan166291">Show KEY</tspan><tspan
+         x="13.726415"
+         y="28.04759"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:start;text-anchor:start;fill:#ffffff;fill-opacity:1"
+         id="tspan166291">1. Show KEY</tspan><tspan
          sodipodi:role="line"
-         x="64.661331"
-         y="36.877907"
-         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan200984">They SCAN</tspan><tspan
+         x="13.726415"
+         y="44.30341"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:start;text-anchor:start;fill:#ffffff;fill-opacity:1"
+         id="tspan200984">2. They SCAN</tspan><tspan
          sodipodi:role="line"
-         x="64.661331"
-         y="54.733727"
-         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan200986">You SCAN</tspan></text>
+         x="13.726415"
+         y="60.559231"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:start;text-anchor:start;fill:#ffffff;fill-opacity:1"
+         id="tspan200986">3. You SCAN</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:16px;line-height:0.7;font-family:sans-serif"
        x="109.79894"
-       y="76.232124"
+       y="78.232124"
        id="text5523-2-0"><tspan
          sodipodi:role="line"
          x="109.79894"
-         y="76.232124"
+         y="78.232124"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:12px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan137043-0-4">Show</tspan><tspan
          sodipodi:role="line"
          x="109.79894"
-         y="87.432121"
+         y="89.432121"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:12px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan158218-8">KEY</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:16px;line-height:0.7;font-family:sans-serif"
        x="17.807934"
-       y="76.232124"
+       y="78.232124"
        id="text5523-2-0-1"><tspan
          sodipodi:role="line"
          x="17.807934"
-         y="76.232124"
+         y="78.232124"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:12px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan137043-0-4-5">Show</tspan><tspan
          sodipodi:role="line"
          x="17.807934"
-         y="87.432121"
+         y="89.432121"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:12px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan158218-8-9">KEY</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:16px;line-height:0.7;font-family:sans-serif"
+       x="65.52092"
+       y="10.539561"
+       id="text5523-2-0-1-2"><tspan
+         sodipodi:role="line"
+         x="65.52092"
+         y="10.539561"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:12px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
+         id="tspan158218-8-9-2">Recap:</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:16px;line-height:1.25;font-family:sans-serif"
@@ -208,8 +219,8 @@
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan76457-0" /></text>
     <path
-       style="fill:#ffffff;stroke:#ffffff;stroke-width:7.94827;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 17,116 17.19516,91"
+       style="fill:#ffffff;stroke:#ffffff;stroke-width:7.62371;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 17,116 17.19516,93"
        id="path17261" />
     <path
        sodipodi:type="star"
@@ -233,21 +244,21 @@
        xml:space="preserve"
        style="font-size:12px;line-height:0.9;font-family:sans-serif"
        x="63.37822"
-       y="76.323074"
+       y="78.323074"
        id="text5523-2-6-4"><tspan
          sodipodi:role="line"
          x="63.37822"
-         y="76.323074"
+         y="78.323074"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:12px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan316252">Activate</tspan><tspan
          sodipodi:role="line"
          x="63.37822"
-         y="87.314941"
+         y="89.314941"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:12px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan316256">SCAN</tspan></text>
     <path
-       style="fill:#ffffff;stroke:#ffffff;stroke-width:7.94827;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 111.80484,116 112,91"
+       style="fill:#ffffff;stroke:#ffffff;stroke-width:7.62371;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 111.80484,116 112,93"
        id="path17261-9" />
     <path
        sodipodi:type="star"
@@ -268,8 +279,8 @@
        inkscape:transform-center-x="2e-06"
        d="m 4.2461643,110.19516 15.0000007,-8.66025 -1e-6,17.3205 z" />
     <path
-       style="fill:#ffffff;stroke:#ffffff;stroke-width:7.94827;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 63.80484,116 64,91"
+       style="fill:#ffffff;stroke:#ffffff;stroke-width:7.62371;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 63.80484,116 64,93"
        id="path17261-9-6" />
     <path
        sodipodi:type="star"

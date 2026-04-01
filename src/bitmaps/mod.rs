@@ -24,3 +24,7 @@ pub mod tour_token_recap;
 pub mod tour_token_tour1;
 pub mod tour_token_tour2;
 pub mod tour_token_tour3;
+
+pub mod baochip_about;
+pub mod bunnie;
+pub mod cheeso;
