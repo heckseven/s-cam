@@ -60,6 +60,9 @@ QR codes are limited to 40 bytes of data.
 Bob sees Alice's lights and decides he wants to incorporate her patterns.
 
 ## Phase 1: Consent
+
+  `'←' | '→'` -> `VaultMode::ShowKey` on recipient badge
+
 Bob asks Alice if he can "breed" with her lights. As part of the request, Bob shows
 a QR code on his badge that reveals
 
@@ -70,10 +73,16 @@ a QR code on his badge that reveals
 newly generated value is always distinct from the previous one, and distinct from the pre-amble.
 If by pure chance a repeat occurs, the random number generator is run again.
 
+  `🔥` key on donor -> `VaultMode::ResponseGene` on donor badge
+
 ## Phase 2: Genetic Transfer
+
+  Any button on recipient -> `🔥` scanning state
+  Any button on donor -> `VaultMode::Idle`
+
 Alice affirms consent by scanning Bob's nonce. In response, her badge now shows a QR code that contains
 
-`nonce2 || AES256E( K, Nonce1, light-pattern-bob || pad || badge_type, Nonce2 ) || tag`
+`AES256E( K, Nonce1, light-pattern-bob || pad || badge_type, null ) || tag`
 
 `light-pattern` is 9 bytes long. This leaves a few bytes of
 margin, which will probably be absorbed by adding features to the `light-pattern` record.
@@ -82,22 +91,10 @@ by the receiver either way.
 
 Bob then scan's Alice's badge and can now perform
 
-`AES256D( K, Nonce1, C || tag, nonce2)` to derive light-pattern. The pattern is only accepted
+`AES256D( K, Nonce1, C || tag, null)` to derive light-pattern. The pattern is only accepted
 if the MAC checks out.
 
-## Phase 3: (optional) Mutual Transfer
-If Alice then mutually desire's Bob's pattern, Bob can consent and show a pattern that now has
-
-`AES256E( K, Nonce2, light-pattern-alice || pad || badge_type, Nonce1 ) || tag`
-
-Which Alice can now decrypt and incorporate into her light pattern. The mutual scanning
-pattern can continue forward, with each user breeding their lights on successive rounds, until
-they attempt to negotiate with a new partner.
-
-The nonce is large enough that it's annoying for someone to brute-force scan QR codes and
-get a result that randomly checks out (the assumed strength of a human brute-forcer is
-upper-bound limited to 100 attempts before getting annoyed, and on average maybe a dozen
-attempts).
+  After successful scan -> `VaultMode::ConfirmGene` menu & state
 
 ## Observations
 
