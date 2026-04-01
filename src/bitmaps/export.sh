@@ -1,6 +1,7 @@
 #!/bin/bash
 # export.sh - run as part of build or manually
 
+set -e
 for svg in *.svg; do
     base=$(basename "$svg" .svg)
 

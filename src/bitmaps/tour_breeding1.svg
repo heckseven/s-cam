@@ -145,7 +145,7 @@
          style="fill:#ffffff;fill-opacity:1;stroke-width:1.69454" /></text>
     <text
        xml:space="preserve"
-       style="font-size:16px;line-height:1.25;font-family:sans-serif"
+       style="font-size:16px;line-height:1.2;font-family:sans-serif"
        x="62.661335"
        y="21.022085"
        id="text5523"><tspan
@@ -156,19 +156,30 @@
          id="tspan104293">1. Share your</tspan><tspan
          sodipodi:role="line"
          x="62.661335"
-         y="41.277905"
+         y="40.477905"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan106734">KEY</tspan><tspan
+         id="tspan106738">KEY</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:16px;line-height:1.2;font-family:sans-serif"
+       x="63.394749"
+       y="70.375359"
+       id="text5523-9"><tspan
          sodipodi:role="line"
-         x="62.661335"
-         y="61.533726"
+         x="63.394749"
+         y="70.375359"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan106736">Press L or R</tspan><tspan
+         id="tspan106736-1">Share with</tspan><tspan
          sodipodi:role="line"
-         x="62.661335"
-         y="81.789551"
+         x="63.394749"
+         y="89.831177"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan106738">buttons</tspan></text>
+         id="tspan260993">L or R</tspan><tspan
+         sodipodi:role="line"
+         x="63.394749"
+         y="109.287"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
+         id="tspan106738-7">buttons</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:16px;line-height:1.25;font-family:sans-serif"
