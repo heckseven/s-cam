@@ -38,48 +38,38 @@ use crate::actions::ActionOp;
 use crate::config::GlobalConfig;
 
 /*
-Dev status & notes --
+To do:
+- If developer mode:
+    - [ ] Flash defcon logo between two inverse options, fade in and out
+    - [ ] Overlay 'dev mode' text
+    - [ ] No lightgene functions available - any mode press goes to vault mode options, as if no accel available
+- Power management
+    - [ ] Idle after X time
+    - [ ] Wake up on key press or accelerometer
+- Add user logo
+    - [ ] upload of data via base64 over serial
+    - [ ] animation sequence
+    - [ ] menu item to delete user logo
+- Tour improvements
+    - [ ] change away from 'breeding' language -> mix? remix?
+    - [ ] put the defon.org url in the tour (get final URL from jeff week of 4/9)
+- Menu has Edit / Delete / Usernames / About / Help / Close
+    - [ ] Usernames brings up list of usernames. If empty, prompt to enter new username.
+    - [optional - low priority] Filter -> if any entries, add filter string entry
+    - [x] Edit edits the current entry, if any
+    - [x] Delete deletes the current entry, if any
+    - [x] Help shows "Help" sequence in token mode
+    - [x] About shows about sequence
+    - [ ] [optional - medium priority] PIN code -> activates PIN menu
+    - [ ] [optional - lowest priority] Backups
+- Stability testing - especially in token mode
+    - CI setup with opensk tester
 
-UI interaction planning.
-
-Main mode of interaction is QR code scanning. This should be accessible with a single button. Thus:
-
-1. middle center button pops up QR code scanner. Behavior then depends on the code scanned.
-  Note: will need a menu item to replace passwords - we should keep the old passwords in case it's needed?
-
-Observation: left/right paging buttons don't do a lot with O(hundreds) passwords, but scrolling
-is fast. So don't implement left/right paging as on Precursor, freeing up two buttons.
-
-2. Left button: pops up text entry to filter lists
-
-3. Right button: "action" button - used to type the current password, and/or approve FIDO sigs
-
-4. Up/down/select jog: exclusively for menu interactions. Menus are always linear, with select.
-
-This UI design does not allow for hierarchical menus because there isn't a "back" button, but
-we *could*, possibly, if we really needed menu hierarchies, repurpose a left/right button as
-a hierarchy nav function.
-
--> But can we keep the menu shallow?
-
-Architectural notes --
-
-Data is long-term stored in the PDDB. Each of the three modes have their own dictionary
-(OpenSK/FIDO2, passwords, totp).
-
-The data is read into an `ItemList`, which is a RAM-based structure that caches all the PDDB data for
-fast sorting, searching etc. `ItemList` is where meta-operations like search & sort happen.
-
-For rendering the data is then copied into a UI element, such as a `ScrollableList`, based on
-the currently active mode.
-  */
-
-/*
   Note on factory test:
     - Use console tests (`test [foo]`) routines to check voltages, accelerometer ID
     - UI test is just for testing UI elements!
 
-  DC34 interactions
+  DC34 interactions [now historical, most of this is implemented]
 
   - Data / mode bits required:
     - Developer mode -> from keystore
@@ -100,11 +90,6 @@ the currently active mode.
     - Badge type - set by pull-downs on SAO. 1/1/1 = not mounted
       - Memorized first time pull down encountered.
       - Light pattern regenerated at this point
-
-  - If developer mode:
-    - Flash defcon logo between two inverse options, fade in and out
-    - Overlay 'dev mode' text
-    - No lightgene functions available - any mode press goes to vault mode options, as if no accel available
 
   - Factory test:
     - "press in on jog dial"
@@ -167,32 +152,7 @@ the currently active mode.
      - Left button autotypes
      - Right button toggles between PW -> TOTP when detached. When attached PW -> TOTP -> Idle loop.
      - Middle button QR scans
-     - Menu has Edit / Delete / Usernames / About / Help / Close
-       - [optional - low priority] Filter -> if any entries, add filter string entry
-       - Edit edits the current entry, if any
-       - Delete deletes the current entry, if any
-       - Usernames brings up list of usernames. If empty, prompt to enter new username.
-       - [optional - medium priority] PIN code -> activates PIN menu
-       - [optional - lowest priority] Backups
-       - Help shows "Help" sequence in token mode
-       - About shows about sequence
 
-   PIN codes will require implementing the following:
-     - In the keystore, a PIN factor needs to be added to the key derivation
-     - This is a code supplied by the caller that is hashed into the master key, then used to unlock keys
-     - The system encryption basis is [systemkeys.data] - this is encrypted on init to a no-PIN situation
-     - if the PIN flag is set, then the PIN API has to be used to decrypt systemkeys.data
-     - every time the PIN is changed, systemkeys.data ciphertext has to be re-stored into the SCD structure, based on
-       the current wrapping of the systemkeys.data plaintext through the PIN configuration
-   - PIN menu - if no PIN set:
-     - Manual entry -> numeric entry
-     - Generate QR -> "Save this QR code now! You won't be able to login without it." / "Select PIN code->Remove QR PIN to undo QR code login" -> show code -> then close
-   - PIN menu - if manual PIN set:
-     - Go directly to an edit screen of the existing PIN
-   - PIN menu - if QR set:
-     - Show QR code
-     - Generate new QR code -> back to Generate QR sequence
-     - Remove QR code PIN
 */
 
 pub(crate) const SERVER_NAME_VAULT2: &str = "_Vault2_";
@@ -321,7 +281,9 @@ fn main() -> ! {
     xous::send_message(pump_conn, xous::Message::new_scalar(0, 0, 0, 0, 0))
         .expect("couldn't start the pumper");
     let mut menu_active = false;
+    let mut jig_ready_seen = false;
     loop {
+        global_config.lock().unwrap().update_power_state(mode.lock().unwrap().clone());
         let msg = xous::receive_message(sid).unwrap();
         log::trace!("Got message: {:?}", msg.body.id());
         match FromPrimitive::from_usize(msg.body.id()) {
@@ -348,6 +310,15 @@ fn main() -> ! {
                 let mode_now = *mode.lock().unwrap();
                 let k = char::from_u32(k1 as u32).unwrap_or('\u{0000}');
                 log::debug!("key {:x}", k1);
+
+                // on the very first `~` received, this will transition a factory test state. In normal
+                // operation this has no effect on the UI. But in factory test state this is an easy way to
+                // monkey-patch the interlock on factory test to ensure that critical operations have
+                // finished before proceeding.
+                if !jig_ready_seen && k == '~' {
+                    vault_ui.jig_ready();
+                    jig_ready_seen = true;
+                }
                 if menu_active {
                     if matches!(mode_now, VaultMode::Tour) {
                         tour_menu_mgr.key_press(k);

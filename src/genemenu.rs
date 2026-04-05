@@ -24,7 +24,7 @@ pub fn create_submenu(vault_conn: xous::CID, _actions_conn: xous::CID, menu_mgr:
 
     menu_matic(
         menu_items,
-        "New Light Gene",
+        "New 'Light Gene'",
         Some(menu_mgr),
         vault_conn,
         VaultOp::MenuDone.to_usize().unwrap(),

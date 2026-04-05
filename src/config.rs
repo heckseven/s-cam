@@ -34,6 +34,7 @@ pub(crate) struct GlobalConfig {
     prior_gene: Option<Diploid>,
     mutation_rate: MutationRate,
     nonce_mine: Option<[u8; 12]>,
+    previous_mode: Option<VaultMode>,
 }
 
 impl GlobalConfig {
@@ -139,9 +140,35 @@ impl GlobalConfig {
                 prior_gene: None,
                 mutation_rate: MutationRate::Baseline,
                 nonce_mine: None,
+                previous_mode: None,
             },
             initial_mode,
         )
+    }
+
+    pub fn update_power_state(&mut self, current_mode: VaultMode) {
+        const SHORT_TIMEOUT: usize = 20;
+        const MEDIUM_TIMEOUT: usize = 60;
+        const LONG_TIMEOUT: usize = 90;
+        // handles None case, as well as Some(previous_mode) not the same as Some(current_mode)
+        if self.previous_mode != Some(current_mode) {
+            let (enable, duration_sec) = match current_mode {
+                VaultMode::About => (true, SHORT_TIMEOUT),
+                VaultMode::ConfirmGene => (true, MEDIUM_TIMEOUT),
+                VaultMode::FactoryTest => (false, 0),
+                VaultMode::DefconHelp => (true, SHORT_TIMEOUT),
+                VaultMode::Idle => (true, SHORT_TIMEOUT),
+                VaultMode::Password => (true, MEDIUM_TIMEOUT),
+                VaultMode::Totp => (true, MEDIUM_TIMEOUT),
+                VaultMode::GeneScan => (true, LONG_TIMEOUT),
+                VaultMode::ResponseGene { quantum: _ } => (true, LONG_TIMEOUT),
+                VaultMode::ShowKey { quantum: _ } => (true, LONG_TIMEOUT),
+                VaultMode::TokenTour => (true, MEDIUM_TIMEOUT),
+                VaultMode::Tour => (true, LONG_TIMEOUT),
+            };
+            self.power_manager_config(enable, Some(duration_sec));
+        }
+        self.previous_mode = Some(current_mode);
     }
 
     pub fn set_skip_tour(&mut self, state: bool) -> VaultMode {
@@ -259,6 +286,20 @@ impl GlobalConfig {
             .ok();
             self.display_fade_cache = enable;
         }
+    }
+
+    pub fn power_manager_config(&self, enable: bool, duration_sec: Option<usize>) {
+        xous::send_message(
+            self.power_server,
+            xous::Message::new_blocking_scalar(
+                PowerManagerOp::Enable.to_usize().unwrap(),
+                if enable { 1 } else { 0 },
+                duration_sec.unwrap_or(0),
+                0,
+                0,
+            ),
+        )
+        .ok();
     }
 }
 

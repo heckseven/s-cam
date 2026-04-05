@@ -15,6 +15,7 @@ services/cram-console/src/app_autogen.rs
 apps/vault/tools/crypto_data
 tools/v2p.txt
 *nocheckin.bin
+key.txt
 
 *.map
 

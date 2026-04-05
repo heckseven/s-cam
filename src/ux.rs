@@ -21,7 +21,8 @@ const KEYUP_DELAY_MS: u64 = 100;
 const PAGE_INCREMENT: usize = 6;
 
 const FACTORY_QR_STRING: &'static str = "test://factory-test-data-lorem-ipsum-data-data";
-const FACTORY_TIMEOUT_S: u64 = 60;
+const FACTORY_TIMEOUT_S: u64 = 90;
+const JIG_TIMEOUT: u64 = 30;
 
 pub const DEFAULT_FONT: GlyphStyle = GlyphStyle::Regular;
 pub const FONT_LIST: [&'static str; 6] = ["regular", "tall", "mono", "bold", "large", "small"];
@@ -53,49 +54,82 @@ const VAULT_CONFIG_DICT: &'static str = "vault.config";
 const VAULT_CONFIG_KEY_FONT: &'static str = "fontstyle";
 
 enum FactoryTestState {
+    InitWait { start_time: Instant },
     JogPress { seen_press: bool },
-    UpDown { seen_up: bool, seen_down: bool },
-    LeftRight { seen_left: bool, seen_right: bool },
+    Up { seen_up: bool },
+    Down { seen_down: bool },
+    Left { seen_left: bool },
+    Right { seen_right: bool },
     MiddleScan { seen_middle: bool, got_scan: bool },
     Finish,
     Error(String),
 }
 
 impl FactoryTestState {
-    fn handle_input(self, k: Option<char>, qr_result: Option<String>, err: Option<String>) -> Self {
+    fn handle_input(
+        self,
+        k: Option<char>,
+        qr_result: Option<String>,
+        err: Option<String>,
+        jig_ready: bool,
+    ) -> Self {
         if let Some(e) = err {
             Self::Error(e)
         } else {
             match self {
+                Self::InitWait { start_time } => {
+                    // the test will start on its own after a few seconds regardless of jig input
+                    if jig_ready
+                        || std::time::Instant::now().duration_since(start_time).as_secs() > JIG_TIMEOUT
+                    {
+                        if jig_ready {
+                            log::info!("start reason: received message");
+                        } else {
+                            log::info!("start reason: timeout");
+                        }
+                        log::info!("_|TT|_JIG.START,_|TE|_");
+                        Self::JogPress { seen_press: false }
+                    } else {
+                        Self::InitWait { start_time }
+                    }
+                }
                 Self::JogPress { seen_press } => {
                     let seen_press = seen_press || k.unwrap_or('\0') == '∴';
-
                     if seen_press {
-                        Self::UpDown { seen_up: false, seen_down: false }
+                        log::info!("_|TT|_INTERACT.START,_|TE|_");
+                        Self::Up { seen_up: false }
                     } else {
                         Self::JogPress { seen_press }
                     }
                 }
 
-                Self::UpDown { seen_up, seen_down } => {
+                Self::Up { seen_up } => {
                     let seen_up = seen_up || k.unwrap_or('\0') == '↑';
-                    let seen_down = seen_down || k.unwrap_or('\0') == '↓';
 
-                    if seen_up && seen_down {
-                        Self::LeftRight { seen_left: false, seen_right: false }
-                    } else {
-                        Self::UpDown { seen_up, seen_down }
-                    }
+                    if seen_up { Self::Down { seen_down: false } } else { Self::Up { seen_up } }
                 }
 
-                Self::LeftRight { seen_left, seen_right } => {
-                    let seen_left = seen_left || k.unwrap_or('\0') == '←';
-                    let seen_right = seen_right || k.unwrap_or('\0') == '→';
+                Self::Down { seen_down } => {
+                    let seen_down = seen_down || k.unwrap_or('\0') == '↓';
 
-                    if seen_left && seen_right {
+                    if seen_down { Self::Left { seen_left: false } } else { Self::Down { seen_down } }
+                }
+
+                Self::Left { seen_left } => {
+                    // note: left/right is swapped because PCB is upside-down during testing
+                    let seen_left = seen_left || k.unwrap_or('\0') == '→';
+
+                    if seen_left { Self::Right { seen_right: false } } else { Self::Left { seen_left } }
+                }
+
+                Self::Right { seen_right } => {
+                    // note: left/right is swapped because PCB is upside-down during testing
+                    let seen_right = seen_right || k.unwrap_or('\0') == '←';
+
+                    if seen_right {
                         Self::MiddleScan { seen_middle: false, got_scan: false }
                     } else {
-                        Self::LeftRight { seen_left, seen_right }
+                        Self::Right { seen_right }
                     }
                 }
 
@@ -397,7 +431,7 @@ impl VaultUi {
             last_key_time: now,
             start_hold_time: now,
             start_time: None,
-            factory_test: FactoryTestState::JogPress { seen_press: false },
+            factory_test: FactoryTestState::InitWait { start_time: std::time::Instant::now() },
             tour_state: TourState::Welcome { seen_press: false },
             token_tour_state: TokenTourState::TokenTour1 { seen_press: false },
             help_state: HelpState::BadgeRecap { seen_press: false },
@@ -746,6 +780,27 @@ impl VaultUi {
             VaultMode::FactoryTest => {
                 self.clear_area();
                 match &self.factory_test {
+                    FactoryTestState::InitWait { start_time } => {
+                        self.animate.store(true, Ordering::SeqCst);
+                        self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
+                        // render the error message below the graphic
+                        let mut msg = TextView::new(
+                            Gid::dummy(),
+                            TextBounds::CenteredTop(Rectangle::new(Point::new(0, 64), Point::new(127, 127))),
+                        );
+                        write!(
+                            msg,
+                            "Waiting for jig...\n{}s/{}s",
+                            std::time::Instant::now().duration_since(*start_time).as_secs(),
+                            JIG_TIMEOUT
+                        )
+                        .ok();
+                        msg.draw_border = false;
+                        msg.clear_area = false;
+                        msg.ellipsis = true;
+                        msg.invert = true;
+                        self.gfx.draw_textview(&mut msg).unwrap();
+                    }
                     FactoryTestState::JogPress { seen_press: _ } => {
                         if self.start_time.is_none() {
                             self.start_time = Some(Instant::now());
@@ -753,11 +808,17 @@ impl VaultUi {
                         self.animate.store(true, Ordering::SeqCst);
                         self.gfx.bitmap(&bitmaps::factory_jogpress::BITMAP, None, None).ok();
                     }
-                    FactoryTestState::UpDown { seen_up: _, seen_down: _ } => {
-                        self.gfx.bitmap(&bitmaps::factory_updown::BITMAP, None, None).ok();
+                    FactoryTestState::Up { seen_up: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_up::BITMAP, None, None).ok();
                     }
-                    FactoryTestState::LeftRight { seen_left: _, seen_right: _ } => {
-                        self.gfx.bitmap(&bitmaps::factory_leftright::BITMAP, None, None).ok();
+                    FactoryTestState::Down { seen_down: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_down::BITMAP, None, None).ok();
+                    }
+                    FactoryTestState::Left { seen_left: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_left::BITMAP, None, None).ok();
+                    }
+                    FactoryTestState::Right { seen_right: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_right::BITMAP, None, None).ok();
                     }
                     FactoryTestState::MiddleScan { seen_middle: _, got_scan: _ } => {
                         self.gfx.bitmap(&bitmaps::factory_middlescan::BITMAP, None, None).ok();
@@ -898,7 +959,15 @@ impl VaultUi {
     pub(crate) fn test_string(&mut self, s: &str) {
         let old =
             std::mem::replace(&mut self.factory_test, FactoryTestState::Error("Transitioning".to_string()));
-        self.factory_test = old.handle_input(None, Some(s.to_owned()), None);
+        self.factory_test = old.handle_input(None, Some(s.to_owned()), None, false);
+        self.redraw();
+    }
+
+    // Called when the jig indicates that the factory test is ready
+    pub(crate) fn jig_ready(&mut self) {
+        let old =
+            std::mem::replace(&mut self.factory_test, FactoryTestState::Error("Transitioning".to_string()));
+        self.factory_test = old.handle_input(None, None, None, true);
         self.redraw();
     }
 
@@ -911,9 +980,9 @@ impl VaultUi {
                     &mut self.factory_test,
                     FactoryTestState::Error("Transitioning".to_string()),
                 );
-                self.factory_test = old.handle_input(Some(k), None, None);
-                // allow menu raising during the tour, otherwise, eat all the keys
-                if k == '∴' { Some(k) } else { None }
+                self.factory_test = old.handle_input(Some(k), None, None, false);
+                // allow scanning in factory mode
+                if k == '🔥' { Some(k) } else { None }
             }
             VaultMode::Tour => {
                 let old =
