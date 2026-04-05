@@ -9,7 +9,7 @@
    id="svg5"
    shape-rendering="crispEdges"
    inkscape:version="1.1.2 (0a00cf5339, 2022-02-04)"
-   sodipodi:docname="factory_leftright.svg"
+   sodipodi:docname="factory_down.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -153,26 +153,31 @@
          x="63.441944"
          y="22.388155"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan43884">Press left and</tspan><tspan
+         id="tspan31462">Move dial</tspan><tspan
          sodipodi:role="line"
          x="63.441944"
          y="42.643974"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan49887">right buttons</tspan></text>
+         id="tspan43884">down</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:20px;line-height:1.25;font-family:sans-serif"
-       x="62.168167"
-       y="74.982178"
+       x="47.726849"
+       y="77.519157"
        id="text5523-3"><tspan
          sodipodi:role="line"
-         x="62.168167"
-         y="74.982178"
+         x="47.726849"
+         y="77.519157"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:20px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan45770">按左右键</tspan></text>
+         id="tspan45770">向下拨动</tspan><tspan
+         sodipodi:role="line"
+         x="47.726849"
+         y="102.57677"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:20px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
+         id="tspan13947">点动开关</tspan></text>
     <path
        style="fill:#ffffff;stroke:#ffffff;stroke-width:7.94827;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 14.80484,110 15,85"
+       d="m 110,110 0.19516,-25"
        id="path17261" />
     <path
        sodipodi:type="star"
@@ -188,31 +193,9 @@
        sodipodi:arg2="4.1887902"
        inkscape:rounded="0"
        inkscape:randomized="0"
-       transform="matrix(0,-1,-1,0,125.19516,124.24616)"
+       transform="matrix(0,-1,-1,0,220.39032,124.24616)"
        inkscape:transform-center-y="2.5000034"
        d="m 4.2461643,110.19516 15.0000007,-8.66025 -1e-6,17.3205 z"
        inkscape:transform-center-x="2e-06" />
-    <path
-       style="fill:#ffffff;stroke:#ffffff;stroke-width:7.94827;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 109.80484,110 110,85"
-       id="path17261-5" />
-    <path
-       sodipodi:type="star"
-       style="fill:#ffffff;stroke:#ffffff;stroke-width:4;stroke-miterlimit:4;stroke-dasharray:none"
-       id="path19828-4-2"
-       inkscape:flatsided="true"
-       sodipodi:sides="3"
-       sodipodi:cx="14.246164"
-       sodipodi:cy="110.19516"
-       sodipodi:r1="10"
-       sodipodi:r2="5"
-       sodipodi:arg1="3.1415927"
-       sodipodi:arg2="4.1887902"
-       inkscape:rounded="0"
-       inkscape:randomized="0"
-       transform="matrix(0,-1,-1,0,220.19516,124.24616)"
-       inkscape:transform-center-y="2.5000034"
-       inkscape:transform-center-x="2e-06"
-       d="m 4.2461643,110.19516 15.0000007,-8.66025 -1e-6,17.3205 z" />
   </g>
 </svg>

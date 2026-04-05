@@ -1,12 +1,14 @@
 pub mod dc_logo;
 pub mod tour_welcome;
 
+pub mod factory_down;
 pub mod factory_fail;
 pub mod factory_jogpress;
-pub mod factory_leftright;
+pub mod factory_left;
 pub mod factory_middlescan;
 pub mod factory_pass;
-pub mod factory_updown;
+pub mod factory_right;
+pub mod factory_up;
 
 pub mod tour_breeding1;
 pub mod tour_breeding2;

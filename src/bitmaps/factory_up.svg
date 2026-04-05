@@ -9,7 +9,7 @@
    id="svg5"
    shape-rendering="crispEdges"
    inkscape:version="1.1.2 (0a00cf5339, 2022-02-04)"
-   sodipodi:docname="factory_updown.svg"
+   sodipodi:docname="factory_up.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -158,26 +158,26 @@
          x="63.441944"
          y="42.643974"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan43884">up and down</tspan></text>
+         id="tspan43884">up</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:20px;line-height:1.25;font-family:sans-serif"
-       x="77.975555"
-       y="77.128853"
+       x="48.702618"
+       y="83.373749"
        id="text5523-3"><tspan
          sodipodi:role="line"
-         x="77.975555"
-         y="77.128853"
+         x="48.702618"
+         y="83.373749"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:20px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan26541">上下拨动</tspan><tspan
+         id="tspan45770">向上拨动</tspan><tspan
          sodipodi:role="line"
-         x="77.975555"
-         y="102.18646"
+         x="48.702618"
+         y="108.43135"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:20px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan45770">点动开关</tspan></text>
+         id="tspan7609">点动开关</tspan></text>
     <path
        style="fill:#ffffff;stroke:#ffffff;stroke-width:7.94827;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 14.80484,110 15,85"
+       d="M 109.80484,110 110,85"
        id="path17261" />
     <path
        sodipodi:type="star"
@@ -194,25 +194,7 @@
        inkscape:rounded="0"
        inkscape:randomized="0"
        d="m 4.2461643,110.19516 15.0000007,-8.66025 -1e-6,17.3205 z"
-       transform="rotate(90,29.720662,95.474498)"
+       transform="rotate(90,77.220662,142.9745)"
        inkscape:transform-center-y="-2.5000006" />
-    <path
-       sodipodi:type="star"
-       style="fill:#ffffff;stroke:#ffffff;stroke-width:4;stroke-miterlimit:4;stroke-dasharray:none"
-       id="path19828-4"
-       inkscape:flatsided="true"
-       sodipodi:sides="3"
-       sodipodi:cx="14.246164"
-       sodipodi:cy="110.19516"
-       sodipodi:r1="10"
-       sodipodi:r2="5"
-       sodipodi:arg1="3.1415927"
-       sodipodi:arg2="4.1887902"
-       inkscape:rounded="0"
-       inkscape:randomized="0"
-       transform="matrix(0,-1,-1,0,125.19516,124.24616)"
-       inkscape:transform-center-y="2.5000034"
-       d="m 4.2461643,110.19516 15.0000007,-8.66025 -1e-6,17.3205 z"
-       inkscape:transform-center-x="2e-06" />
   </g>
 </svg>
