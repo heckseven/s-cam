@@ -44,8 +44,12 @@ To do:
     - [ ] Overlay 'dev mode' text
     - [ ] No lightgene functions available - any mode press goes to vault mode options, as if no accel available
 - Power management
-    - [ ] Idle after X time
+    - [x] Idle after X time
+    - [ ] disable idle on Vbus detect
+    - [ ] deep sleep after X time
     - [ ] Wake up on key press or accelerometer
+    - [ ] power-off on vbat low - low battery screen
+    - [ ] fix glitch on WFI transition
 - Add user logo
     - [ ] upload of data via base64 over serial
     - [ ] animation sequence
@@ -65,13 +69,13 @@ To do:
 - Stability testing - especially in token mode
     - CI setup with opensk tester
 
+  DC34 interactions [now historical, most of this is implemented]
+
   Note on factory test:
     - Use console tests (`test [foo]`) routines to check voltages, accelerometer ID
     - UI test is just for testing UI elements!
 
-  DC34 interactions [now historical, most of this is implemented]
-
-  - Data / mode bits required:
+    - Data / mode bits required:
     - Developer mode -> from keystore
     - Accel installed -> from power manager
     - Settings -> from PDDB keys 'dc34.screen', 'dc34.powoff'
@@ -626,9 +630,7 @@ fn main() -> ! {
                                             log::error!("Failed to decrypt gene: {:?}", e);
                                             *mode.lock().unwrap() = VaultMode::Idle;
                                             animate.store(false, Ordering::SeqCst);
-                                            modals
-                                                .show_notification("Gene failed to authenticate", None)
-                                                .ok();
+                                            modals.show_notification("Authentication error!", None).ok();
                                         }
                                     }
                                 }

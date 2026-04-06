@@ -51,9 +51,8 @@ impl GlobalConfig {
         keystore.set_flags(flags).unwrap();
 
         // initialize the system state from the PDDB
-        let mut k0 = [0u8; 32];
+        let mut k0 = [0u8; 32]; // keep it secret, keep it safe!
         let _k0_len = read_pddb(&pddb, DC34_SECRET, &mut k0);
-        // log::info!("k0_len {}, k0 {:x?}", _k0_len, k0);
 
         let mut skip_tour_buf = [0u8; 1];
         read_pddb(&pddb, DC34_TOUR, &mut skip_tour_buf);
