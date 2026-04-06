@@ -12,7 +12,6 @@ use ux_api::widgets::ScrollableList;
 use xous::CID;
 
 use crate::action_handler::SelectedEntry;
-use crate::storage::Manager;
 use crate::*;
 
 const FAST_SCROLL_DELAY_MS: u64 = 1300;
@@ -348,7 +347,9 @@ impl TotpLayout {
 }
 
 pub struct VaultUi {
+    #[allow(dead_code)]
     main_cid: CID,
+    #[allow(dead_code)]
     pump_conn: CID,
     actions_conn: CID,
     gfx: Gfx,
@@ -365,7 +366,6 @@ pub struct VaultUi {
     pddb: RefCell<Pddb>,
     item_height: isize,
     style: GlyphStyle,
-    storage_manager: Manager,
     screen_size: Point,
 
     usb_dev: usb_bao1x::UsbHid,
@@ -425,7 +425,6 @@ impl VaultUi {
             pddb: RefCell::new(pddb),
             item_height: height / glyph_height,
             style,
-            storage_manager: Manager::new(xns),
             usb_dev: usb_bao1x::UsbHid::new(),
             tt,
             last_key_time: now,
@@ -579,9 +578,10 @@ impl VaultUi {
         self.display_list.style(style);
         let glyph_height = self.gfx.glyph_height_hint(style).unwrap();
         self.item_height = glyph_height as isize + 2; // +2 because of the border width
-        self.item_lists.lock().unwrap().set_items_per_screen(
-            (self.gfx.screen_size().unwrap().y - 2 * self.item_height) / self.item_height,
-        );
+        self.item_lists
+            .lock()
+            .unwrap()
+            .set_items_per_screen((self.screen_size.y - 2 * self.item_height) / self.item_height);
         self.style = style;
     }
 
@@ -595,16 +595,52 @@ impl VaultUi {
 
         // this check is can run at the top of every loop because the underlying implementation
         // caches the setting and only sends a message to the manager thread if there's a state change.
-        if mode_at_entry == VaultMode::Idle {
+        if mode_at_entry == VaultMode::Idle || mode_at_entry == VaultMode::IdleDevMode {
             self.global_config.as_mut().unwrap().lock().unwrap().display_fading(true);
         } else {
             self.global_config.as_mut().unwrap().lock().unwrap().display_fading(false);
+        }
+        if mode_at_entry == VaultMode::Idle
+            && self.global_config.as_ref().unwrap().lock().unwrap().is_developer()
+        {
+            // fixup any transitions that strayed to Idle instead of IdleDevMode when in developer mode
+            *self.mode.lock().unwrap() = VaultMode::IdleDevMode;
         }
         log::debug!("redraw mode: {:?}", mode_at_entry);
 
         match mode_at_entry {
             VaultMode::Idle | VaultMode::ConfirmGene => {
                 self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
+
+                // flag a badge mismatch, mostly for diagnostics at the factory & at the show
+                if self.global_config.as_ref().unwrap().lock().unwrap().attachment_match() {
+                    let mut tv = TextView::new(
+                        Gid::dummy(),
+                        TextBounds::CenteredTop(Rectangle::new(
+                            Point::new(0, 127 - 12),
+                            Point::new(110, 128),
+                        )),
+                    );
+                    tv.invert = true;
+                    tv.margin = Point::new(1, 1);
+                    tv.style = GlyphStyle::Regular;
+                    tv.draw_border = false;
+                    write!(tv, "Mismatched Badge!").ok();
+                    self.gfx.draw_textview(&mut tv).ok();
+                }
+            }
+            VaultMode::IdleDevMode => {
+                self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
+                let mut tv = TextView::new(
+                    Gid::dummy(),
+                    TextBounds::CenteredTop(Rectangle::new(Point::new(0, 127 - 12), Point::new(110, 128))),
+                );
+                tv.invert = true;
+                tv.margin = Point::new(1, 1);
+                tv.style = GlyphStyle::Bold;
+                tv.draw_border = false;
+                write!(tv, "DEV MODE").ok();
+                self.gfx.draw_textview(&mut tv).ok();
             }
             VaultMode::ShowKey { quantum } | VaultMode::ResponseGene { quantum } => {
                 if let Some(code) = &self.qr_override {
@@ -715,7 +751,7 @@ impl VaultUi {
             }
             VaultMode::Password => {
                 self.clear_area();
-                let screensize = self.gfx.screen_size().unwrap();
+                let screensize = self.screen_size;
                 // handle empty database case
                 if self.item_lists.lock().unwrap().filter_len(VaultMode::Password) == 0 {
                     log::debug!("no items");
@@ -1139,6 +1175,7 @@ impl VaultUi {
                 }
                 _ => Some(k),
             },
+            VaultMode::IdleDevMode => Some(k),
             VaultMode::ShowKey { quantum: _ } => {
                 match k {
                     '🔥' => {

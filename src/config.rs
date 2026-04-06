@@ -113,9 +113,13 @@ impl GlobalConfig {
         }
 
         let initial_mode = if badge_type == BadgeType::None {
-            VaultMode::FactoryTest
+            if !is_developer { VaultMode::FactoryTest } else { VaultMode::IdleDevMode }
         } else if badge_attached {
-            if skip_tour || !was_cold_boot { VaultMode::Idle } else { VaultMode::Tour }
+            if skip_tour || !was_cold_boot {
+                if is_developer { VaultMode::IdleDevMode } else { VaultMode::Idle }
+            } else {
+                VaultMode::Tour
+            }
         } else {
             if skip_token_tour { VaultMode::Password } else { VaultMode::TokenTour }
         };
@@ -145,8 +149,20 @@ impl GlobalConfig {
         )
     }
 
+    #[allow(dead_code)]
+    pub fn skip_tour(&self) -> bool { self.skip_tour }
+
+    #[allow(dead_code)]
+    pub fn skip_token_tour(&self) -> bool { self.skip_token_tour }
+
+    pub fn is_developer(&self) -> bool { self.is_developer }
+
+    pub fn attachment_match(&self) -> bool { self.attachment_match }
+
+    pub fn was_cold_boot(&self) -> bool { self.was_cold_boot }
+
     pub fn update_power_state(&mut self, current_mode: VaultMode) {
-        const SHORT_TIMEOUT: usize = 20;
+        const SHORT_TIMEOUT: usize = 15;
         const MEDIUM_TIMEOUT: usize = 60;
         const LONG_TIMEOUT: usize = 90;
         // handles None case, as well as Some(previous_mode) not the same as Some(current_mode)
@@ -157,6 +173,7 @@ impl GlobalConfig {
                 VaultMode::FactoryTest => (false, 0),
                 VaultMode::DefconHelp => (true, SHORT_TIMEOUT),
                 VaultMode::Idle => (true, SHORT_TIMEOUT),
+                VaultMode::IdleDevMode => (true, SHORT_TIMEOUT),
                 VaultMode::Password => (true, MEDIUM_TIMEOUT),
                 VaultMode::Totp => (true, MEDIUM_TIMEOUT),
                 VaultMode::GeneScan => (true, LONG_TIMEOUT),
@@ -180,7 +197,11 @@ impl GlobalConfig {
         } else {
             key.write(&[0]).ok();
         }
-        if self.badge_attached { VaultMode::Idle } else { VaultMode::Password }
+        if self.badge_attached {
+            if self.is_developer { VaultMode::IdleDevMode } else { VaultMode::Idle }
+        } else {
+            VaultMode::Password
+        }
     }
 
     pub fn is_badge_attached(&self) -> bool { self.badge_attached }

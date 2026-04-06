@@ -39,13 +39,9 @@ use crate::config::GlobalConfig;
 
 /*
 To do:
-- If developer mode:
-    - [ ] Flash defcon logo between two inverse options, fade in and out
-    - [ ] Overlay 'dev mode' text
-    - [ ] No lightgene functions available - any mode press goes to vault mode options, as if no accel available
 - Power management
     - [x] Idle after X time
-    - [ ] disable idle on Vbus detect
+    - [x] disable idle on Vbus detect
     - [ ] deep sleep after X time
     - [ ] Wake up on key press or accelerometer
     - [ ] power-off on vbat low - low battery screen
@@ -70,6 +66,10 @@ To do:
     - CI setup with opensk tester
 
   DC34 interactions [now historical, most of this is implemented]
+
+  - If developer mode:
+    - [x] Overlay 'dev mode' text
+    - [x] No lightgene functions available - any mode press goes to vault mode options, as if no accel available
 
   Note on factory test:
     - Use console tests (`test [foo]`) routines to check voltages, accelerometer ID
@@ -163,7 +163,8 @@ pub(crate) const SERVER_NAME_VAULT2: &str = "_Vault2_";
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum VaultMode {
-    Idle, // has two variants, one for regular, other for developer mode
+    Idle,
+    IdleDevMode,
     ShowKey { quantum: u32 },
     ResponseGene { quantum: u32 },
     // state for confirming the current pattern
@@ -328,7 +329,9 @@ fn main() -> ! {
                         tour_menu_mgr.key_press(k);
                     } else if matches!(mode_now, VaultMode::ConfirmGene) {
                         gene_menu_mgr.key_press(k);
-                    } else if matches!(mode_now, VaultMode::Idle) {
+                    } else if matches!(mode_now, VaultMode::Idle)
+                        || matches!(mode_now, VaultMode::IdleDevMode)
+                    {
                         idle_menu_mgr.key_press(k);
                     } else {
                         menu_mgr.key_press(k);
@@ -345,7 +348,9 @@ fn main() -> ! {
                                 tour_menu_mgr.redraw();
                             } else if matches!(mode_now, VaultMode::ConfirmGene) {
                                 gene_menu_mgr.redraw();
-                            } else if matches!(mode_now, VaultMode::Idle) {
+                            } else if matches!(mode_now, VaultMode::Idle)
+                                || matches!(mode_now, VaultMode::IdleDevMode)
+                            {
                                 idle_menu_mgr.redraw();
                             } else {
                                 menu_mgr.redraw();
