@@ -1496,6 +1496,7 @@ impl ActionManager {
         self.storage.borrow_mut().update(&storage::ContentKind::Password, guid, pw).unwrap();
     }
 
+    // TODO: migrate this to use the set_time routine in the RTC driver
     pub(crate) fn set_time(&self, _time_str: &str) {
         #[cfg(feature = "board-baosec")]
         match DateTime::parse_from_rfc3339(_time_str) {

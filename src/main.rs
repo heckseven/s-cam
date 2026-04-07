@@ -40,12 +40,12 @@ use crate::config::GlobalConfig;
 /*
 To do:
 - Power management
-    - [x] Idle after X time
-    - [x] disable idle on Vbus detect
     - [ ] deep sleep after X time
-    - [ ] Wake up on key press or accelerometer
     - [ ] power-off on vbat low - low battery screen
     - [ ] fix glitch on WFI transition
+    - [x] Idle after X time
+    - [x] disable idle on Vbus detect
+    - [x] Wake up on key press or accelerometer
 - Add user logo
     - [ ] upload of data via base64 over serial
     - [ ] animation sequence
@@ -393,7 +393,10 @@ fn main() -> ! {
                             vault_ui.redraw();
                         }
                         '⏯' => {
-                            log::info!("accel event");
+                            log::debug!("accel event");
+                        }
+                        '⏰' => {
+                            log::debug!("RTC wakeup event");
                         }
                         _ => {
                             log::trace!("unhandled key {:?}", k);
