@@ -46,6 +46,11 @@ impl GlobalConfig {
 
         let mut flags = keystore.get_flags().expect("couldn't get flags");
         let was_cold_boot = !flags.warm_boot();
+        if !was_cold_boot {
+            log::debug!("***** warm boot detected *****");
+        } else {
+            log::debug!("===== cold boot detected =====");
+        }
         // now set the warm boot field as true - so if we go into deep sleep we can detect that
         flags.set_warm_boot(true);
         keystore.set_flags(flags).unwrap();
@@ -121,7 +126,7 @@ impl GlobalConfig {
                 VaultMode::Tour
             }
         } else {
-            if skip_token_tour { VaultMode::Password } else { VaultMode::TokenTour }
+            if skip_token_tour || !was_cold_boot { VaultMode::Password } else { VaultMode::TokenTour }
         };
 
         let power_server = xns.request_connection_blocking(dc34_api::POWER_MANAGER_SERVER).unwrap();
@@ -159,6 +164,7 @@ impl GlobalConfig {
 
     pub fn attachment_match(&self) -> bool { self.attachment_match }
 
+    #[allow(dead_code)]
     pub fn was_cold_boot(&self) -> bool { self.was_cold_boot }
 
     pub fn update_power_state(&mut self, current_mode: VaultMode) {

@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 
+use bao1x_hal_service::Adc;
 use blitstr2::GlyphStyle;
 use qrcode::{Color, QrCode};
 use ux_api::minigfx::*;
@@ -22,6 +23,7 @@ const PAGE_INCREMENT: usize = 6;
 const FACTORY_QR_STRING: &'static str = "test://factory-test-data-lorem-ipsum-data-data";
 const FACTORY_TIMEOUT_S: u64 = 90;
 const JIG_TIMEOUT: u64 = 30;
+const LOWBATT_THRESH_MV: u32 = 2380;
 
 pub const DEFAULT_FONT: GlyphStyle = GlyphStyle::Regular;
 pub const FONT_LIST: [&'static str; 6] = ["regular", "tall", "mono", "bold", "large", "small"];
@@ -383,6 +385,9 @@ pub struct VaultUi {
 
     // when Some(), override the display state with this String in QR code format
     pub qr_override: Option<QrCode>,
+
+    // adc for reading battery level
+    adc: Adc,
 }
 
 impl VaultUi {
@@ -437,6 +442,7 @@ impl VaultUi {
             about_state: AboutState::Bunnie { seen_press: false },
             global_config: None,
             qr_override: None,
+            adc: Adc::new(),
         }
     }
 
@@ -609,11 +615,11 @@ impl VaultUi {
         log::debug!("redraw mode: {:?}", mode_at_entry);
 
         match mode_at_entry {
-            VaultMode::Idle | VaultMode::ConfirmGene => {
+            VaultMode::Idle | VaultMode::ConfirmGene | VaultMode::IdleDevMode => {
                 self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
 
                 // flag a badge mismatch, mostly for diagnostics at the factory & at the show
-                if self.global_config.as_ref().unwrap().lock().unwrap().attachment_match() {
+                if !self.global_config.as_ref().unwrap().lock().unwrap().attachment_match() {
                     let mut tv = TextView::new(
                         Gid::dummy(),
                         TextBounds::CenteredTop(Rectangle::new(
@@ -628,19 +634,43 @@ impl VaultUi {
                     write!(tv, "Mismatched Badge!").ok();
                     self.gfx.draw_textview(&mut tv).ok();
                 }
-            }
-            VaultMode::IdleDevMode => {
-                self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
-                let mut tv = TextView::new(
-                    Gid::dummy(),
-                    TextBounds::CenteredTop(Rectangle::new(Point::new(0, 127 - 12), Point::new(110, 128))),
-                );
-                tv.invert = true;
-                tv.margin = Point::new(1, 1);
-                tv.style = GlyphStyle::Bold;
-                tv.draw_border = false;
-                write!(tv, "DEV MODE").ok();
-                self.gfx.draw_textview(&mut tv).ok();
+                // check battery voltage
+                let voltage_code = self
+                    .adc
+                    .read_raw(bao1x_hal::udma::AdcSource::Ext(bao1x_hal::udma::AdcExtChannel::Adc3), Some(8));
+                let vbat_mv =
+                    ((bao1x_hal::udma::Adc::raw_to_voltage(voltage_code) * 1000.0f32) / 0.318f32) as u32;
+                if vbat_mv < LOWBATT_THRESH_MV {
+                    if (self.tt.elapsed_ms() / 1000) % 4 == 0 {
+                        self.gfx.bitmap(&bitmaps::lowbatt::BITMAP, None, None).ok();
+                    }
+                    let mut msg = TextView::new(
+                        Gid::dummy(),
+                        TextBounds::CenteredTop(Rectangle::new(Point::new(0, 0), Point::new(127, 16))),
+                    );
+                    write!(msg, "Batt: {} mV", vbat_mv).ok();
+                    msg.draw_border = false;
+                    msg.clear_area = false;
+                    msg.ellipsis = true;
+                    msg.invert = true;
+                    self.gfx.draw_textview(&mut msg).unwrap();
+                }
+                // indicate developer mode
+                if mode_at_entry == VaultMode::IdleDevMode {
+                    let mut tv = TextView::new(
+                        Gid::dummy(),
+                        TextBounds::CenteredTop(Rectangle::new(
+                            Point::new(0, 127 - 12),
+                            Point::new(110, 128),
+                        )),
+                    );
+                    tv.invert = true;
+                    tv.margin = Point::new(1, 1);
+                    tv.style = GlyphStyle::Bold;
+                    tv.draw_border = false;
+                    write!(tv, "DEV MODE").ok();
+                    self.gfx.draw_textview(&mut tv).ok();
+                }
             }
             VaultMode::ShowKey { quantum } | VaultMode::ResponseGene { quantum } => {
                 if let Some(code) = &self.qr_override {
@@ -947,6 +977,23 @@ impl VaultUi {
                 }
                 AboutState::BaochipLogo { seen_press: _ } => {
                     self.gfx.bitmap(&bitmaps::baochip_about::BITMAP, None, None).ok();
+                    // print battery voltage here
+                    let mut msg = TextView::new(
+                        Gid::dummy(),
+                        TextBounds::CenteredTop(Rectangle::new(Point::new(0, 0), Point::new(127, 16))),
+                    );
+                    let voltage_code = self.adc.read_raw(
+                        bao1x_hal::udma::AdcSource::Ext(bao1x_hal::udma::AdcExtChannel::Adc3),
+                        Some(8),
+                    );
+                    let vbat_mv =
+                        ((bao1x_hal::udma::Adc::raw_to_voltage(voltage_code) * 1000.0f32) / 0.318f32) as u32;
+                    write!(msg, "Batt: {} mV", vbat_mv).ok();
+                    msg.draw_border = false;
+                    msg.clear_area = false;
+                    msg.ellipsis = true;
+                    msg.invert = true;
+                    self.gfx.draw_textview(&mut msg).unwrap();
                 }
                 AboutState::Cheeso { seen_press: _ } => {
                     self.gfx.bitmap(&bitmaps::cheeso::BITMAP, None, None).ok();

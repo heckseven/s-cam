@@ -40,12 +40,16 @@ use crate::config::GlobalConfig;
 /*
 To do:
 - Power management
-    - [ ] deep sleep after X time
+    - [x] deep sleep after X time
+    - [x] always auto-boot on warm boot - no bypass on keypress
+    - [x] add battery voltage printing on screen in about screen
     - [ ] power-off on vbat low - low battery screen
     - [ ] fix glitch on WFI transition
     - [x] Idle after X time
     - [x] disable idle on Vbus detect
     - [x] Wake up on key press or accelerometer
+    - [ ] tune accelerometer settings - can be done in late April, this is not urgent
+    - [ ] small flourish: add last screen state manager for deep sleep resume
 - Add user logo
     - [ ] upload of data via base64 over serial
     - [ ] animation sequence
