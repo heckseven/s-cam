@@ -39,17 +39,46 @@ use crate::config::GlobalConfig;
 
 /*
 To do:
+
+Tester:
+- [ ] test mode in factory new state
+    - trigger if k0 already provisioned, on specific QR scan
+    - flip upside down
+    - push the switches after assembly, scan qr code
+- [ ] add stand-alone assembled test after badge assembly - trigger by special QR code
+Testjig:
+- [ ] fix the screen distortion on the tester
+- [ ] change short circuit test delay on final test to be a little longer - might be measuring power-on inrush
+- [ ] windows-based imaging flow for rpi to transfer jig image - ask Claude how to do
+Production:
+- [ ] for non-H badge production, kick off a "full sized run" for one variant very soon
+- [ ] place order for human boards - next week thursday
+- [x] place order for HDI board - friday
+Other
+- [ ] contemplate summer month-long position for coco - maybe assist aqua?
+- [x] qr tester alignment image
+- [x] final assembly BOM
+- [x] 1mm for battery distance
+- [x] 0.6mm holes note for KC
+
+- [ ] baobit release - https://github.com/sbellem/baobit?tab=readme-ov-file#4-preparing-a-release
+
 - Power management
+    - [ ] fix glitch on WFI transition
+    - [ ] tune accelerometer settings - can be done in late April, this is not urgent
+    - [ ] small flourish: resume from deep sleep into previous vault state
+    - [ ] stability on power management - lock-out on power management until susres report-back
     - [x] deep sleep after X time
     - [x] always auto-boot on warm boot - no bypass on keypress
     - [x] add battery voltage printing on screen in about screen
-    - [ ] power-off on vbat low - low battery screen
-    - [ ] fix glitch on WFI transition
+    - [x] power-off on vbat low - low battery screen
     - [x] Idle after X time
     - [x] disable idle on Vbus detect
     - [x] Wake up on key press or accelerometer
-    - [ ] tune accelerometer settings - can be done in late April, this is not urgent
-    - [ ] small flourish: add last screen state manager for deep sleep resume
+- Factory improvements
+    - [x] on first badge mate, show note indicating badge initialization, instead of "mismatch" error
+    - [x] on token mode, don't show "mismatch" error
+    - [x] add diagnostics to "about" screen
 - Add user logo
     - [ ] upload of data via base64 over serial
     - [ ] animation sequence
@@ -186,7 +215,7 @@ pub enum VaultMode {
 fn main() -> ! {
     log_server::init_wait().unwrap();
     log::set_max_level(log::LevelFilter::Info);
-    log::info!("Vault2 PID is {}", xous::process::id());
+    log::info!("dc34-vault PID is {}", xous::process::id());
 
     let xns = xous_names::XousNames::new().unwrap();
     let gfx = Gfx::new(&xns).unwrap();

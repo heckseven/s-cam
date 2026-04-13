@@ -6,15 +6,33 @@ use dc34_api::*;
 use num_traits::*;
 use pddb::Pddb;
 use rand::RngCore;
+use sha2::{Digest, Sha256};
 
 use crate::VaultMode;
 
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+pub enum AttachState {
+    /// State straight off the test jig
+    FactoryNew,
+    /// State when plugged into a badge for the first time, and type is initialized
+    FirstMate,
+    /// State when plugged into a correct badge
+    Matched,
+    /// State after initialization, but removed from badge for e.g. "token mode"
+    Unattached,
+    /// State when initialized and plugged into an incorrect badge
+    Mismatched,
+}
+impl AttachState {
+    pub fn attached(&self) -> bool {
+        *self == AttachState::FactoryNew || *self == AttachState::Matched || *self == AttachState::Mismatched
+    }
+}
 /// Structure for tracking global shared state. Everything in here
 /// needs to be suitable for sticking in an Arc/Mutex
 pub(crate) struct GlobalConfig {
     is_developer: bool,
-    badge_attached: bool,
-    attachment_match: bool,
+    attach_state: AttachState,
     was_cold_boot: bool,
     k0: [u8; 32],
     skip_tour: bool,
@@ -71,6 +89,7 @@ impl GlobalConfig {
 
         let conn = xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
 
+        let mut attach_state = AttachState::FactoryNew;
         let mut badge_code = [BadgeType::None as u8; 1];
         let badge_code_len = read_pddb(&pddb, DC34_BADGE, &mut badge_code);
         let stored_type = if badge_code_len != 0 {
@@ -81,6 +100,7 @@ impl GlobalConfig {
         let badge_type_measured = read_badgetype_pins();
         let badge_type = if badge_code_len == 0 {
             if badge_type_measured != BadgeType::None {
+                attach_state = AttachState::FirstMate;
                 init_light_gene(badge_type_measured);
             }
             // none stored, init from pins
@@ -89,6 +109,7 @@ impl GlobalConfig {
             if stored_type == BadgeType::None {
                 // if the stored type is None, check and see if something new has been mated
                 if badge_type_measured != BadgeType::None {
+                    attach_state = AttachState::FirstMate;
                     init_light_gene(badge_type_measured);
                 }
                 badge_type_measured
@@ -98,14 +119,31 @@ impl GlobalConfig {
                 stored_type
             }
         };
-        let attachment_match = stored_type == badge_type_measured;
-        let badge_attached = badge_type_measured != BadgeType::None;
+
+        if attach_state != AttachState::FirstMate {
+            if badge_type_measured == BadgeType::None {
+                // we're not plugged into a badge
+                if stored_type == BadgeType::None {
+                    // stored type is None, no badge attached - factory new
+                    attach_state = AttachState::FactoryNew;
+                } else {
+                    // stored type is initialized, but no badge attached - go to token mode
+                    attach_state = AttachState::Unattached;
+                }
+            } else {
+                // we're plugged into a badge
+                if stored_type == badge_type_measured {
+                    attach_state = AttachState::Matched;
+                } else {
+                    attach_state = AttachState::Mismatched;
+                }
+            }
+        }
         log::info!(
-            "badge type measured: {:?}, stored type: {:?}, attachment_match: {:?}, attached: {:?}",
+            "badge type measured: {:?}, stored type: {:?}, attach_state: {:?}",
             badge_type_measured,
             stored_type,
-            attachment_match,
-            badge_attached
+            attach_state
         );
 
         // at this point, a light gene should be initialized, if the module has been
@@ -117,16 +155,29 @@ impl GlobalConfig {
             gene.send(conn, LedManagerOp::SetGene.to_usize().unwrap());
         }
 
-        let initial_mode = if badge_type == BadgeType::None {
-            if !is_developer { VaultMode::FactoryTest } else { VaultMode::IdleDevMode }
-        } else if badge_attached {
-            if skip_tour || !was_cold_boot {
-                if is_developer { VaultMode::IdleDevMode } else { VaultMode::Idle }
-            } else {
-                VaultMode::Tour
+        let initial_mode = match attach_state {
+            AttachState::FactoryNew => {
+                if !is_developer {
+                    VaultMode::FactoryTest
+                } else {
+                    VaultMode::IdleDevMode
+                }
             }
-        } else {
-            if skip_token_tour || !was_cold_boot { VaultMode::Password } else { VaultMode::TokenTour }
+            AttachState::FirstMate => VaultMode::Idle,
+            AttachState::Matched | AttachState::Mismatched => {
+                if skip_tour || !was_cold_boot {
+                    if is_developer { VaultMode::IdleDevMode } else { VaultMode::Idle }
+                } else {
+                    VaultMode::Tour
+                }
+            }
+            AttachState::Unattached => {
+                if skip_token_tour || !was_cold_boot {
+                    VaultMode::Password
+                } else {
+                    VaultMode::TokenTour
+                }
+            }
         };
 
         let power_server = xns.request_connection_blocking(dc34_api::POWER_MANAGER_SERVER).unwrap();
@@ -134,8 +185,7 @@ impl GlobalConfig {
         (
             GlobalConfig {
                 is_developer,
-                badge_attached,
-                attachment_match,
+                attach_state,
                 was_cold_boot,
                 k0,
                 skip_tour,
@@ -162,10 +212,20 @@ impl GlobalConfig {
 
     pub fn is_developer(&self) -> bool { self.is_developer }
 
-    pub fn attachment_match(&self) -> bool { self.attachment_match }
+    pub fn attachment_state(&self) -> AttachState { self.attach_state }
 
     #[allow(dead_code)]
     pub fn was_cold_boot(&self) -> bool { self.was_cold_boot }
+
+    pub fn k0_hash(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(&self.k0);
+        let digest: [u8; 32] = hasher.finalize().try_into().unwrap();
+        let mut buffer = [0u8; 64];
+        hex::encode_to_slice(digest, &mut buffer).unwrap();
+        let hex_str = core::str::from_utf8(&buffer).unwrap();
+        hex_str[..8].to_string()
+    }
 
     pub fn update_power_state(&mut self, current_mode: VaultMode) {
         const SHORT_TIMEOUT: usize = 15;
@@ -203,14 +263,14 @@ impl GlobalConfig {
         } else {
             key.write(&[0]).ok();
         }
-        if self.badge_attached {
+        if self.attach_state.attached() {
             if self.is_developer { VaultMode::IdleDevMode } else { VaultMode::Idle }
         } else {
             VaultMode::Password
         }
     }
 
-    pub fn is_badge_attached(&self) -> bool { self.badge_attached }
+    pub fn is_badge_attached(&self) -> bool { self.attach_state.attached() }
 
     pub fn badge_type(&self) -> BadgeType { self.badge_type }
 
@@ -326,6 +386,16 @@ impl GlobalConfig {
             ),
         )
         .ok();
+    }
+
+    pub fn is_plugged_in(&self) -> bool {
+        match xous::send_message(
+            self.power_server,
+            xous::Message::new_blocking_scalar(PowerManagerOp::GetVbus.to_usize().unwrap(), 0, 0, 0, 0),
+        ) {
+            Ok(xous::Result::Scalar5(_op, _ok, vbus, _, _)) => vbus != 0,
+            _ => unimplemented!("Unhandled internal error"),
+        }
     }
 }
 
