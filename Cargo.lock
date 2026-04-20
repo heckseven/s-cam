@@ -700,6 +700,7 @@ dependencies = [
  "xous",
  "xous-api-log",
  "xous-api-names",
+ "xous-api-susres",
  "xous-api-ticktimer",
  "xous-ipc",
  "xous-usb-hid",
