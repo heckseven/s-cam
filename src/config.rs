@@ -12,8 +12,10 @@ use crate::VaultMode;
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum AttachState {
-    /// State straight off the test jig
+    /// Straight off the assembly line and first firmware load
     FactoryNew,
+    /// Provisioned but still in the factory
+    TestedStandAlone,
     /// State when plugged into a badge for the first time, and type is initialized
     FirstMate,
     /// State when plugged into a correct badge
@@ -75,7 +77,7 @@ impl GlobalConfig {
 
         // initialize the system state from the PDDB
         let mut k0 = [0u8; 32]; // keep it secret, keep it safe!
-        let _k0_len = read_pddb(&pddb, DC34_SECRET, &mut k0);
+        let k0_len = read_pddb(&pddb, DC34_SECRET, &mut k0);
 
         let mut skip_tour_buf = [0u8; 1];
         read_pddb(&pddb, DC34_TOUR, &mut skip_tour_buf);
@@ -125,7 +127,11 @@ impl GlobalConfig {
                 // we're not plugged into a badge
                 if stored_type == BadgeType::None {
                     // stored type is None, no badge attached - factory new
-                    attach_state = AttachState::FactoryNew;
+                    if k0 == [0u8; 32] || k0_len != 32 {
+                        attach_state = AttachState::FactoryNew;
+                    } else {
+                        attach_state = AttachState::TestedStandAlone;
+                    }
                 } else {
                     // stored type is initialized, but no badge attached - go to token mode
                     attach_state = AttachState::Unattached;
@@ -163,7 +169,7 @@ impl GlobalConfig {
                     VaultMode::IdleDevMode
                 }
             }
-            AttachState::FirstMate => VaultMode::Idle,
+            AttachState::FirstMate | AttachState::TestedStandAlone => VaultMode::Idle,
             AttachState::Matched | AttachState::Mismatched => {
                 if skip_tour || !was_cold_boot {
                     if is_developer { VaultMode::IdleDevMode } else { VaultMode::Idle }
@@ -237,6 +243,7 @@ impl GlobalConfig {
                 VaultMode::About => (true, SHORT_TIMEOUT),
                 VaultMode::ConfirmGene => (true, MEDIUM_TIMEOUT),
                 VaultMode::FactoryTest => (false, 0),
+                VaultMode::StandAloneTest => (false, 0),
                 VaultMode::DefconHelp => (true, SHORT_TIMEOUT),
                 VaultMode::Idle => (true, SHORT_TIMEOUT),
                 VaultMode::IdleDevMode => (true, SHORT_TIMEOUT),
@@ -396,6 +403,15 @@ impl GlobalConfig {
             Ok(xous::Result::Scalar5(_op, _ok, vbus, _, _)) => vbus != 0,
             _ => unimplemented!("Unhandled internal error"),
         }
+    }
+
+    // notify the power server that we've booted - this enables all the power management routines
+    pub fn power_manager_boot_finished(&self) {
+        xous::send_message(
+            self.power_server,
+            xous::Message::new_blocking_scalar(PowerManagerOp::Boot.to_usize().unwrap(), 0, 0, 0, 0),
+        )
+        .ok();
     }
 }
 

@@ -150,6 +150,7 @@ pub(crate) fn pumper(sid: xous::SID, main_conn: xous::CID, animate: Arc<core::sy
             let self_conn = xous::connect(sid).unwrap();
             loop {
                 let _msg = xous::receive_message(sid).unwrap();
+                tt.sleep_ms(250).unwrap();
                 if animate.load(core::sync::atomic::Ordering::SeqCst) {
                     xous::try_send_message(
                         main_conn,
@@ -157,7 +158,6 @@ pub(crate) fn pumper(sid: xous::SID, main_conn: xous::CID, animate: Arc<core::sy
                     )
                     .ok(); // don't panic if the queue overflows
                 }
-                tt.sleep_ms(250).unwrap();
                 send_message(self_conn, Message::new_scalar(0, 0, 0, 0, 0)).expect("couldn't restart pump");
             }
         }

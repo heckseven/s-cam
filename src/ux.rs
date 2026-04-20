@@ -24,6 +24,8 @@ const PAGE_INCREMENT: usize = 6;
 const FACTORY_QR_STRING: &'static str = "test://factory-test-data-lorem-ipsum-data-data";
 const FACTORY_TIMEOUT_S: u64 = 90;
 const JIG_TIMEOUT: u64 = 30;
+// full string on QR code needs to be factory://factory-aae949f6969-lorem-ipsum-data
+pub const FACTORY_STANDALONE_STRING: &'static str = "factory-aae949f6969-lorem-ipsum-data";
 
 const LOWBATT_THRESH_MV: u32 = 2380;
 // how long to stay in low batt mode before forcing a sleep
@@ -57,6 +59,83 @@ fn style_to_name(style: &GlyphStyle) -> String {
 }
 const VAULT_CONFIG_DICT: &'static str = "vault.config";
 const VAULT_CONFIG_KEY_FONT: &'static str = "fontstyle";
+
+/// This test doesn't have a "scan" state because to enter it, you need to scan.
+enum StandAloneTestState {
+    JogPress { seen_press: bool },
+    Up { seen_up: bool },
+    Down { seen_down: bool },
+    Left { seen_left: bool },
+    Right { seen_right: bool },
+    Flip { orientation_changed: bool },
+    Finish { seen_button: bool },
+    Exit,
+    Error(String),
+}
+
+impl StandAloneTestState {
+    fn handle_input(self, k: Option<char>, err: Option<String>) -> Self {
+        if let Some(e) = err {
+            Self::Error(e)
+        } else {
+            match self {
+                Self::JogPress { seen_press } => {
+                    let seen_press = seen_press || k.unwrap_or('\0') == '∴';
+                    if seen_press { Self::Up { seen_up: false } } else { Self::JogPress { seen_press } }
+                }
+
+                Self::Up { seen_up } => {
+                    let seen_up = seen_up || k.unwrap_or('\0') == '↑';
+
+                    if seen_up { Self::Down { seen_down: false } } else { Self::Up { seen_up } }
+                }
+
+                Self::Down { seen_down } => {
+                    let seen_down = seen_down || k.unwrap_or('\0') == '↓';
+
+                    if seen_down { Self::Left { seen_left: false } } else { Self::Down { seen_down } }
+                }
+
+                Self::Left { seen_left } => {
+                    // note: left/right is swapped because PCB is upside-down during testing
+                    let seen_left = seen_left || k.unwrap_or('\0') == '→';
+
+                    if seen_left { Self::Right { seen_right: false } } else { Self::Left { seen_left } }
+                }
+
+                Self::Right { seen_right } => {
+                    // note: left/right is swapped because PCB is upside-down during testing
+                    let seen_right = seen_right || k.unwrap_or('\0') == '←';
+
+                    if seen_right {
+                        Self::Flip { orientation_changed: false }
+                    } else {
+                        Self::Right { seen_right }
+                    }
+                }
+
+                Self::Flip { orientation_changed } => {
+                    let orientation_changed = orientation_changed || k.unwrap_or('\0') == '🔁';
+
+                    if orientation_changed {
+                        Self::Finish { seen_button: false }
+                    } else {
+                        Self::Flip { orientation_changed }
+                    }
+                }
+
+                Self::Finish { seen_button } => {
+                    let seen_button = seen_button || k.unwrap_or('\0') != '\0';
+                    if seen_button { Self::Exit } else { Self::Finish { seen_button } }
+                }
+
+                other => other,
+            }
+        }
+    }
+
+    fn is_terminal(&self) -> bool { matches!(self, StandAloneTestState::Exit) }
+}
 
 enum FactoryTestState {
     InitWait { start_time: Instant },
@@ -388,6 +467,7 @@ pub struct VaultUi {
     token_tour_state: TokenTourState,
     help_state: HelpState,
     about_state: AboutState,
+    standalone_test: StandAloneTestState,
 
     // when Some(), override the display state with this String in QR code format
     pub qr_override: Option<QrCode>,
@@ -448,6 +528,7 @@ impl VaultUi {
             token_tour_state: TokenTourState::TokenTour1 { seen_press: false },
             help_state: HelpState::BadgeRecap { seen_press: false },
             about_state: AboutState::Bunnie { seen_press: false },
+            standalone_test: StandAloneTestState::JogPress { seen_press: false },
             global_config: None,
             qr_override: None,
             adc: Adc::new(),
@@ -987,6 +1068,68 @@ impl VaultUi {
                 timer.invert = true;
                 self.gfx.draw_textview(&mut timer).unwrap();
             }
+            VaultMode::StandAloneTest => {
+                self.clear_area();
+                match &self.standalone_test {
+                    StandAloneTestState::JogPress { seen_press: _ } => {
+                        if self.start_time.is_none() {
+                            self.start_time = Some(Instant::now());
+                        }
+                        self.animate.store(true, Ordering::SeqCst);
+                        self.gfx.bitmap(&bitmaps::factory_jogpress::BITMAP, None, None).ok();
+                    }
+                    StandAloneTestState::Up { seen_up: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_up::BITMAP, None, None).ok();
+                    }
+                    StandAloneTestState::Down { seen_down: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_down::BITMAP, None, None).ok();
+                    }
+                    StandAloneTestState::Left { seen_left: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_left::BITMAP, None, None).ok();
+                    }
+                    StandAloneTestState::Right { seen_right: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_right::BITMAP, None, None).ok();
+                    }
+                    StandAloneTestState::Flip { orientation_changed: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_flip::BITMAP, None, None).ok();
+                    }
+                    StandAloneTestState::Finish { seen_button: _ } => {
+                        self.gfx.bitmap(&bitmaps::factory_pass::BITMAP, None, None).ok();
+                    }
+                    StandAloneTestState::Exit => {
+                        self.gfx.bitmap(&bitmaps::factory_pass::BITMAP, None, None).ok();
+                    }
+                    StandAloneTestState::Error(e) => {
+                        self.gfx.bitmap(&bitmaps::factory_fail::BITMAP, None, None).ok();
+                        // render the error message below the graphic
+                        let mut msg = TextView::new(
+                            Gid::dummy(),
+                            TextBounds::CenteredTop(Rectangle::new(Point::new(0, 64), Point::new(127, 127))),
+                        );
+                        write!(msg, "{}", e).ok();
+                        msg.draw_border = false;
+                        msg.clear_area = false;
+                        msg.ellipsis = true;
+                        msg.invert = true;
+                        self.gfx.draw_textview(&mut msg).unwrap();
+                    }
+                }
+                let elapsed = Instant::now().duration_since(self.start_time.unwrap_or(Instant::now()));
+                if elapsed.as_secs() > FACTORY_TIMEOUT_S {
+                    self.factory_test = FactoryTestState::Error("Timeout!".to_string());
+                }
+                let mut timer = TextView::new(
+                    Gid::dummy(),
+                    TextBounds::CenteredBot(Rectangle::new(Point::new(32, 115), Point::new(96, 128))),
+                );
+                timer.style = GlyphStyle::Small;
+                write!(timer, "{:.1}s", elapsed.as_secs_f32()).ok();
+                timer.draw_border = false;
+                timer.clear_area = false;
+                timer.ellipsis = false;
+                timer.invert = true;
+                self.gfx.draw_textview(&mut timer).unwrap();
+            }
             VaultMode::Tour => match &self.tour_state {
                 TourState::Welcome { seen_press: _ } => {
                     self.gfx.bitmap(&bitmaps::tour_welcome::BITMAP, None, None).ok();
@@ -1163,6 +1306,18 @@ impl VaultUi {
                 // allow scanning in factory mode
                 if k == '🔥' { Some(k) } else { None }
             }
+            VaultMode::StandAloneTest => {
+                let old = std::mem::replace(
+                    &mut self.standalone_test,
+                    StandAloneTestState::Error("Transitioning".to_string()),
+                );
+                self.standalone_test = old.handle_input(Some(k), None);
+                if self.standalone_test.is_terminal() {
+                    *self.mode.lock().unwrap() = VaultMode::Idle;
+                }
+                // don't allow other buttons in this state as it's confusing
+                None
+            }
             VaultMode::Tour => {
                 let old =
                     std::mem::replace(&mut self.tour_state, TourState::Error("transitioning".to_string()));
@@ -1264,11 +1419,11 @@ impl VaultUi {
                         }
                     }
                     '→' => {
+                        self.animate.store(false, Ordering::SeqCst);
                         {
                             // lock needs to go out of scope so we don't hang the later ops
                             *self.mode.lock().unwrap() = VaultMode::Password;
                         }
-                        self.animate.store(false, Ordering::SeqCst);
                         // reload DB on mode switch
                         xous::send_message(
                             self.actions_conn,
@@ -1281,6 +1436,7 @@ impl VaultUi {
                             ),
                         )
                         .ok();
+                        self.refresh_draw_list();
                     }
                     _ => {
                         log::warn!("TOTP unhandled char: {}", k)

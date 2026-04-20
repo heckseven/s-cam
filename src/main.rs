@@ -41,25 +41,19 @@ use crate::config::GlobalConfig;
 To do:
 
 Tester:
-- [ ] test mode in factory new state
-    - trigger if k0 already provisioned, on specific QR scan
+- [x] DEFCON URL: https://defcon.org/34b
+- [x] test mode in factory new state
+    - trigger on specific QR scan
     - flip upside down
     - push the switches after assembly, scan qr code
-- [ ] add stand-alone assembled test after badge assembly - trigger by special QR code
+- [x] add stand-alone assembled test after badge assembly - trigger by special QR code
 Testjig:
-- [ ] fix the screen distortion on the tester
-- [ ] change short circuit test delay on final test to be a little longer - might be measuring power-on inrush
+- [x] fix the screen distortion on the tester
+- [x] change short circuit test delay on final test to be a little longer - might be measuring power-on inrush
 - [ ] windows-based imaging flow for rpi to transfer jig image - ask Claude how to do
-Production:
-- [ ] for non-H badge production, kick off a "full sized run" for one variant very soon
-- [ ] place order for human boards - next week thursday
-- [x] place order for HDI board - friday
+
 Other
 - [ ] contemplate summer month-long position for coco - maybe assist aqua?
-- [x] qr tester alignment image
-- [x] final assembly BOM
-- [x] 1mm for battery distance
-- [x] 0.6mm holes note for KC
 
 - [ ] baobit release - https://github.com/sbellem/baobit?tab=readme-ov-file#4-preparing-a-release
 
@@ -96,99 +90,10 @@ Other
     - [ ] [optional - medium priority] PIN code -> activates PIN menu
     - [ ] [optional - lowest priority] Backups
 - Stability testing - especially in token mode
+    - [x] "use" bug when not plugged into USB after enrolling a credential (system hangs)
+    - [x] totp redraw once too many on toggle to pw mode
+    - [x] no passwords present on initial entry to pw mode
     - CI setup with opensk tester
-
-  DC34 interactions [now historical, most of this is implemented]
-
-  - If developer mode:
-    - [x] Overlay 'dev mode' text
-    - [x] No lightgene functions available - any mode press goes to vault mode options, as if no accel available
-
-  Note on factory test:
-    - Use console tests (`test [foo]`) routines to check voltages, accelerometer ID
-    - UI test is just for testing UI elements!
-
-    - Data / mode bits required:
-    - Developer mode -> from keystore
-    - Accel installed -> from power manager
-    - Settings -> from PDDB keys 'dc34.screen', 'dc34.powoff'
-    - Lightgene -> stored in 'dc34.lightgene', decrypted by key store
-    - Badge type -> stored in 'dc34.type', plaintext
-    - DC34 Ko -> stored in 'dc34.ko', decrypted by key store
-    - PIN code is the basis encryption key -> from existing PDDB api
-    - Show tour <bool> -> 'dc34.tour'
-    # - Factory test <bool> -> 'dc34.factory' <- replaced by presence of DC34 Ko key
-    - PIN type -> Enum that stores {None, Numeric, Qr} as options. this changes the API call to keystore for unwrapping system_keys.data
-
-  - Lifecycle elements:
-    - Ko provisioning - done by test jig in factory
-      - "test setko <base64>": run after PDDB is init
-      - base64 blob contains k0 plus hash
-    - Badge type - set by pull-downs on SAO. 1/1/1 = not mounted
-      - Memorized first time pull down encountered.
-      - Light pattern regenerated at this point
-
-  - Factory test:
-    - "press in on jog dial"
-    - "up/down/select"
-    - "left/right"
-    - "middle" -> qr scan
-
-  - First time "cold on":
-    - show tour
-      - "Welcome to your DC34 Badge! / [Press any button to continue]"
-      - "Push the jog wheel in to raise menus / Push again to select items"
-      - Raise Menu:
-         - continue -> next stage of tour
-         - skip tour -> operating mode
-         - never show again -> store never show again -> operating mode
-      - "Your badge's light pattern is unique, encoded in a 'light gene'!"
-      - "You can 'breed' your light gene, evolving new patterns. Here's how:"
-      - "First, share your KEY by pressing either of the left or right buttons."
-      - "A mate shows consent by scanning your KEY using their middle button."
-      - "Finally, scan your mate's QR code using the middle button on your badge."
-      - "Your mate can scan your new QR code if they also want your light genes."
-      - "Badge Recap: (show KEY, down arrows) / (scan code, down arrow)"
-      - "Your badge is also a FIDO token and password manager!"
-      - "Detach the core module by removing two screws on the backside."
-      - "Then, connect to a USB host to use your security token."
-         -- start of "Help" sequence in token mode
-      - "The right button toggles between TOTP and password mode."
-      - "The middle button scans QR codes to enroll TOTPs."
-      - "The left button 'auto-types' credentials into the USB host."
-      - "Token Recap: (type) (scan) (mode)"
-      - "You'll need a browser extension to set time and manage passwords."
-      - "Go to baochip.com/defcon34 for more information. Enjoy the conference!"
-
-  - If base board is detected:
-    - enable DC34 Idle screen
-    - return to Idle screen after INACTIVITY time
-
-  - If base board not detected:
-    - go to token mode immediately
-
-  - DC34 Idle screen: black background logo, fading in and out.
-    - Left/right buttons show up 'KEY'. KEY QR code is shown. Toggle "KEY" text on and off.
-    - Middle button starts scanning. Camera preview comes up. Any button aborts.
-    - After scanning, show 'GENE' qr code. Toggle 'GENE" text on and off in this mode. Any button closes.
-    - Menu options:
-       - Security token -> goes to security token mode
-       - About -> goes to about sequence
-       - Tour -> goes to tour sequence
-       - Settings -> goes to settings menu
-       - Close menu
-   - About sequence:
-     - Tech by bunnie [bunniestudios logo]
-     - Powered by Baochip [Baochip logo]
-     - Art by Cheeso [cheeso logo]
-   - Settings - as dynamic menu:
-     - Screen off: [] secs -> slider entry?
-     - Power save: [] secs -> slider entry?
-     - Close
-   - Token mode:
-     - Left button autotypes
-     - Right button toggles between PW -> TOTP when detached. When attached PW -> TOTP -> Idle loop.
-     - Middle button QR scans
 
 */
 
@@ -204,6 +109,7 @@ pub enum VaultMode {
     ConfirmGene,
     GeneScan,
     FactoryTest,
+    StandAloneTest,
     Tour,
     TokenTour,
     DefconHelp,
@@ -320,12 +226,18 @@ fn main() -> ! {
         .expect("couldn't start the pumper");
     let mut menu_active = false;
     let mut jig_ready_seen = false;
+    let mut boot_sent = false;
     loop {
         global_config.lock().unwrap().update_power_state(mode.lock().unwrap().clone());
         let msg = xous::receive_message(sid).unwrap();
         log::trace!("Got message: {:?}", msg.body.id());
         match FromPrimitive::from_usize(msg.body.id()) {
             Some(VaultOp::Redraw) => {
+                if !boot_sent {
+                    // un-gate the power manager on our first "normal" UI loop iteration
+                    boot_sent = true;
+                    global_config.lock().unwrap().power_manager_boot_finished();
+                }
                 vault_ui.redraw();
             }
             Some(VaultOp::ReloadDbAndFullRedraw) => {
@@ -425,14 +337,14 @@ fn main() -> ! {
                             }
                             vault_ui.redraw();
                         }
-                        '⏯' => {
-                            log::debug!("accel event");
+                        '🔁' => {
+                            log::info!("screen orientation event");
                         }
                         '⏰' => {
                             log::debug!("RTC wakeup event");
                         }
                         _ => {
-                            log::trace!("unhandled key {:?}", k);
+                            log::trace!("debug: unhandled key to main {:?}", k);
                         }
                     }
                 }
@@ -685,10 +597,15 @@ fn main() -> ! {
                         }
                     }
                     _ => {
-                        if let Some((request, _data)) = s.s.split_once("://") {
+                        if let Some((request, data)) = s.s.split_once("://") {
                             match request {
                                 "test" => {
                                     vault_ui.test_string(&s.s);
+                                }
+                                "factory" => {
+                                    if data == crate::ux::FACTORY_STANDALONE_STRING {
+                                        *mode.lock().unwrap() = VaultMode::StandAloneTest;
+                                    }
                                 }
                                 _ => {
                                     log::warn!("Unhandled string in main: {}", &s.s);
