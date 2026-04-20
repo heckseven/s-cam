@@ -1105,7 +1105,55 @@ impl ActionManager {
         };
         log::debug!("heap usage A: {}", heap_usage());
         match self.mode_cache {
-            VaultMode::Password => {
+            VaultMode::Totp => {
+                self.item_lists.lock().unwrap().clear(self.mode_cache);
+                match self.pddb.borrow().read_dict(VAULT_TOTP_DICT, None, Some(256 * 1024)) {
+                    Ok(keys) => {
+                        let mut oom_keys = 0;
+                        for key in keys {
+                            if let Some(data) = key.data {
+                                if let Some(totp) = storage::TotpRecord::try_from(data).ok() {
+                                    let li = make_totp_item_from_record(&key.name, totp);
+                                    self.item_lists.lock().unwrap().insert_unique(self.mode_cache, li);
+                                } else {
+                                    let err = format!(
+                                        "{}:{}:{}: ({})[moved data]...",
+                                        key.basis, VAULT_TOTP_DICT, key.name, key.len
+                                    );
+                                    self.report_err("Couldn't deserialize TOTP:", Some(err));
+                                }
+                            } else {
+                                oom_keys += 1;
+                            }
+                        }
+                        if oom_keys != 0 {
+                            log::warn!(
+                                "Ran out of cache space handling TOTP. {} entries are not loaded.",
+                                oom_keys
+                            );
+                            self.report_err(
+                                &format!(
+                                    "Ran out of cache space handling TOTP. {} entries not loaded",
+                                    oom_keys
+                                ),
+                                None::<crate::storage::Error>,
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        match e.kind() {
+                            ErrorKind::NotFound => {
+                                // this is fine, it just means no entries have been entered yet
+                            }
+                            _ => {
+                                log::error!("Error opening TOTP dictionary");
+                                self.report_err("Error opening TOTP dictionary", Some(e))
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {
                 use std::fmt::Write;
                 self.modals
                     .dynamic_notification(Some(t!("vault.reloading_database", locales::LANG)), None)
@@ -1219,58 +1267,6 @@ impl ActionManager {
                 log::info!("readout took {} ms for {} elements", self.tt.elapsed_ms() - start, klen);
                 self.modals.dynamic_notification_close().ok();
             }
-            VaultMode::Totp => {
-                self.item_lists.lock().unwrap().clear(self.mode_cache);
-                match self.pddb.borrow().read_dict(VAULT_TOTP_DICT, None, Some(256 * 1024)) {
-                    Ok(keys) => {
-                        let mut oom_keys = 0;
-                        for key in keys {
-                            if let Some(data) = key.data {
-                                if let Some(totp) = storage::TotpRecord::try_from(data).ok() {
-                                    let li = make_totp_item_from_record(&key.name, totp);
-                                    self.item_lists.lock().unwrap().insert_unique(self.mode_cache, li);
-                                } else {
-                                    let err = format!(
-                                        "{}:{}:{}: ({})[moved data]...",
-                                        key.basis, VAULT_TOTP_DICT, key.name, key.len
-                                    );
-                                    self.report_err("Couldn't deserialize TOTP:", Some(err));
-                                }
-                            } else {
-                                oom_keys += 1;
-                            }
-                        }
-                        if oom_keys != 0 {
-                            log::warn!(
-                                "Ran out of cache space handling TOTP. {} entries are not loaded.",
-                                oom_keys
-                            );
-                            self.report_err(
-                                &format!(
-                                    "Ran out of cache space handling TOTP. {} entries not loaded",
-                                    oom_keys
-                                ),
-                                None::<crate::storage::Error>,
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        match e.kind() {
-                            ErrorKind::NotFound => {
-                                // this is fine, it just means no entries have been entered yet
-                            }
-                            _ => {
-                                log::error!("Error opening TOTP dictionary");
-                                self.report_err("Error opening TOTP dictionary", Some(e))
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {
-                // ignore request in other modes
-                return;
-            }
         }
         self.item_lists.lock().unwrap().filter_reset(self.mode_cache);
         log::debug!("heap usage B: {}", heap_usage());
@@ -1312,6 +1308,10 @@ impl ActionManager {
             match mode_now {
                 VaultMode::GeneScan
                 | VaultMode::ResponseGene { quantum: _ }
+                | VaultMode::Idle
+                | VaultMode::IdleDevMode
+                | VaultMode::FactoryTest
+                | VaultMode::StandAloneTest
                 | VaultMode::ShowKey { quantum: _ } => {
                     // pass a copy of the string on to the main loop for handling
                     let msg = IpcString { s: qr_uri.to_owned() };
@@ -1464,12 +1464,6 @@ impl ActionManager {
                             }
                             "search" => {
                                 // todo
-                            }
-                            "test" => {
-                                // pass a copy of the string on to the main loop for handling
-                                let msg = IpcString { s: qr_uri.to_owned() };
-                                let buf = Buffer::into_buf(msg).unwrap();
-                                buf.send(self.main_conn, VaultOp::HandleQr.to_u32().unwrap()).ok();
                             }
                             _ => {
                                 self.modals
