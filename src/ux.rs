@@ -60,6 +60,12 @@ fn style_to_name(style: &GlyphStyle) -> String {
 const VAULT_CONFIG_DICT: &'static str = "vault.config";
 const VAULT_CONFIG_KEY_FONT: &'static str = "fontstyle";
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum DisplayOrientation {
+    Normal,
+    UpsideDown,
+}
+
 /// This test doesn't have a "scan" state because to enter it, you need to scan.
 enum StandAloneTestState {
     JogPress { seen_press: bool },
@@ -97,15 +103,13 @@ impl StandAloneTestState {
                 }
 
                 Self::Left { seen_left } => {
-                    // note: left/right is swapped because PCB is upside-down during testing
-                    let seen_left = seen_left || k.unwrap_or('\0') == '→';
+                    let seen_left = seen_left || k.unwrap_or('\0') == '←';
 
                     if seen_left { Self::Right { seen_right: false } } else { Self::Left { seen_left } }
                 }
 
                 Self::Right { seen_right } => {
-                    // note: left/right is swapped because PCB is upside-down during testing
-                    let seen_right = seen_right || k.unwrap_or('\0') == '←';
+                    let seen_right = seen_right || k.unwrap_or('\0') == '→';
 
                     if seen_right {
                         Self::Flip { orientation_changed: false }
@@ -115,7 +119,8 @@ impl StandAloneTestState {
                 }
 
                 Self::Flip { orientation_changed } => {
-                    let orientation_changed = orientation_changed || k.unwrap_or('\0') == '🔁';
+                    let orientation_changed =
+                        orientation_changed || k.unwrap_or('\0') == '🔽' || k.unwrap_or('\0') == '🔼';
 
                     if orientation_changed {
                         Self::Finish { seen_button: false }
@@ -445,6 +450,7 @@ pub struct VaultUi {
     mode: Arc<Mutex<VaultMode>>,
     animate: Arc<AtomicBool>,
     global_config: Option<Arc<Mutex<GlobalConfig>>>,
+    orientation: DisplayOrientation,
 
     /// totp redraw state
     totp_code: Option<String>,
@@ -513,6 +519,7 @@ impl VaultUi {
             item_lists,
             mode,
             animate,
+            orientation: DisplayOrientation::Normal,
             totp_code: None,
             last_epoch: crate::totp::get_current_unix_time().expect("couldn't get current time") / 30,
             pddb: RefCell::new(pddb),
@@ -1294,6 +1301,11 @@ impl VaultUi {
     }
 
     pub(crate) fn handle_key(&mut self, k: char) -> Option<char> {
+        if k == '🔼' {
+            self.orientation = DisplayOrientation::Normal;
+        } else if k == '🔽' {
+            self.orientation = DisplayOrientation::UpsideDown;
+        }
         let mode_at_entry = (*self.mode.lock().unwrap()).clone();
         log::debug!("handle_key: {:?}", mode_at_entry);
         let filtered_k = match mode_at_entry {

@@ -40,28 +40,12 @@ use crate::config::GlobalConfig;
 /*
 To do:
 
-Tester:
-- [x] DEFCON URL: https://defcon.org/34b
-- [x] test mode in factory new state
-    - trigger on specific QR scan
-    - flip upside down
-    - push the switches after assembly, scan qr code
-- [x] add stand-alone assembled test after badge assembly - trigger by special QR code
-Testjig:
-- [x] fix the screen distortion on the tester
-- [x] change short circuit test delay on final test to be a little longer - might be measuring power-on inrush
-- [ ] windows-based imaging flow for rpi to transfer jig image - ask Claude how to do
-
-Other
-- [ ] contemplate summer month-long position for coco - maybe assist aqua?
-
-- [ ] baobit release - https://github.com/sbellem/baobit?tab=readme-ov-file#4-preparing-a-release
-
-- Power management
-    - [ ] fix glitch on WFI transition
-    - [ ] tune accelerometer settings - can be done in late April, this is not urgent
-    - [ ] small flourish: resume from deep sleep into previous vault state
-    - [ ] stability on power management - lock-out on power management until susres report-back
+- Bugs
+    - [ ] fix battery voltage reading
+    - [?] fix glitch on WFI transition
+    - [x] tune accelerometer settings
+    - [ ] wear badge and confirm that deep sleep works as expected
+    - [ ] stability on power management - more testing
     - [x] deep sleep after X time
     - [x] always auto-boot on warm boot - no bypass on keypress
     - [x] add battery voltage printing on screen in about screen
@@ -73,13 +57,16 @@ Other
     - [x] on first badge mate, show note indicating badge initialization, instead of "mismatch" error
     - [x] on token mode, don't show "mismatch" error
     - [x] add diagnostics to "about" screen
+- Experience
+    - [x] flashing eyes when upside down
 - Add user logo
     - [ ] upload of data via base64 over serial
     - [ ] animation sequence
     - [ ] menu item to delete user logo
 - Tour improvements
     - [ ] change away from 'breeding' language -> mix? remix?
-    - [ ] put the defon.org url in the tour (get final URL from jeff week of 4/9)
+    - [ ] force orientation to be right side up for tour
+    - [x] put the defon.org url in the tour (get final URL from jeff week of 4/9)
 - Menu has Edit / Delete / Usernames / About / Help / Close
     - [ ] Usernames brings up list of usernames. If empty, prompt to enter new username.
     - [optional - low priority] Filter -> if any entries, add filter string entry
@@ -94,6 +81,7 @@ Other
     - [x] totp redraw once too many on toggle to pw mode
     - [x] no passwords present on initial entry to pw mode
     - CI setup with opensk tester
+    - [-] small flourish: resume from deep sleep into previous vault state
 
 */
 
@@ -337,7 +325,7 @@ fn main() -> ! {
                             }
                             vault_ui.redraw();
                         }
-                        '🔁' => {
+                        '🔽' | '🔼' => {
                             log::info!("screen orientation event");
                         }
                         '⏰' => {
