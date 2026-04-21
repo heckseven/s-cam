@@ -145,7 +145,7 @@
          style="fill:#ffffff;fill-opacity:1;stroke-width:1.69454" /></text>
     <text
        xml:space="preserve"
-       style="font-size:16px;line-height:1.25;font-family:sans-serif"
+       style="font-size:16px;line-height:1;font-family:sans-serif"
        x="64.856483"
        y="17.851168"
        id="text5523"><tspan
@@ -153,20 +153,25 @@
          x="64.856483"
          y="17.851168"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan177322">Scan QR codes</tspan><tspan
+         id="tspan177322">Scan QR codes:</tspan><tspan
          sodipodi:role="line"
          x="64.856483"
-         y="38.106987"
+         y="34.106987"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
+         id="tspan67282" /><tspan
+         sodipodi:role="line"
+         x="64.856483"
+         y="50.362808"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan179187">- Enroll TOTP</tspan><tspan
          sodipodi:role="line"
          x="64.856483"
-         y="58.362808"
+         y="66.618629"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan179189">- Set time</tspan><tspan
          sodipodi:role="line"
          x="64.856483"
-         y="78.618629"
+         y="82.874451"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan179191">- Get URLs</tspan></text>
     <text
@@ -182,7 +187,7 @@
          id="tspan76457-0" /></text>
     <path
        style="fill:#ffffff;stroke:#ffffff;stroke-width:7.94827;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 65,110 65.19516,85"
+       d="M 65,114 65.19516,89"
        id="path17261" />
     <path
        sodipodi:type="star"

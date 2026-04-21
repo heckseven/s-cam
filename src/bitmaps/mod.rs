@@ -3,6 +3,7 @@ pub mod tour_welcome;
 
 pub mod factory_down;
 pub mod factory_fail;
+pub mod factory_flip;
 pub mod factory_jogpress;
 pub mod factory_left;
 pub mod factory_middlescan;
@@ -32,3 +33,7 @@ pub mod bunnie;
 pub mod cheeso;
 
 pub mod lowbatt;
+
+// some flipped versions for user convenience
+pub mod badge_flip;
+pub mod tour_token_recap_flipped;
