@@ -40,6 +40,7 @@ pub(crate) enum VaultOp {
     MenuDone,
     BadgeMode,
     MenuTokenHelp,
+    MenuUsernames,
 
     /// Tour menu
     TourContinue,

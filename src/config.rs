@@ -234,7 +234,7 @@ impl GlobalConfig {
     }
 
     pub fn update_power_state(&mut self, current_mode: VaultMode) {
-        const SHORT_TIMEOUT: usize = 15;
+        const SHORT_TIMEOUT: usize = 30;
         const MEDIUM_TIMEOUT: usize = 60;
         const LONG_TIMEOUT: usize = 90;
         // handles None case, as well as Some(previous_mode) not the same as Some(current_mode)
@@ -245,6 +245,7 @@ impl GlobalConfig {
                 VaultMode::FactoryTest => (false, 0),
                 VaultMode::StandAloneTest => (false, 0),
                 VaultMode::DefconHelp => (true, SHORT_TIMEOUT),
+                VaultMode::TokenHelp => (true, MEDIUM_TIMEOUT),
                 VaultMode::Idle => (true, SHORT_TIMEOUT),
                 VaultMode::IdleDevMode => (true, SHORT_TIMEOUT),
                 VaultMode::Password => (true, MEDIUM_TIMEOUT),

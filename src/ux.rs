@@ -345,6 +345,33 @@ impl HelpState {
     fn is_terminal(&self) -> bool { matches!(self, HelpState::End { seen_press: _ } | HelpState::Error(_)) }
 }
 
+enum TokenHelpState {
+    TokenRecap { seen_press: bool },
+    Extension { seen_press: bool },
+    InfoScreen { seen_press: bool },
+    End { seen_press: bool },
+    Error(String),
+}
+
+impl TokenHelpState {
+    fn handle_input(self, k: char) -> Self {
+        tour_advance!(self, k;
+            auto {
+                TokenRecap         => Extension,
+                Extension          => InfoScreen,
+                InfoScreen         => End,
+                End                => End,  // terminal — stays put
+            }
+            custom {
+                Self::Error(e) => Self::Error(e)
+            }
+        )
+    }
+
+    fn is_terminal(&self) -> bool {
+        matches!(self, TokenHelpState::End { seen_press: _ } | TokenHelpState::Error(_))
+    }
+}
 enum TokenTourState {
     TokenTour1 { seen_press: bool },
     TokenTour2 { seen_press: bool },
@@ -471,6 +498,7 @@ pub struct VaultUi {
     factory_test: FactoryTestState,
     tour_state: TourState,
     token_tour_state: TokenTourState,
+    token_help_state: TokenHelpState,
     help_state: HelpState,
     about_state: AboutState,
     standalone_test: StandAloneTestState,
@@ -536,6 +564,7 @@ impl VaultUi {
             help_state: HelpState::BadgeRecap { seen_press: false },
             about_state: AboutState::Bunnie { seen_press: false },
             standalone_test: StandAloneTestState::JogPress { seen_press: false },
+            token_help_state: TokenHelpState::TokenRecap { seen_press: false },
             global_config: None,
             qr_override: None,
             adc: Adc::new(),
@@ -548,8 +577,8 @@ impl VaultUi {
 
     pub fn reset_about_state(&mut self) { self.about_state = AboutState::Bunnie { seen_press: false }; }
 
-    pub fn reset_token_tour_state(&mut self) {
-        self.token_tour_state = TokenTourState::TokenTour1 { seen_press: false };
+    pub fn reset_token_help_state(&mut self) {
+        self.token_help_state = TokenHelpState::TokenRecap { seen_press: false };
     }
 
     pub fn set_global_config(&mut self, config: Arc<Mutex<GlobalConfig>>) {
@@ -1077,48 +1106,55 @@ impl VaultUi {
             }
             VaultMode::StandAloneTest => {
                 self.clear_area();
-                match &self.standalone_test {
-                    StandAloneTestState::JogPress { seen_press: _ } => {
-                        if self.start_time.is_none() {
-                            self.start_time = Some(Instant::now());
+                if self.orientation != DisplayOrientation::Normal {
+                    self.gfx.bitmap(&bitmaps::badge_flip::BITMAP, None, None).ok();
+                } else {
+                    match &self.standalone_test {
+                        StandAloneTestState::JogPress { seen_press: _ } => {
+                            if self.start_time.is_none() {
+                                self.start_time = Some(Instant::now());
+                            }
+                            self.animate.store(true, Ordering::SeqCst);
+                            self.gfx.bitmap(&bitmaps::factory_jogpress::BITMAP, None, None).ok();
                         }
-                        self.animate.store(true, Ordering::SeqCst);
-                        self.gfx.bitmap(&bitmaps::factory_jogpress::BITMAP, None, None).ok();
-                    }
-                    StandAloneTestState::Up { seen_up: _ } => {
-                        self.gfx.bitmap(&bitmaps::factory_up::BITMAP, None, None).ok();
-                    }
-                    StandAloneTestState::Down { seen_down: _ } => {
-                        self.gfx.bitmap(&bitmaps::factory_down::BITMAP, None, None).ok();
-                    }
-                    StandAloneTestState::Left { seen_left: _ } => {
-                        self.gfx.bitmap(&bitmaps::factory_left::BITMAP, None, None).ok();
-                    }
-                    StandAloneTestState::Right { seen_right: _ } => {
-                        self.gfx.bitmap(&bitmaps::factory_right::BITMAP, None, None).ok();
-                    }
-                    StandAloneTestState::Flip { orientation_changed: _ } => {
-                        self.gfx.bitmap(&bitmaps::factory_flip::BITMAP, None, None).ok();
-                    }
-                    StandAloneTestState::Finish { seen_button: _ } => {
-                        self.gfx.bitmap(&bitmaps::factory_pass::BITMAP, None, None).ok();
-                    }
-                    StandAloneTestState::Exit => {
-                        self.gfx.bitmap(&bitmaps::factory_pass::BITMAP, None, None).ok();
-                    }
-                    StandAloneTestState::Error(e) => {
-                        self.gfx.bitmap(&bitmaps::factory_fail::BITMAP, None, None).ok();
-                        // render the error message below the graphic
-                        let mut msg = TextView::new(
-                            Gid::dummy(),
-                            TextBounds::CenteredTop(Rectangle::new(Point::new(0, 64), Point::new(127, 127))),
-                        );
-                        write!(msg, "{}", e).ok();
-                        msg.draw_border = false;
-                        msg.clear_area = false;
-                        msg.ellipsis = true;
-                        msg.invert = true;
-                        self.gfx.draw_textview(&mut msg).unwrap();
+                        StandAloneTestState::Up { seen_up: _ } => {
+                            self.gfx.bitmap(&bitmaps::factory_up::BITMAP, None, None).ok();
+                        }
+                        StandAloneTestState::Down { seen_down: _ } => {
+                            self.gfx.bitmap(&bitmaps::factory_down::BITMAP, None, None).ok();
+                        }
+                        StandAloneTestState::Left { seen_left: _ } => {
+                            self.gfx.bitmap(&bitmaps::factory_left::BITMAP, None, None).ok();
+                        }
+                        StandAloneTestState::Right { seen_right: _ } => {
+                            self.gfx.bitmap(&bitmaps::factory_right::BITMAP, None, None).ok();
+                        }
+                        StandAloneTestState::Flip { orientation_changed: _ } => {
+                            self.gfx.bitmap(&bitmaps::factory_flip::BITMAP, None, None).ok();
+                        }
+                        StandAloneTestState::Finish { seen_button: _ } => {
+                            self.gfx.bitmap(&bitmaps::factory_pass::BITMAP, None, None).ok();
+                        }
+                        StandAloneTestState::Exit => {
+                            self.gfx.bitmap(&bitmaps::factory_pass::BITMAP, None, None).ok();
+                        }
+                        StandAloneTestState::Error(e) => {
+                            self.gfx.bitmap(&bitmaps::factory_fail::BITMAP, None, None).ok();
+                            // render the error message below the graphic
+                            let mut msg = TextView::new(
+                                Gid::dummy(),
+                                TextBounds::CenteredTop(Rectangle::new(
+                                    Point::new(0, 64),
+                                    Point::new(127, 127),
+                                )),
+                            );
+                            write!(msg, "{}", e).ok();
+                            msg.draw_border = false;
+                            msg.clear_area = false;
+                            msg.ellipsis = true;
+                            msg.invert = true;
+                            self.gfx.draw_textview(&mut msg).unwrap();
+                        }
                     }
                 }
                 let elapsed = Instant::now().duration_since(self.start_time.unwrap_or(Instant::now()));
@@ -1137,50 +1173,72 @@ impl VaultUi {
                 timer.invert = true;
                 self.gfx.draw_textview(&mut timer).unwrap();
             }
-            VaultMode::Tour => match &self.tour_state {
-                TourState::Welcome { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_welcome::BITMAP, None, None).ok();
+            VaultMode::Tour => {
+                if self.orientation != DisplayOrientation::Normal {
+                    self.gfx.bitmap(&bitmaps::badge_flip::BITMAP, None, None).ok();
+                } else {
+                    match &self.tour_state {
+                        TourState::Welcome { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_welcome::BITMAP, None, None).ok();
+                        }
+                        TourState::LightGeneExplainer1 { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_light_gene_explainer1::BITMAP, None, None).ok();
+                        }
+                        TourState::LightGeneExplainer2 { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_light_gene_explainer2::BITMAP, None, None).ok();
+                        }
+                        TourState::Breeding1 { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_breeding1::BITMAP, None, None).ok();
+                        }
+                        TourState::Breeding2 { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_breeding2::BITMAP, None, None).ok();
+                        }
+                        TourState::Breeding3 { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_breeding3::BITMAP, None, None).ok();
+                        }
+                        TourState::Breeding4 { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_breeding4::BITMAP, None, None).ok();
+                        }
+                        TourState::BadgeRecap { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_recap::BITMAP, None, None).ok();
+                        }
+                        TourState::TokenIntro1 { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_token_intro1::BITMAP, None, None).ok();
+                        }
+                        TourState::TokenIntro2 { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_token_intro2::BITMAP, None, None).ok();
+                        }
+                        TourState::TokenIntro3 { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_token_intro3::BITMAP, None, None).ok();
+                        }
+                        TourState::InfoScreen { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
+                        }
+                        _ => {}
+                    }
                 }
-                TourState::LightGeneExplainer1 { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_light_gene_explainer1::BITMAP, None, None).ok();
-                }
-                TourState::LightGeneExplainer2 { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_light_gene_explainer2::BITMAP, None, None).ok();
-                }
-                TourState::Breeding1 { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_breeding1::BITMAP, None, None).ok();
-                }
-                TourState::Breeding2 { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_breeding2::BITMAP, None, None).ok();
-                }
-                TourState::Breeding3 { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_breeding3::BITMAP, None, None).ok();
-                }
-                TourState::Breeding4 { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_breeding4::BITMAP, None, None).ok();
-                }
-                TourState::BadgeRecap { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_recap::BITMAP, None, None).ok();
-                }
-                TourState::TokenIntro1 { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_token_intro1::BITMAP, None, None).ok();
-                }
-                TourState::TokenIntro2 { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_token_intro2::BITMAP, None, None).ok();
-                }
-                TourState::TokenIntro3 { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_token_intro3::BITMAP, None, None).ok();
-                }
-                TourState::InfoScreen { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
-                }
-                _ => {}
-            },
+            }
             VaultMode::DefconHelp => match &self.help_state {
                 HelpState::BadgeRecap { seen_press: _ } => {
                     self.gfx.bitmap(&bitmaps::tour_recap::BITMAP, None, None).ok();
                 }
                 HelpState::InfoScreen { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
+                }
+                _ => {}
+            },
+            VaultMode::TokenHelp => match &self.token_help_state {
+                TokenHelpState::TokenRecap { seen_press: _ } => {
+                    if self.orientation == DisplayOrientation::Normal {
+                        self.gfx.bitmap(&bitmaps::tour_token_recap::BITMAP, None, None).ok();
+                    } else {
+                        self.gfx.bitmap(&bitmaps::tour_token_recap_flipped::BITMAP, None, None).ok();
+                    }
+                }
+                TokenHelpState::Extension { seen_press: _ } => {
+                    self.gfx.bitmap(&bitmaps::tour_browser_extension::BITMAP, None, None).ok();
+                }
+                TokenHelpState::InfoScreen { seen_press: _ } => {
                     self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
                 }
                 _ => {}
@@ -1249,28 +1307,33 @@ impl VaultUi {
                 }
                 _ => {}
             },
-            VaultMode::TokenTour => match &self.token_tour_state {
-                TokenTourState::TokenTour1 { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_token_tour1::BITMAP, None, None).ok();
+            VaultMode::TokenTour => {
+                if self.orientation != DisplayOrientation::Normal {
+                    self.gfx.bitmap(&bitmaps::badge_flip::BITMAP, None, None).ok();
+                } else {
+                    match &self.token_tour_state {
+                        TokenTourState::TokenTour1 { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_token_tour1::BITMAP, None, None).ok();
+                        }
+                        TokenTourState::TokenTour2 { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_token_tour2::BITMAP, None, None).ok();
+                        }
+                        TokenTourState::TokenTour3 { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_token_tour3::BITMAP, None, None).ok();
+                        }
+                        TokenTourState::TokenRecap { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_token_recap::BITMAP, None, None).ok();
+                        }
+                        TokenTourState::BrowserExtension { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_browser_extension::BITMAP, None, None).ok();
+                        }
+                        TokenTourState::InfoScreen { seen_press: _ } => {
+                            self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
+                        }
+                        _ => {}
+                    }
                 }
-                TokenTourState::TokenTour2 { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_token_tour2::BITMAP, None, None).ok();
-                }
-                TokenTourState::TokenTour3 { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_token_tour3::BITMAP, None, None).ok();
-                }
-                TokenTourState::TokenRecap { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_token_recap::BITMAP, None, None).ok();
-                }
-                TokenTourState::BrowserExtension { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_browser_extension::BITMAP, None, None).ok();
-                }
-                TokenTourState::InfoScreen { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
-                }
-                _ => {}
-            },
-            // _ => unimplemented!(),
+            } // _ => unimplemented!(),
         }
         self.gfx.flush().ok();
     }
@@ -1358,6 +1421,21 @@ impl VaultUi {
                 self.help_state = old.handle_input(k);
                 if self.help_state.is_terminal() {
                     *self.mode.lock().unwrap() = VaultMode::Idle;
+                }
+                // don't allow scanning to start during the tour
+                if k != '🔥' { Some(k) } else { None }
+            }
+            VaultMode::TokenHelp => {
+                let old = std::mem::replace(
+                    &mut self.token_help_state,
+                    TokenHelpState::Error("transitioning".to_string()),
+                );
+                self.token_help_state = old.handle_input(k);
+                if self.token_help_state.is_terminal() {
+                    match self.global_config.as_ref().unwrap().lock().unwrap().attachment_state() {
+                        AttachState::Unattached => *self.mode.lock().unwrap() = VaultMode::Password,
+                        _ => *self.mode.lock().unwrap() = VaultMode::Idle,
+                    }
                 }
                 // don't allow scanning to start during the tour
                 if k != '🔥' { Some(k) } else { None }

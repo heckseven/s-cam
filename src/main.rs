@@ -40,12 +40,29 @@ use crate::config::GlobalConfig;
 /*
 To do:
 
+- Tour improvements
+    - [x] force orientation to be right side up for tour
+    - [x] change away from 'breeding' language -> mix? remix?
+    - [x] put the defon.org url in the tour (get final URL from jeff week of 4/9)
+- Add user logo
+    - [ ] upload of data via base64 over serial
+    - [ ] animation sequence
+    - [ ] menu item to delete user logo
+- Menu has Edit / Delete / Usernames / About / Help / Close
+    - [optional - low priority] Filter -> if any entries, add filter string entry
+    - [x] Usernames brings up list of usernames. If empty, prompt to enter new username.
+    - [x] Edit edits the current entry, if any
+    - [x] Delete deletes the current entry, if any
+    - [x] Help shows "Help" sequence in token mode
+    - [x] About shows about sequence
+    - [-] [optional - medium priority] PIN code -> activates PIN menu
+    - [-] [optional - lowest priority] Backups
 - Bugs
-    - [ ] fix battery voltage reading
-    - [?] fix glitch on WFI transition
-    - [x] tune accelerometer settings
     - [ ] wear badge and confirm that deep sleep works as expected
     - [ ] stability on power management - more testing
+    - [?] fix battery voltage reading (maybe just an issue on old badges???)
+    - [?] fix glitch on WFI transition
+    - [x] tune accelerometer settings
     - [x] deep sleep after X time
     - [x] always auto-boot on warm boot - no bypass on keypress
     - [x] add battery voltage printing on screen in about screen
@@ -59,23 +76,6 @@ To do:
     - [x] add diagnostics to "about" screen
 - Experience
     - [x] flashing eyes when upside down
-- Add user logo
-    - [ ] upload of data via base64 over serial
-    - [ ] animation sequence
-    - [ ] menu item to delete user logo
-- Tour improvements
-    - [ ] change away from 'breeding' language -> mix? remix?
-    - [ ] force orientation to be right side up for tour
-    - [x] put the defon.org url in the tour (get final URL from jeff week of 4/9)
-- Menu has Edit / Delete / Usernames / About / Help / Close
-    - [ ] Usernames brings up list of usernames. If empty, prompt to enter new username.
-    - [optional - low priority] Filter -> if any entries, add filter string entry
-    - [x] Edit edits the current entry, if any
-    - [x] Delete deletes the current entry, if any
-    - [x] Help shows "Help" sequence in token mode
-    - [x] About shows about sequence
-    - [ ] [optional - medium priority] PIN code -> activates PIN menu
-    - [ ] [optional - lowest priority] Backups
 - Stability testing - especially in token mode
     - [x] "use" bug when not plugged into USB after enrolling a credential (system hangs)
     - [x] totp redraw once too many on toggle to pw mode
@@ -104,6 +104,7 @@ pub enum VaultMode {
     About,
     Totp,
     Password,
+    TokenHelp,
 }
 
 fn main() -> ! {
@@ -374,6 +375,66 @@ fn main() -> ! {
                         .expect("messaging error");
                 } else {
                     modals.show_notification(t!("vault.error.nothing_selected", locales::LANG), None).ok();
+                }
+                xous::send_message(
+                    actions_conn,
+                    xous::Message::new_blocking_scalar(ActionOp::ReloadDb.to_usize().unwrap(), 0, 0, 0, 0),
+                )
+                .ok();
+                animate.store(true, Ordering::SeqCst);
+                vault_ui.refresh_draw_list();
+                vault_ui.redraw();
+            }
+            Some(VaultOp::MenuUsernames) => {
+                // TODO: clean this up/consolidate with add_password() routine in actions.rs
+                use std::path::Path;
+                use std::{fs::File, io, io::BufRead, io::Write};
+                animate.store(false, Ordering::SeqCst);
+                let mut usernames: Vec<String> = if let Ok(file) = File::open(VAULT_CONFIG_USERNAMES) {
+                    let reader = std::io::BufReader::new(file);
+                    reader
+                        .lines()
+                        .collect::<io::Result<Vec<String>>>()
+                        .map_err(|_| "Can't read usernames")
+                        .unwrap()
+                } else {
+                    // Create new file and write default content
+                    std::fs::create_dir_all(Path::new(VAULT_CONFIG_USERNAMES).parent().unwrap()).unwrap();
+                    let mut file = File::create(VAULT_CONFIG_USERNAMES).unwrap();
+                    file.write_all("".as_bytes()).unwrap();
+                    Vec::new()
+                };
+                let mut usernames_refs: Vec<&str> = usernames.iter().map(AsRef::as_ref).collect();
+                usernames_refs.push(t!("vault.add_new", locales::LANG));
+                modals.add_list(usernames_refs).unwrap();
+                match modals.get_radiobutton(t!("vault.username", locales::LANG)) {
+                    Ok(response) => {
+                        let placeholder = if response == t!("vault.add_new", locales::LANG) {
+                            None
+                        } else {
+                            // remove the old username
+                            usernames.retain(|u| *u != response);
+                            Some(response)
+                        };
+                        let new_username = &modals
+                            .alert_builder("")
+                            .field(placeholder, None)
+                            .build()
+                            .map_err(|e| format!("Error entering username: {:?}", e))
+                            .unwrap()
+                            .content()[0]
+                            .content;
+                        usernames.push(new_username.to_owned());
+                        let mut file = File::create(VAULT_CONFIG_USERNAMES)
+                            .map_err(|e| format!("Couldn't open usernames file for writing: {:?}", e))
+                            .unwrap();
+                        for username in usernames {
+                            writeln!(file, "{}", username)
+                                .map_err(|e| format!("Couldn't write username: {:?}", e))
+                                .unwrap();
+                        }
+                    }
+                    Err(e) => log::error!("Error selecting user: {:?}", e),
                 }
                 xous::send_message(
                     actions_conn,
@@ -676,8 +737,8 @@ fn main() -> ! {
                 vault_ui.redraw();
             }
             Some(VaultOp::MenuTokenHelp) => {
-                *mode.lock().unwrap() = VaultMode::TokenTour;
-                vault_ui.reset_token_tour_state();
+                *mode.lock().unwrap() = VaultMode::TokenHelp;
+                vault_ui.reset_token_help_state();
                 vault_ui.redraw();
             }
             Some(VaultOp::BadgeMode) => {

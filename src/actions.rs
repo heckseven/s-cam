@@ -88,6 +88,8 @@ pub struct ActionManager {
     rtc_conn: xous::CID,
     // used to type passwords
     usb_dev: usb_bao1x::UsbHid,
+
+    first_time: bool,
 }
 impl ActionManager {
     pub fn new(
@@ -123,6 +125,7 @@ impl ActionManager {
             #[cfg(feature = "board-baosec")]
             rtc_conn,
             usb_dev: usb_bao1x::UsbHid::new(),
+            first_time: true,
         }
     }
 
@@ -1155,9 +1158,11 @@ impl ActionManager {
             }
             _ => {
                 use std::fmt::Write;
-                self.modals
-                    .dynamic_notification(Some(t!("vault.reloading_database", locales::LANG)), None)
-                    .ok();
+                if !self.first_time {
+                    self.modals
+                        .dynamic_notification(Some(t!("vault.reloading_database", locales::LANG)), None)
+                        .ok();
+                }
                 let start = self.tt.elapsed_ms();
                 let mut klen = 0;
                 match self.pddb.borrow().read_dict(VAULT_PASSWORD_DICT, None, Some(256 * 1024)) {
@@ -1265,7 +1270,11 @@ impl ActionManager {
                     }
                 }
                 log::info!("readout took {} ms for {} elements", self.tt.elapsed_ms() - start, klen);
-                self.modals.dynamic_notification_close().ok();
+                if !self.first_time {
+                    self.modals.dynamic_notification_close().ok();
+                } else {
+                    self.first_time = false;
+                }
             }
         }
         self.item_lists.lock().unwrap().filter_reset(self.mode_cache);
