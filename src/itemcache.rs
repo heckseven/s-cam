@@ -236,7 +236,7 @@ impl FilteredListView {
         // step 1. binary search to find if the criteria is even anywhere in the list.
         match self.list.binary_search_by(|probe| probe.sortable_name.partial_cmp(criteria).unwrap()) {
             Ok(mut index) | Err(mut index) => {
-                if !self.list[index].name.to_lowercase().starts_with(criteria) {
+                if !self.list[index.min(self.list.len() - 1)].name.to_lowercase().starts_with(criteria) {
                     self.filter_range = None
                 } else {
                     // step 2. we have to go backwards in the list because if we have several matches, we are
@@ -281,6 +281,10 @@ impl FilteredListView {
     fn filter_start(&self) -> usize { self.filter_range.clone().unwrap_or(0..0).start }
 
     pub fn full_list(&mut self) -> &mut [ListItem] { &mut self.list[..] }
+
+    pub fn filtered_list(&mut self) -> &mut [ListItem] {
+        if let Some(r) = self.filter_range.as_ref() { &mut self.list[r.clone()] } else { &mut self.list[..] }
+    }
 }
 pub struct ItemLists {
     totp: FilteredListView,
@@ -356,7 +360,7 @@ impl ItemLists {
         self.totp.clear();
     }
 
-    /// Sets up a filter for the selected list type, returns a default selection index.
+    /// Sets up a filter for the selected list type
     pub fn filter(&mut self, list_type: VaultMode, criteria: &String) {
         self.li_mut(list_type).filter(criteria);
     }
@@ -368,5 +372,9 @@ impl ItemLists {
 
     pub fn full_list(&mut self, list_type: VaultMode) -> &mut [ListItem] {
         self.li_mut(list_type).full_list()
+    }
+
+    pub fn filtered_list(&mut self, list_type: VaultMode) -> &mut [ListItem] {
+        self.li_mut(list_type).filtered_list()
     }
 }

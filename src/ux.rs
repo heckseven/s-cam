@@ -478,6 +478,7 @@ pub struct VaultUi {
     animate: Arc<AtomicBool>,
     global_config: Option<Arc<Mutex<GlobalConfig>>>,
     orientation: DisplayOrientation,
+    filter: String,
 
     /// totp redraw state
     totp_code: Option<String>,
@@ -547,6 +548,7 @@ impl VaultUi {
             item_lists,
             mode,
             animate,
+            filter: String::new(),
             orientation: DisplayOrientation::Normal,
             totp_code: None,
             last_epoch: crate::totp::get_current_unix_time().expect("couldn't get current time") / 30,
@@ -594,7 +596,7 @@ impl VaultUi {
             log::warn!("Couldn't get lock in refresh_draw_list; aborting the refresh");
             return;
         };
-        let full_list = locked_lists.full_list(mode);
+        let full_list = locked_lists.filtered_list(mode);
         self.display_list.clear();
         for item in full_list {
             self.display_list.add_item(0, &item.name());
@@ -969,7 +971,7 @@ impl VaultUi {
                     let mut box_text = TextView::new(
                         Gid::dummy(),
                         TextBounds::CenteredBot(Rectangle::new(
-                            Point::new(0, screensize.y / 2),
+                            Point::new(0, 0),
                             Point::new(screensize.x, screensize.y / 2 + self.item_height),
                         )),
                     );
@@ -977,7 +979,15 @@ impl VaultUi {
                     box_text.clear_area = true;
                     box_text.invert = true;
                     box_text.style = self.style;
-                    write!(box_text, "{}", t!("vault.no_items", locales::LANG)).ok();
+                    if self.filter.len() == 0 {
+                        write!(
+                            box_text,
+                            "Add passwords using QR codes via browser extension: see defcon.org/34b"
+                        )
+                        .ok();
+                    } else {
+                        write!(box_text, "No passwords matching filter: {}", &self.filter).ok();
+                    }
                     self.gfx.draw_textview(&mut box_text).expect("couldn't post empty notification");
                     self.gfx.flush().ok();
                     return;
@@ -1616,8 +1626,17 @@ impl VaultUi {
     }
 
     pub(crate) fn filter(&mut self, criteria: &String) {
-        self.item_lists.lock().unwrap().filter(self.mode.lock().unwrap().clone(), criteria);
+        self.filter = criteria.to_owned();
+        // only filter passwords in this implementation
+        if self.filter.is_empty() {
+            self.item_lists.lock().unwrap().filter_reset(VaultMode::Password);
+        } else {
+            self.item_lists.lock().unwrap().filter_reset(VaultMode::Password);
+            self.item_lists.lock().unwrap().filter(VaultMode::Password, criteria);
+        }
     }
+
+    pub(crate) fn get_filter(&self) -> String { self.filter.to_owned() }
 
     pub(crate) fn handle_autotype(&mut self, guid: String, type_username: bool) -> Result<(), String> {
         // we re-fetch the entry for autotype, because the PDDB could have unmounted a basis.

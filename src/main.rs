@@ -40,16 +40,16 @@ use crate::config::GlobalConfig;
 /*
 To do:
 
-- Tour improvements
-    - [x] force orientation to be right side up for tour
-    - [x] change away from 'breeding' language -> mix? remix?
-    - [x] put the defon.org url in the tour (get final URL from jeff week of 4/9)
 - Add user logo
     - [ ] upload of data via base64 over serial
     - [ ] animation sequence
     - [ ] menu item to delete user logo
+- Tour improvements
+    - [x] force orientation to be right side up for tour
+    - [x] change away from 'breeding' language -> mix? remix?
+    - [x] put the defon.org url in the tour (get final URL from jeff week of 4/9)
 - Menu has Edit / Delete / Usernames / About / Help / Close
-    - [optional - low priority] Filter -> if any entries, add filter string entry
+    - [x] Filter -> if any entries, add filter string entry
     - [x] Usernames brings up list of usernames. If empty, prompt to enter new username.
     - [x] Edit edits the current entry, if any
     - [x] Delete deletes the current entry, if any
@@ -442,6 +442,19 @@ fn main() -> ! {
                 )
                 .ok();
                 animate.store(true, Ordering::SeqCst);
+                vault_ui.refresh_draw_list();
+                vault_ui.redraw();
+            }
+            Some(VaultOp::MenuFilter) => {
+                let new_filter = &modals
+                    .alert_builder("Filter by:")
+                    .field(Some(vault_ui.get_filter()), None)
+                    .build()
+                    .map_err(|e| format!("Error getting filter: {:?}", e))
+                    .unwrap()
+                    .content()[0]
+                    .content;
+                vault_ui.filter(&new_filter);
                 vault_ui.refresh_draw_list();
                 vault_ui.redraw();
             }
