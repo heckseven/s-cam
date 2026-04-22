@@ -45,7 +45,7 @@ impl TryFrom<&str> for TotpAlgorithm {
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         match s {
-            "SHA1" => Ok(TotpAlgorithm::HmacSha1),
+            "SHA1" | "None" => Ok(TotpAlgorithm::HmacSha1),
             "SHA256" => Ok(TotpAlgorithm::HmacSha256),
             "SHA512" => Ok(TotpAlgorithm::HmacSha512),
             _ => Err(xous::Error::InvalidString),

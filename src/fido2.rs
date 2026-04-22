@@ -14,7 +14,12 @@ use xous_usb_hid::device::fido::*;
 use crate::vendor_commands;
 use crate::vendor_commands::VendorSession;
 
-pub(crate) fn fido2_handler(conn: xous::CID, allow_host: Arc<AtomicBool>, opensk_mutex: Arc<Mutex<i32>>) {
+pub(crate) fn fido2_handler(
+    conn: xous::CID,
+    allow_host: Arc<AtomicBool>,
+    opensk_mutex: Arc<Mutex<i32>>,
+    animate: Arc<AtomicBool>,
+) {
     // spawn the FIDO2 USB handler
     let _ = thread::spawn({
         move || {
@@ -23,7 +28,7 @@ pub(crate) fn fido2_handler(conn: xous::CID, allow_host: Arc<AtomicBool>, opensk
             let pddb = pddb::Pddb::new();
             pddb.is_mounted_blocking();
 
-            let env = XousEnv::new(conn);
+            let env = XousEnv::new(conn, animate);
             let mut ctap = dc34_vault::Ctap::new(env, Instant::now());
             loop {
                 match ctap.env().main_hid_connection().u2f_wait_incoming() {

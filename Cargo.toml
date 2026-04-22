@@ -59,7 +59,7 @@ aes = { default-features = false, features = [
 
 # ux formatting
 hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
-chrono = { version = "0.4.33", default-features = false, features = ["std"] }
+chrono = { version = "0.4.33", default-features = false, features = ["std", "clock"] }
 
 # password generation
 passwords = "=3.1.9"

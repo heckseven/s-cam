@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 use std::io::{Read, Write};
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicBool};
 use std::time::{Duration, Instant};
 
 use bao1x_hal::board::{BOOKEND_END, BOOKEND_START};
@@ -14,7 +14,6 @@ use xous_names::XousNames;
 use xous_usb_hid::device::fido::*;
 
 pub use self::storage::XousStorage;
-use crate::KEEPALIVE_DELAY_MS;
 use crate::api::attestation_store::AttestationStore;
 use crate::api::connection::{HidConnection, SendOrRecvError, SendOrRecvResult, SendOrRecvStatus};
 use crate::api::customization::{CustomizationImpl, DEFAULT_CUSTOMIZATION};
@@ -25,6 +24,7 @@ use crate::ctap::hid::{CtapHid, CtapHidCommand, KeepaliveStatus, ProcessedPacket
 use crate::env::Env;
 use crate::env::xous::storage::XousUpgradeStorage;
 use crate::{AppInfo, basis_change, deserialize_app_info, serialize_app_info};
+use crate::{KEEPALIVE_DELAY_MS, VaultOp};
 
 pub const U2F_APP_DICT: &'static str = "fido.u2fapps";
 const KEEPALIVE_DELAY: Duration = Duration::from_millis(KEEPALIVE_DELAY_MS);
@@ -94,12 +94,14 @@ pub struct XousEnv {
     modals: Modals,
     last_user_presence_request: Option<Instant>,
     ctap1_cid: xous::CID,
+    animate: Arc<AtomicBool>,
+    main_loop_conn: xous::CID,
 }
 
 impl XousEnv {
     /// Returns the unique instance of the Xous environment.
     /// Blocks until the PDDB is mounted
-    pub fn new(conn: xous::CID) -> Self {
+    pub fn new(conn: xous::CID, animate: Arc<AtomicBool>) -> Self {
         // We rely on `take_storage` to ensure that this function is called only once.
         let storage = XousStorage {};
         let store = Store::new(storage).ok().unwrap();
@@ -599,6 +601,8 @@ impl XousEnv {
             modals: modals::Modals::new(&xns).unwrap(),
             last_user_presence_request: None,
             ctap1_cid,
+            animate,
+            main_loop_conn: conn,
         }
     }
 
@@ -665,6 +669,8 @@ impl UserPresence for XousEnv {
         cid: [u8; 4],
     ) -> UserPresenceResult {
         log::info!("{}VAULT.PERMISSION,{}", BOOKEND_START, BOOKEND_END);
+        let saved_animate = self.animate.load(Ordering::SeqCst);
+        self.animate.store(false, Ordering::SeqCst);
         let reason = reason.unwrap_or(String::new());
         let kbhit = Arc::new(AtomicU32::new(0));
         let expiration = Instant::now().checked_add(timeout).expect("duration bug");
@@ -697,7 +703,10 @@ impl UserPresence for XousEnv {
                 log::info!("countdown: {}", remaining);
                 // only update the UX once per second
                 self.modals
-                    .dynamic_notification_update(None, Some(&format!("{}\n{}s", reason, remaining)))
+                    .dynamic_notification_update(
+                        None,
+                        Some(&format!("{}\n{}s\n⬇ to deny", reason, remaining)),
+                    )
                     .unwrap();
                 last_remaining = remaining;
             }
@@ -705,16 +714,28 @@ impl UserPresence for XousEnv {
             // handle exit cases
             if remaining == 0 {
                 self.modals.dynamic_notification_close().ok();
+                self.animate.store(saved_animate, Ordering::SeqCst);
+                if !saved_animate {
+                    redraw(self.main_loop_conn);
+                }
                 return Err(UserPresenceError::Timeout);
             }
             let key_hit = kbhit.load(Ordering::SeqCst);
             if key_hit != 0 && key_hit != '↓' as u32 {
                 // approve
                 self.modals.dynamic_notification_close().ok();
+                self.animate.store(saved_animate, Ordering::SeqCst);
+                if !saved_animate {
+                    redraw(self.main_loop_conn);
+                }
                 return Ok(());
             } else if key_hit == '↓' as u32 {
                 // deny
                 self.modals.dynamic_notification_close().ok();
+                self.animate.store(saved_animate, Ordering::SeqCst);
+                if !saved_animate {
+                    redraw(self.main_loop_conn);
+                }
                 return Err(UserPresenceError::Declined);
             }
 
@@ -765,6 +786,10 @@ impl UserPresence for XousEnv {
     }
 
     fn check_complete(&mut self) {}
+}
+
+fn redraw(conn: xous::CID) {
+    xous::send_message(conn, xous::Message::new_scalar(VaultOp::Redraw.to_usize().unwrap(), 0, 0, 0, 0)).ok();
 }
 
 impl FirmwareProtection for XousEnv {

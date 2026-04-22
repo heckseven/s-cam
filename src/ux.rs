@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use bao1x_hal_service::Adc;
 use blitstr2::GlyphStyle;
+use chrono::Datelike;
 use qrcode::{Color, QrCode};
 use ux_api::minigfx::*;
 use ux_api::service::api::Gid;
@@ -899,6 +900,20 @@ impl VaultUi {
             }
             VaultMode::Totp => {
                 self.clear_area();
+                // check if time is set
+                if chrono::Local::now().year() < 2026 {
+                    // time is not set, print a warning to set time instead of the regular UI
+                    let mut tv = TextView::new(Gid::dummy(), TextBounds::CenteredTop(TotpLayout::list_box()));
+                    tv.invert = true;
+                    tv.margin = Point::new(0, 0);
+                    tv.style = GlyphStyle::Bold;
+                    tv.draw_border = false;
+                    write!(tv, "Time is not set. Scan QR code to set time. See defcon.org/34b for details.")
+                        .ok();
+                    self.gfx.draw_textview(&mut tv).ok();
+                    self.gfx.flush().ok();
+                    return;
+                }
                 // decorative box around code
                 let mut totp_box = TotpLayout::totp_box();
                 totp_box.border.style = DrawStyle::new(PixelColor::Dark, PixelColor::Light, 1);
@@ -932,7 +947,17 @@ impl VaultUi {
                 self.gfx.draw_textview(&mut tv).expect("couldn't draw text");
 
                 // list of codes to pick from
-                self.display_list.draw(TotpLayout::timer_box().br().y);
+                if self.totp_code.is_some() {
+                    self.display_list.draw(TotpLayout::timer_box().br().y);
+                } else {
+                    let mut tv = TextView::new(Gid::dummy(), TextBounds::CenteredTop(TotpLayout::list_box()));
+                    tv.invert = true;
+                    tv.margin = Point::new(0, 0);
+                    tv.style = self.style;
+                    tv.draw_border = false;
+                    write!(tv, "Scan QR code to add TOTP items").ok();
+                    self.gfx.draw_textview(&mut tv).ok();
+                }
 
                 // draw the timer element
                 let mut object_list = ObjectList::new();
@@ -978,7 +1003,7 @@ impl VaultUi {
                     box_text.draw_border = false;
                     box_text.clear_area = true;
                     box_text.invert = true;
-                    box_text.style = self.style;
+                    box_text.style = GlyphStyle::Bold;
                     if self.filter.len() == 0 {
                         write!(
                             box_text,

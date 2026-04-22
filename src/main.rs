@@ -40,6 +40,11 @@ use crate::config::GlobalConfig;
 /*
 To do:
 
+- [x] TOTP deserialization error from test site
+- [x] fix animation rendering error when enrolling TOTPs
+- [ ] add mutation rate thing to main loop
+- [x] font size in bao-video
+
 - Add user logo
     - [ ] upload of data via base64 over serial
     - [ ] animation sequence
@@ -166,7 +171,7 @@ fn main() -> ! {
         action_active.clone(),
     );
 
-    fido2::fido2_handler(conn, allow_host.clone(), opensk_mutex.clone());
+    fido2::fido2_handler(conn, allow_host.clone(), opensk_mutex.clone(), animate.clone());
 
     let menu_sid = xous::create_server().unwrap();
     let menu_mgr = submenu::create_submenu(conn, actions_conn, menu_sid);

@@ -1358,6 +1358,11 @@ impl ActionManager {
                                                 let url = &rest[..time_pos];
                                                 let time_str = &rest[time_pos + 6..];
                                                 self.set_time(time_str);
+
+                                                if mode_now != VaultMode::Password {
+                                                    // just set the time and don't do anything
+                                                    return;
+                                                }
                                                 log::info!("URL: {}", url);
                                                 // now try to lookup the password; if it does not exist, offer
                                                 // to create a password
@@ -1469,10 +1474,7 @@ impl ActionManager {
                                 }
                             }
                             "time" => {
-                                // todo
-                            }
-                            "search" => {
-                                // todo
+                                self.set_time(data);
                             }
                             _ => {
                                 self.modals
