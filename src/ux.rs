@@ -24,7 +24,7 @@ const PAGE_INCREMENT: usize = 6;
 
 const FACTORY_QR_STRING: &'static str = "test://factory-test-data-lorem-ipsum-data-data";
 const FACTORY_TIMEOUT_S: u64 = 90;
-const JIG_TIMEOUT: u64 = 30;
+const JIG_TIMEOUT: u64 = 35;
 // full string on QR code needs to be factory://factory-aae949f6969-lorem-ipsum-data
 pub const FACTORY_STANDALONE_STRING: &'static str = "factory-aae949f6969-lorem-ipsum-data";
 
@@ -777,20 +777,17 @@ impl VaultUi {
                 );
                 tv.invert = true;
                 tv.margin = Point::new(1, 1);
-                tv.style = GlyphStyle::Regular;
+                tv.style = GlyphStyle::Bold;
                 tv.draw_border = false;
+                // have to move this out or we lock up
+                let badge_type = self.global_config.as_ref().unwrap().lock().unwrap().badge_type();
                 match self.global_config.as_ref().unwrap().lock().unwrap().attachment_state() {
                     AttachState::Mismatched => {
-                        write!(tv, "Mismatched Badge!").ok();
+                        write!(tv, "Mismatched!").ok();
                         self.gfx.draw_textview(&mut tv).ok();
                     }
                     AttachState::FirstMate => {
-                        write!(
-                            tv,
-                            "Attach: {:?}",
-                            self.global_config.as_ref().unwrap().lock().unwrap().badge_type()
-                        )
-                        .ok();
+                        write!(tv, "Attach: {:?}", badge_type).ok();
                         self.gfx.draw_textview(&mut tv).ok();
                     }
                     _ => {
@@ -1305,13 +1302,13 @@ impl VaultUi {
             },
             VaultMode::About => match &self.about_state {
                 AboutState::Bunnie { seen_press: _ } => {
-                    self.gfx.bitmap_diffusion(&bitmaps::bunnie::BITMAP, None, None).ok();
+                    self.gfx.bitmap(&bitmaps::bunnie::BITMAP, None, None).ok();
                 }
                 AboutState::BaochipLogo { seen_press: _ } => {
-                    self.gfx.bitmap_diffusion(&bitmaps::baochip_about::BITMAP, None, None).ok();
+                    self.gfx.bitmap(&bitmaps::baochip_about::BITMAP, None, None).ok();
                 }
                 AboutState::Cheeso { seen_press: _ } => {
-                    self.gfx.bitmap_diffusion(&bitmaps::cheeso::BITMAP, None, None).ok();
+                    self.gfx.bitmap(&bitmaps::cheeso::BITMAP, None, None).ok();
                 }
                 AboutState::Diagnostics { seen_press: _ } => {
                     self.gfx.clear().ok();
@@ -1356,6 +1353,7 @@ impl VaultUi {
                         }
                     )
                     .ok();
+                    writeln!(msg, "{}", self.tt.get_version()).ok();
                     msg.draw_border = false;
                     msg.clear_area = false;
                     msg.ellipsis = true;
@@ -1363,7 +1361,7 @@ impl VaultUi {
                     self.gfx.draw_textview(&mut msg).unwrap();
                 }
                 AboutState::InfoScreen { seen_press: _ } => {
-                    self.gfx.bitmap_diffusion(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
+                    self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
                 }
                 _ => {}
             },

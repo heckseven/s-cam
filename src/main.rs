@@ -41,68 +41,12 @@ use crate::config::GlobalConfig;
 /*
 To do:
 
-Tester:
-- [x] DEFCON URL: https://defcon.org/34b
-- [x] test mode in factory new state
-    - trigger on specific QR scan
-    - flip upside down
-    - push the switches after assembly, scan qr code
-- [x] add stand-alone assembled test after badge assembly - trigger by special QR code
-Testjig:
-- [x] fix the screen distortion on the tester
-- [x] change short circuit test delay on final test to be a little longer - might be measuring power-on inrush
-- [x] windows-based imaging flow for rpi to transfer jig image - ask Claude how to do
-
-- [ ] baobit release - https://github.com/sbellem/baobit?tab=readme-ov-file#4-preparing-a-release
-
-- [x] TOTP deserialization error from test site
-- [x] fix animation rendering error when enrolling TOTPs
-- [x] add mutation rate thing to main loop
-- [x] font size in bao-video
-
-- Add user logo
-    - [x] upload of data via base64 over serial
-    - [x] animation sequence
-    - [x] chase down why animation isn't running after camera active
-- Tour improvements
-    - [x] force orientation to be right side up for tour
-    - [x] change away from 'breeding' language -> mix? remix?
-    - [x] put the defon.org url in the tour (get final URL from jeff week of 4/9)
-- Menu has Edit / Delete / Usernames / About / Help / Close
-    - [x] Filter -> if any entries, add filter string entry
-    - [x] Usernames brings up list of usernames. If empty, prompt to enter new username.
-    - [x] Edit edits the current entry, if any
-    - [x] Delete deletes the current entry, if any
-    - [x] Help shows "Help" sequence in token mode
-    - [x] About shows about sequence
-    - [-] [optional - medium priority] PIN code -> activates PIN menu
-    - [-] [optional - lowest priority] Backups
-- Bugs
+- Testing
     - [ ] wear badge and confirm that deep sleep works as expected
+    - [ ] more color testing (using beta build with test commands)
     - [ ] stability on power management - more testing
-    - [?] fix battery voltage reading (maybe just an issue on old badges???)
-    - [?] fix glitch on WFI transition
-    - [x] tune accelerometer settings
-    - [x] deep sleep after X time
-    - [x] always auto-boot on warm boot - no bypass on keypress
-    - [x] add battery voltage printing on screen in about screen
-    - [x] power-off on vbat low - low battery screen
-    - [x] Idle after X time
-    - [x] disable idle on Vbus detect
-    - [x] Wake up on key press or accelerometer
-- Factory improvements
-    - [x] on first badge mate, show note indicating badge initialization, instead of "mismatch" error
-    - [x] on token mode, don't show "mismatch" error
-    - [x] add diagnostics to "about" screen
-- Experience
-    - [x] flashing eyes when upside down
-- Stability testing - especially in token mode
-    - [x] "use" bug when not plugged into USB after enrolling a credential (system hangs)
-    - [x] totp redraw once too many on toggle to pw mode
-    - [x] no passwords present on initial entry to pw mode
-    - CI setup with opensk tester
-    - [-] small flourish: resume from deep sleep into previous vault state
-
+    - [ ] check for light glitch on WFI transitions
+    - [ ] check for battery voltage reading correctness
 */
 
 pub(crate) const SERVER_NAME_VAULT2: &str = "_Vault2_";
@@ -280,7 +224,7 @@ fn main() -> ! {
                     boot_sent = true;
                     global_config.lock().unwrap().power_manager_boot_finished();
                 }
-                if mutation_param > 120 {
+                if mutation_param > 160 {
                     mutation_param = mutation_param.saturating_sub(2);
                 } else {
                     mutation_param = mutation_param.saturating_sub(1);
@@ -362,6 +306,10 @@ fn main() -> ! {
                             menu_active = true;
                         }
                         '🔥' => {
+                            global_config
+                                .lock()
+                                .unwrap()
+                                .set_mutation_rate(MutationRate::from_param(mutation_param));
                             vault_ui.camera_transition();
                             let prior_mode = animate.swap(false, Ordering::SeqCst);
                             xous::send_message(
@@ -542,19 +490,6 @@ fn main() -> ! {
                 )
                 .ok();
             }
-            Some(VaultOp::ShowQr) => {
-                let previous = animate.load(Ordering::SeqCst);
-                animate.store(false, Ordering::SeqCst);
-                let mut test_data = [0u8; 40];
-                #[cfg(feature = "hosted-baosec")]
-                let mut trng = bao1x_emu::trng::Trng::new(&xns).unwrap();
-                #[cfg(not(feature = "hosted-baosec"))]
-                let mut trng = bao1x_hal_service::trng::Trng::new(&xns).unwrap();
-                trng.fill_bytes_via_next(&mut test_data);
-                let encoded = base45::encode(&test_data);
-                modals.show_notification("", Some(&encoded)).ok();
-                animate.store(previous, Ordering::SeqCst);
-            }
             Some(VaultOp::AbortQr) => {
                 if global_config.lock().unwrap().is_badge_attached() {
                     *mode.lock().unwrap() = VaultMode::Idle;
@@ -563,6 +498,9 @@ fn main() -> ! {
                 } else {
                     vault_ui.redraw();
                 }
+                // reset rates
+                global_config.lock().unwrap().set_mutation_rate(MutationRate::Baseline);
+                mutation_param = 0;
             }
             Some(VaultOp::HandleQr) => {
                 let mode_now = { *mode.lock().unwrap() };
@@ -593,10 +531,6 @@ fn main() -> ! {
                                     );
                                     // also generate a new nonce for myself now
                                     global_config.lock().unwrap().generate_my_nonce();
-                                    global_config
-                                        .lock()
-                                        .unwrap()
-                                        .set_mutation_rate(MutationRate::from_param(mutation_param));
                                     let gene = global_config.lock().unwrap().get_padded_gamete().unwrap();
                                     let aead = global_config.lock().unwrap().cipher();
                                     let payload = Payload { msg: &gene, aad: &[] };
@@ -661,9 +595,6 @@ fn main() -> ! {
                                             if let Some(mut sperm) =
                                                 Haploid::deserialize(&msg[..size_of::<Haploid>()])
                                             {
-                                                global_config.lock().unwrap().set_mutation_rate(
-                                                    MutationRate::from_param(mutation_param),
-                                                );
                                                 let incoming_type =
                                                     BadgeType::try_from(msg[15]).unwrap_or(BadgeType::None);
 
@@ -736,8 +667,6 @@ fn main() -> ! {
                                         }
                                     }
                                 }
-                                // reset rates
-                                global_config.lock().unwrap().set_mutation_rate(MutationRate::Baseline);
                             }
                             Err(e) => {
                                 log::error!("Invalid gene code: {:?} / {}", e, &s.s);
@@ -769,6 +698,9 @@ fn main() -> ! {
                         }
                     }
                 }
+                // reset rates
+                global_config.lock().unwrap().set_mutation_rate(MutationRate::Baseline);
+                mutation_param = 0;
             }
             Some(VaultOp::TourContinue) => {
                 // do nothing, the slide show will continue
@@ -867,6 +799,10 @@ fn main() -> ! {
                     }
                 }
             }),
+            Some(VaultOp::Jig) => {
+                *mode.lock().unwrap() = VaultMode::FactoryTest;
+                vault_ui.redraw();
+            }
             _ => {
                 log::error!("Got unknown message: {:?}", msg);
             }

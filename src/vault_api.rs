@@ -59,13 +59,14 @@ pub(crate) enum VaultOp {
 
     BasisChange,
 
-    ShowQr,
     // for QR responses not handled by the action manager
     HandleQr,
     AbortQr,
 
     // monkey patch for last-minute custom image feature - discriminant is hard-coded into dc34-console
     ImageLoad = 1024,
+    // monkey patch to force jig mode, for re-tested units in the factory
+    Jig = 1025,
 }
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]

@@ -27,7 +27,10 @@ pub enum AttachState {
 }
 impl AttachState {
     pub fn attached(&self) -> bool {
-        *self == AttachState::FactoryNew || *self == AttachState::Matched || *self == AttachState::Mismatched
+        *self == AttachState::FactoryNew
+            || *self == AttachState::Matched
+            || *self == AttachState::Mismatched
+            || *self == AttachState::FirstMate
     }
 }
 /// Structure for tracking global shared state. Everything in here
@@ -282,7 +285,10 @@ impl GlobalConfig {
 
     pub fn badge_type(&self) -> BadgeType { self.badge_type }
 
-    pub fn set_mutation_rate(&mut self, new_rate: MutationRate) { self.mutation_rate = new_rate; }
+    pub fn set_mutation_rate(&mut self, new_rate: MutationRate) {
+        self.mutation_rate = new_rate;
+        log::info!("Mutation rate set to {:?}", new_rate);
+    }
 
     pub fn generate_my_nonce(&mut self) {
         loop {
@@ -366,7 +372,7 @@ impl GlobalConfig {
 
     pub fn display_fading(&mut self, enable: bool) {
         if self.display_fade_cache != enable {
-            log::info!("setting fade: {:?}", enable);
+            log::debug!("setting fade: {:?}", enable);
             xous::send_message(
                 self.power_server,
                 xous::Message::new_scalar(
