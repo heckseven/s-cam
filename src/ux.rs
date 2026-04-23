@@ -1547,10 +1547,9 @@ impl VaultUi {
                         )
                         .ok();
                         self.refresh_draw_list();
-                        // self.animate.store(true, Ordering::SeqCst);
                     }
                     _ => {
-                        log::warn!("Password unhandled char: {}", k)
+                        // log::warn!("Password unhandled char: {}", k)
                     }
                 }
                 Some(k)
@@ -1570,7 +1569,6 @@ impl VaultUi {
                         }
                     }
                     '→' => {
-                        // self.animate.store(false, Ordering::SeqCst);
                         {
                             // lock needs to go out of scope so we don't hang the later ops
                             *self.mode.lock().unwrap() = VaultMode::Password;
@@ -1590,7 +1588,7 @@ impl VaultUi {
                         self.refresh_draw_list();
                     }
                     _ => {
-                        log::warn!("TOTP unhandled char: {}", k)
+                        // log::warn!("TOTP unhandled char: {}", k)
                     }
                 }
                 self.totp_code = None;
@@ -1615,7 +1613,6 @@ impl VaultUi {
                         {
                             *self.mode.lock().unwrap() = VaultMode::ShowKey { quantum: 0 };
                         }
-                        // self.animate.store(true, Ordering::SeqCst);
                     }
                     None
                 }
@@ -1645,7 +1642,6 @@ impl VaultUi {
             // this is the state of the donor in response to query
             VaultMode::ResponseGene { quantum: _ } => {
                 self.global_config.as_mut().unwrap().lock().unwrap().clear_nonces();
-                // self.animate.store(false, Ordering::SeqCst);
                 *self.mode.lock().unwrap() = VaultMode::Idle;
                 // eat the 'fire' button if it's pressed - we just want to go back to the idle
                 // screen in all button presses
