@@ -512,6 +512,10 @@ pub struct VaultUi {
     adc: Adc,
     batt_polled: bool,
     low_batt_since: Option<Instant>,
+
+    pub user_bitmap: Option<[u32; 512]>,
+    phase: bool,
+    edge: bool,
 }
 
 impl VaultUi {
@@ -573,6 +577,9 @@ impl VaultUi {
             adc: Adc::new(),
             batt_polled: false,
             low_batt_since: None,
+            user_bitmap: None,
+            phase: false,
+            edge: false,
         }
     }
 
@@ -746,7 +753,20 @@ impl VaultUi {
 
         match mode_at_entry {
             VaultMode::Idle | VaultMode::ConfirmGene | VaultMode::IdleDevMode => {
-                self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
+                if let Some(bitmap) = self.user_bitmap.as_ref() {
+                    let edge = (self.tt.elapsed_ms() / 3000) % 2 == 0;
+                    if self.edge != edge {
+                        if self.phase {
+                            self.gfx.bitmap_diffusion(bitmap, None, None).ok();
+                        } else {
+                            self.gfx.bitmap_diffusion(&bitmaps::dc_logo::BITMAP, None, None).ok();
+                        }
+                        self.phase = !self.phase;
+                    }
+                    self.edge = edge;
+                } else {
+                    self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
+                }
 
                 // flag a badge mismatch, mostly for diagnostics at the factory & at the show
                 let mut tv = TextView::new(
@@ -1214,40 +1234,43 @@ impl VaultUi {
                 } else {
                     match &self.tour_state {
                         TourState::Welcome { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_welcome::BITMAP, None, None).ok();
+                            self.gfx.bitmap_diffusion(&bitmaps::tour_welcome::BITMAP, None, None).ok();
                         }
+                        // no diffusion so the menu transition is snappy
                         TourState::LightGeneExplainer1 { seen_press: _ } => {
                             self.gfx.bitmap(&bitmaps::tour_light_gene_explainer1::BITMAP, None, None).ok();
                         }
                         TourState::LightGeneExplainer2 { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_light_gene_explainer2::BITMAP, None, None).ok();
+                            self.gfx
+                                .bitmap_diffusion(&bitmaps::tour_light_gene_explainer2::BITMAP, None, None)
+                                .ok();
                         }
                         TourState::Breeding1 { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_breeding1::BITMAP, None, None).ok();
+                            self.gfx.bitmap_diffusion(&bitmaps::tour_breeding1::BITMAP, None, None).ok();
                         }
                         TourState::Breeding2 { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_breeding2::BITMAP, None, None).ok();
+                            self.gfx.bitmap_diffusion(&bitmaps::tour_breeding2::BITMAP, None, None).ok();
                         }
                         TourState::Breeding3 { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_breeding3::BITMAP, None, None).ok();
+                            self.gfx.bitmap_diffusion(&bitmaps::tour_breeding3::BITMAP, None, None).ok();
                         }
                         TourState::Breeding4 { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_breeding4::BITMAP, None, None).ok();
+                            self.gfx.bitmap_diffusion(&bitmaps::tour_breeding4::BITMAP, None, None).ok();
                         }
                         TourState::BadgeRecap { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_recap::BITMAP, None, None).ok();
+                            self.gfx.bitmap_diffusion(&bitmaps::tour_recap::BITMAP, None, None).ok();
                         }
                         TourState::TokenIntro1 { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_token_intro1::BITMAP, None, None).ok();
+                            self.gfx.bitmap_diffusion(&bitmaps::tour_token_intro1::BITMAP, None, None).ok();
                         }
                         TourState::TokenIntro2 { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_token_intro2::BITMAP, None, None).ok();
+                            self.gfx.bitmap_diffusion(&bitmaps::tour_token_intro2::BITMAP, None, None).ok();
                         }
                         TourState::TokenIntro3 { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_token_intro3::BITMAP, None, None).ok();
+                            self.gfx.bitmap_diffusion(&bitmaps::tour_token_intro3::BITMAP, None, None).ok();
                         }
                         TourState::InfoScreen { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
+                            self.gfx.bitmap_diffusion(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
                         }
                         _ => {}
                     }
@@ -1280,13 +1303,13 @@ impl VaultUi {
             },
             VaultMode::About => match &self.about_state {
                 AboutState::Bunnie { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::bunnie::BITMAP, None, None).ok();
+                    self.gfx.bitmap_diffusion(&bitmaps::bunnie::BITMAP, None, None).ok();
                 }
                 AboutState::BaochipLogo { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::baochip_about::BITMAP, None, None).ok();
+                    self.gfx.bitmap_diffusion(&bitmaps::baochip_about::BITMAP, None, None).ok();
                 }
                 AboutState::Cheeso { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::cheeso::BITMAP, None, None).ok();
+                    self.gfx.bitmap_diffusion(&bitmaps::cheeso::BITMAP, None, None).ok();
                 }
                 AboutState::Diagnostics { seen_press: _ } => {
                     self.gfx.clear().ok();
@@ -1338,7 +1361,7 @@ impl VaultUi {
                     self.gfx.draw_textview(&mut msg).unwrap();
                 }
                 AboutState::InfoScreen { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
+                    self.gfx.bitmap_diffusion(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
                 }
                 _ => {}
             },
@@ -1521,7 +1544,7 @@ impl VaultUi {
                         )
                         .ok();
                         self.refresh_draw_list();
-                        self.animate.store(true, Ordering::SeqCst);
+                        // self.animate.store(true, Ordering::SeqCst);
                     }
                     _ => {
                         log::warn!("Password unhandled char: {}", k)
@@ -1544,7 +1567,7 @@ impl VaultUi {
                         }
                     }
                     '→' => {
-                        self.animate.store(false, Ordering::SeqCst);
+                        // self.animate.store(false, Ordering::SeqCst);
                         {
                             // lock needs to go out of scope so we don't hang the later ops
                             *self.mode.lock().unwrap() = VaultMode::Password;
@@ -1589,7 +1612,7 @@ impl VaultUi {
                         {
                             *self.mode.lock().unwrap() = VaultMode::ShowKey { quantum: 0 };
                         }
-                        self.animate.store(true, Ordering::SeqCst);
+                        // self.animate.store(true, Ordering::SeqCst);
                     }
                     None
                 }
@@ -1619,7 +1642,7 @@ impl VaultUi {
             // this is the state of the donor in response to query
             VaultMode::ResponseGene { quantum: _ } => {
                 self.global_config.as_mut().unwrap().lock().unwrap().clear_nonces();
-                self.animate.store(false, Ordering::SeqCst);
+                // self.animate.store(false, Ordering::SeqCst);
                 *self.mode.lock().unwrap() = VaultMode::Idle;
                 // eat the 'fire' button if it's pressed - we just want to go back to the idle
                 // screen in all button presses
@@ -1628,6 +1651,7 @@ impl VaultUi {
             // catch-all for now
             _ => Some(k),
         };
+        self.animate.store(self.mode.lock().unwrap().should_animate(), Ordering::SeqCst);
         // don't redraw if menu is being raised
         if k != '∴' {
             self.redraw();

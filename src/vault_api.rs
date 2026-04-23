@@ -63,6 +63,9 @@ pub(crate) enum VaultOp {
     // for QR responses not handled by the action manager
     HandleQr,
     AbortQr,
+
+    // monkey patch for last-minute custom image feature - discriminant is hard-coded into dc34-console
+    ImageLoad = 1024,
 }
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]

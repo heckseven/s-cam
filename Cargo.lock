@@ -665,6 +665,7 @@ dependencies = [
  "base32",
  "base45",
  "blitstr2",
+ "bytemuck",
  "byteorder",
  "cbor-vault2",
  "chrono",

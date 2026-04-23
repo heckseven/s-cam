@@ -24,6 +24,7 @@ mod tests;
 mod vendor_commands;
 
 use core::sync::atomic::{AtomicBool, Ordering};
+use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -40,15 +41,29 @@ use crate::config::GlobalConfig;
 /*
 To do:
 
+Tester:
+- [x] DEFCON URL: https://defcon.org/34b
+- [x] test mode in factory new state
+    - trigger on specific QR scan
+    - flip upside down
+    - push the switches after assembly, scan qr code
+- [x] add stand-alone assembled test after badge assembly - trigger by special QR code
+Testjig:
+- [x] fix the screen distortion on the tester
+- [x] change short circuit test delay on final test to be a little longer - might be measuring power-on inrush
+- [x] windows-based imaging flow for rpi to transfer jig image - ask Claude how to do
+
+- [ ] baobit release - https://github.com/sbellem/baobit?tab=readme-ov-file#4-preparing-a-release
+
 - [x] TOTP deserialization error from test site
 - [x] fix animation rendering error when enrolling TOTPs
-- [ ] add mutation rate thing to main loop
+- [x] add mutation rate thing to main loop
 - [x] font size in bao-video
 
 - Add user logo
-    - [ ] upload of data via base64 over serial
-    - [ ] animation sequence
-    - [ ] menu item to delete user logo
+    - [x] upload of data via base64 over serial
+    - [x] animation sequence
+    - [x] chase down why animation isn't running after camera active
 - Tour improvements
     - [x] force orientation to be right side up for tour
     - [x] change away from 'breeding' language -> mix? remix?
@@ -110,6 +125,28 @@ pub enum VaultMode {
     Totp,
     Password,
     TokenHelp,
+}
+
+impl VaultMode {
+    pub fn should_animate(&self) -> bool {
+        match self {
+            VaultMode::About => true,
+            VaultMode::ConfirmGene => false,
+            VaultMode::FactoryTest => true,
+            VaultMode::StandAloneTest => true,
+            VaultMode::DefconHelp => true,
+            VaultMode::TokenHelp => true,
+            VaultMode::Idle => true,
+            VaultMode::IdleDevMode => true,
+            VaultMode::Password => false,
+            VaultMode::Totp => true,
+            VaultMode::GeneScan => true,
+            VaultMode::ResponseGene { quantum: _ } => true,
+            VaultMode::ShowKey { quantum: _ } => true,
+            VaultMode::TokenTour => false,
+            VaultMode::Tour => false,
+        }
+    }
 }
 
 fn main() -> ! {
@@ -207,6 +244,16 @@ fn main() -> ! {
 
     log::info!("initial mode: {:?}", *mode.lock().unwrap());
 
+    let mut image_buf = [0u8; 2048];
+    let mut key = pddb
+        .get(DC34_DICT, DC34_IMAGE, None, true, true, Some(2048), None::<fn()>)
+        .expect("couldn't get PDDB key");
+    let image_len = key.read(&mut image_buf).expect("couldn't read key");
+    if image_len == 2048 {
+        let bitmap: Result<&[u32], _> = bytemuck::try_cast_slice(&image_buf);
+        vault_ui.user_bitmap = Some(bitmap.unwrap().try_into().unwrap());
+    }
+
     // reload the database
     xous::send_message(
         actions_conn,
@@ -221,6 +268,7 @@ fn main() -> ! {
     let mut menu_active = false;
     let mut jig_ready_seen = false;
     let mut boot_sent = false;
+    let mut mutation_param: u8 = 0;
     loop {
         global_config.lock().unwrap().update_power_state(mode.lock().unwrap().clone());
         let msg = xous::receive_message(sid).unwrap();
@@ -232,7 +280,18 @@ fn main() -> ! {
                     boot_sent = true;
                     global_config.lock().unwrap().power_manager_boot_finished();
                 }
-                vault_ui.redraw();
+                if mutation_param > 120 {
+                    mutation_param = mutation_param.saturating_sub(2);
+                } else {
+                    mutation_param = mutation_param.saturating_sub(1);
+                }
+                /*
+                if mutation_param % 2 == 0 {
+                    log::info!("{}", mutation_param);
+                }*/
+                if !menu_active {
+                    vault_ui.redraw();
+                }
             }
             Some(VaultOp::ReloadDbAndFullRedraw) => {
                 xous::send_message(
@@ -247,12 +306,18 @@ fn main() -> ! {
                 menu_active = false;
                 // update the TOTP codes, in case there were changes
                 vault_ui.refresh_draw_list();
-                animate.store(true, Ordering::SeqCst);
+                animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::KeyPress) => xous::msg_scalar_unpack!(msg, k1, _k2, _k3, _k4, {
                 let mode_now = *mode.lock().unwrap();
                 let k = char::from_u32(k1 as u32).unwrap_or('\u{0000}');
+                if k == '🔽' || k == '🔼' {
+                    mutation_param = mutation_param.saturating_add(6);
+                }
+                if k == '↑' || k == '↓' {
+                    mutation_param = mutation_param.saturating_add(3);
+                }
                 log::debug!("key {:x}", k1);
 
                 // on the very first `~` received, this will transition a factory test state. In normal
@@ -356,7 +421,7 @@ fn main() -> ! {
                 } else {
                     modals.show_notification(t!("vault.error.nothing_selected", locales::LANG), None).ok();
                 }
-                animate.store(true, Ordering::SeqCst);
+                animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
             }
             Some(VaultOp::MenuChangeFont) => {
                 for item in FONT_LIST {
@@ -370,7 +435,7 @@ fn main() -> ! {
                     }
                     _ => log::error!("get_radiobutton failed"),
                 }
-                animate.store(true, Ordering::SeqCst);
+                animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
             }
             Some(VaultOp::MenuDeleteStage1) => {
                 animate.store(false, Ordering::SeqCst);
@@ -386,7 +451,7 @@ fn main() -> ! {
                     xous::Message::new_blocking_scalar(ActionOp::ReloadDb.to_usize().unwrap(), 0, 0, 0, 0),
                 )
                 .ok();
-                animate.store(true, Ordering::SeqCst);
+                animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                 vault_ui.refresh_draw_list();
                 vault_ui.redraw();
             }
@@ -446,7 +511,7 @@ fn main() -> ! {
                     xous::Message::new_blocking_scalar(ActionOp::ReloadDb.to_usize().unwrap(), 0, 0, 0, 0),
                 )
                 .ok();
-                animate.store(true, Ordering::SeqCst);
+                animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                 vault_ui.refresh_draw_list();
                 vault_ui.redraw();
             }
@@ -492,8 +557,8 @@ fn main() -> ! {
             }
             Some(VaultOp::AbortQr) => {
                 if global_config.lock().unwrap().is_badge_attached() {
-                    animate.store(false, Ordering::SeqCst);
                     *mode.lock().unwrap() = VaultMode::Idle;
+                    animate.store(VaultMode::Idle.should_animate(), Ordering::SeqCst);
                     vault_ui.redraw();
                 } else {
                     vault_ui.redraw();
@@ -528,6 +593,10 @@ fn main() -> ! {
                                     );
                                     // also generate a new nonce for myself now
                                     global_config.lock().unwrap().generate_my_nonce();
+                                    global_config
+                                        .lock()
+                                        .unwrap()
+                                        .set_mutation_rate(MutationRate::from_param(mutation_param));
                                     let gene = global_config.lock().unwrap().get_padded_gamete().unwrap();
                                     let aead = global_config.lock().unwrap().cipher();
                                     let payload = Payload { msg: &gene, aad: &[] };
@@ -554,7 +623,7 @@ fn main() -> ! {
                                     {
                                         *mode.lock().unwrap() = VaultMode::ResponseGene { quantum: 0 };
                                     }
-                                    animate.store(true, Ordering::SeqCst);
+                                    animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                                 } else {
                                     log::info!("Attempting gene decryption...");
                                     // try to decrypt a gene - could be either round 1 or round 2 of gene
@@ -564,6 +633,8 @@ fn main() -> ! {
                                         *mode.lock().unwrap() = VaultMode::Idle;
                                         animate.store(false, Ordering::SeqCst);
                                         modals.show_notification("Gene truncated", None).ok();
+                                        animate
+                                            .store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                                         continue;
                                     }
                                     let nonce1 = if let Some(nonce1) =
@@ -575,6 +646,8 @@ fn main() -> ! {
                                         animate.store(false, Ordering::SeqCst);
                                         modals.show_notification("Mate must scan your key first!", None).ok();
                                         log::error!("nonce1 missing");
+                                        animate
+                                            .store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                                         continue;
                                     };
                                     log::debug!("nonce1: {:x?}", nonce1);
@@ -588,6 +661,9 @@ fn main() -> ! {
                                             if let Some(mut sperm) =
                                                 Haploid::deserialize(&msg[..size_of::<Haploid>()])
                                             {
+                                                global_config.lock().unwrap().set_mutation_rate(
+                                                    MutationRate::from_param(mutation_param),
+                                                );
                                                 let incoming_type =
                                                     BadgeType::try_from(msg[15]).unwrap_or(BadgeType::None);
 
@@ -640,7 +716,10 @@ fn main() -> ! {
                                             } else {
                                                 log::error!("Failed to deserialize gene");
                                                 *mode.lock().unwrap() = VaultMode::Idle;
-                                                animate.store(false, Ordering::SeqCst);
+                                                animate.store(
+                                                    mode.lock().unwrap().should_animate(),
+                                                    Ordering::SeqCst,
+                                                );
                                                 modals
                                                     .show_notification("Gene failed to deserialize", None)
                                                     .ok();
@@ -649,16 +728,22 @@ fn main() -> ! {
                                         Err(e) => {
                                             log::error!("Failed to decrypt gene: {:?}", e);
                                             *mode.lock().unwrap() = VaultMode::Idle;
-                                            animate.store(false, Ordering::SeqCst);
+                                            animate.store(
+                                                mode.lock().unwrap().should_animate(),
+                                                Ordering::SeqCst,
+                                            );
                                             modals.show_notification("Authentication error!", None).ok();
                                         }
                                     }
                                 }
+                                // reset rates
+                                global_config.lock().unwrap().set_mutation_rate(MutationRate::Baseline);
                             }
                             Err(e) => {
                                 log::error!("Invalid gene code: {:?} / {}", e, &s.s);
                                 animate.store(false, Ordering::SeqCst);
                                 modals.show_notification("Invalid gene code", None).ok();
+                                animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                                 *mode.lock().unwrap() = VaultMode::Idle;
                             }
                         }
@@ -768,6 +853,20 @@ fn main() -> ! {
                 vault_ui.reset_about_state();
                 vault_ui.redraw();
             }
+            Some(VaultOp::ImageLoad) => xous::msg_scalar_unpack!(msg, load, _, _, _, {
+                if load == 0 {
+                    vault_ui.user_bitmap.take();
+                } else {
+                    let mut key = pddb
+                        .get(DC34_DICT, DC34_IMAGE, None, true, true, Some(2048), None::<fn()>)
+                        .expect("couldn't get PDDB key");
+                    let image_len = key.read(&mut image_buf).expect("couldn't read key");
+                    if image_len == 2048 {
+                        let bitmap: Result<&[u32], _> = bytemuck::try_cast_slice(&image_buf);
+                        vault_ui.user_bitmap = Some(bitmap.unwrap().try_into().unwrap());
+                    }
+                }
+            }),
             _ => {
                 log::error!("Got unknown message: {:?}", msg);
             }
