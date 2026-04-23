@@ -516,6 +516,7 @@ pub struct VaultUi {
     pub user_bitmap: Option<[u32; 512]>,
     phase: bool,
     edge: bool,
+    last_mode: VaultMode,
 }
 
 impl VaultUi {
@@ -580,6 +581,7 @@ impl VaultUi {
             user_bitmap: None,
             phase: false,
             edge: false,
+            last_mode: VaultMode::FactoryTest,
         }
     }
 
@@ -755,7 +757,7 @@ impl VaultUi {
             VaultMode::Idle | VaultMode::ConfirmGene | VaultMode::IdleDevMode => {
                 if let Some(bitmap) = self.user_bitmap.as_ref() {
                     let edge = (self.tt.elapsed_ms() / 3000) % 2 == 0;
-                    if self.edge != edge {
+                    if self.edge != edge || mode_at_entry != self.last_mode {
                         if self.phase {
                             self.gfx.bitmap_diffusion(bitmap, None, None).ok();
                         } else {
@@ -1394,6 +1396,7 @@ impl VaultUi {
             } // _ => unimplemented!(),
         }
         self.gfx.flush().ok();
+        self.last_mode = (*self.mode.lock().unwrap()).clone();
     }
 
     /// Returns `true` if in longpress state. Only call this once per key hit input.
