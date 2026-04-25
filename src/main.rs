@@ -45,8 +45,16 @@ To do:
     - [ ] wear badge and confirm that deep sleep works as expected
     - [ ] more color testing (using beta build with test commands)
     - [ ] stability on power management - more testing
-    - [ ] check for light glitch on WFI transitions
-    - [ ] check for battery voltage reading correctness
+        - [ ] write a suspend/resume stress tester
+    - [x] check for light glitch on WFI transitions
+    - [x] check for battery voltage reading correctness
+
+- Release
+    - [ ] baobit release - https://github.com/sbellem/baobit?tab=readme-ov-file#4-preparing-a-release
+    - [ ] make repos public after embargo
+
+  k0 hash check: dca9ea49
+
 */
 
 pub(crate) const SERVER_NAME_VAULT2: &str = "_Vault2_";
@@ -669,11 +677,31 @@ fn main() -> ! {
                                 }
                             }
                             Err(e) => {
-                                log::error!("Invalid gene code: {:?} / {}", e, &s.s);
-                                animate.store(false, Ordering::SeqCst);
-                                modals.show_notification("Invalid gene code", None).ok();
-                                animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
-                                *mode.lock().unwrap() = VaultMode::Idle;
+                                if let Some((request, data)) = s.s.split_once("://") {
+                                    match request {
+                                        "test" => {
+                                            vault_ui.test_string(&s.s);
+                                        }
+                                        "factory" => {
+                                            if data == crate::ux::FACTORY_STANDALONE_STRING {
+                                                *mode.lock().unwrap() = VaultMode::StandAloneTest;
+                                            }
+                                        }
+                                        _ => {
+                                            log::warn!("Unhandled string in main: {}", &s.s);
+                                            let mut qr_str =
+                                                String::from(t!("vault.error.qr", locales::LANG));
+                                            qr_str.push_str(&format!(": {}", &qr_str));
+                                            modals.show_notification(&qr_str, None).ok();
+                                        }
+                                    }
+                                } else {
+                                    log::error!("Invalid gene code: {:?} / {}", e, &s.s);
+                                    animate.store(false, Ordering::SeqCst);
+                                    modals.show_notification("Invalid gene code", None).ok();
+                                    animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
+                                    *mode.lock().unwrap() = VaultMode::Idle;
+                                }
                             }
                         }
                     }

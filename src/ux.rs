@@ -131,7 +131,10 @@ impl StandAloneTestState {
                 }
 
                 Self::Finish { seen_button } => {
-                    let seen_button = seen_button || k.unwrap_or('\0') != '\0';
+                    let seen_button = seen_button
+                        || k.unwrap_or('\0') == '←'
+                        || k.unwrap_or('\0') == '→'
+                        || k.unwrap_or('\0') == '🔥';
                     if seen_button { Self::Exit } else { Self::Finish { seen_button } }
                 }
 
