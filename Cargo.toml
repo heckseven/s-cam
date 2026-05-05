@@ -151,9 +151,13 @@ ed25519 = ["ed25519-compact"]
 # when selected, resets the badge state to factory new
 factory-new = []
 
+# when selected, prints a notice about a WDT reset
+warn-wdt = []
+
 default = [
     "with_ctap1",
     "ed25519",
     "xous",
     # "vault-testing", # testing removed for release tag
+    "warn-wdt", # remove for release
 ]

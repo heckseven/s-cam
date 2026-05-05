@@ -520,6 +520,10 @@ pub struct VaultUi {
     phase: bool,
     edge: bool,
     last_mode: VaultMode,
+
+    // diagnostic use only
+    #[cfg(feature = "warn-wdt")]
+    wdt_warning: bool,
 }
 
 impl VaultUi {
@@ -547,6 +551,8 @@ impl VaultUi {
         let glyph_height = gfx.glyph_height_hint(style).unwrap() as isize;
         let screen_size = gfx.screen_size().unwrap();
         let height = screen_size.y;
+        #[cfg(feature = "warn-wdt")]
+        let wdt_warning = bao1x_hal_service::ClockManager::new().reset_reason().wdt_reset();
         Self {
             main_cid: cid,
             pump_conn,
@@ -585,6 +591,8 @@ impl VaultUi {
             phase: false,
             edge: false,
             last_mode: VaultMode::FactoryTest,
+            #[cfg(feature = "warn-wdt")]
+            wdt_warning,
         }
     }
 
@@ -795,6 +803,22 @@ impl VaultUi {
                     }
                     _ => {
                         // do nothing
+                    }
+                }
+
+                #[cfg(feature = "warn-wdt")]
+                {
+                    if self.wdt_warning {
+                        let mut wdtv = TextView::new(
+                            Gid::dummy(),
+                            TextBounds::CenteredTop(Rectangle::new(Point::new(0, 0), Point::new(128, 16))),
+                        );
+                        wdtv.invert = true;
+                        wdtv.margin = Point::new(1, 1);
+                        wdtv.style = GlyphStyle::Regular;
+                        wdtv.draw_border = false;
+                        write!(wdtv, "WDT").ok();
+                        self.gfx.draw_textview(&mut wdtv).ok();
                     }
                 }
 
