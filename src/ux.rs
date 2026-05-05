@@ -520,10 +520,6 @@ pub struct VaultUi {
     phase: bool,
     edge: bool,
     last_mode: VaultMode,
-
-    // diagnostic use only
-    #[cfg(feature = "warn-wdt")]
-    wdt_warning: bool,
 }
 
 impl VaultUi {
@@ -551,8 +547,6 @@ impl VaultUi {
         let glyph_height = gfx.glyph_height_hint(style).unwrap() as isize;
         let screen_size = gfx.screen_size().unwrap();
         let height = screen_size.y;
-        #[cfg(feature = "warn-wdt")]
-        let wdt_warning = bao1x_hal_service::ClockManager::new().reset_reason().wdt_reset();
         Self {
             main_cid: cid,
             pump_conn,
@@ -591,8 +585,6 @@ impl VaultUi {
             phase: false,
             edge: false,
             last_mode: VaultMode::FactoryTest,
-            #[cfg(feature = "warn-wdt")]
-            wdt_warning,
         }
     }
 
@@ -803,22 +795,6 @@ impl VaultUi {
                     }
                     _ => {
                         // do nothing
-                    }
-                }
-
-                #[cfg(feature = "warn-wdt")]
-                {
-                    if self.wdt_warning {
-                        let mut wdtv = TextView::new(
-                            Gid::dummy(),
-                            TextBounds::CenteredTop(Rectangle::new(Point::new(0, 0), Point::new(128, 16))),
-                        );
-                        wdtv.invert = true;
-                        wdtv.margin = Point::new(1, 1);
-                        wdtv.style = GlyphStyle::Regular;
-                        wdtv.draw_border = false;
-                        write!(wdtv, "WDT").ok();
-                        self.gfx.draw_textview(&mut wdtv).ok();
                     }
                 }
 
@@ -1351,13 +1327,16 @@ impl VaultUi {
                     let vbat_mv =
                         ((bao1x_hal::udma::Adc::raw_to_voltage(voltage_code) * 1000.0f32) / 0.318f32) as u32;
                     writeln!(msg, "~Meditations~").ok();
+                    // batt level
                     writeln!(msg, "Batt: {} mV", vbat_mv).ok();
+                    // badge type
                     writeln!(
                         msg,
                         "Badge: {:?}",
                         self.global_config.as_ref().unwrap().lock().unwrap().badge_type()
                     )
                     .ok();
+                    // k0 check
                     writeln!(msg, "k0: {}", self.global_config.as_ref().unwrap().lock().unwrap().k0_hash())
                         .ok();
                     writeln!(
@@ -1370,6 +1349,7 @@ impl VaultUi {
                         }
                     )
                     .ok();
+                    // USB presence
                     writeln!(
                         msg,
                         "USB {}",
@@ -1380,11 +1360,13 @@ impl VaultUi {
                         }
                     )
                     .ok();
+                    // version
                     writeln!(msg, "{}", self.tt.get_version()).ok();
                     msg.draw_border = false;
-                    msg.clear_area = false;
-                    msg.ellipsis = true;
+                    msg.clear_area = true;
+                    msg.ellipsis = false;
                     msg.invert = true;
+                    msg.style = GlyphStyle::Small;
                     self.gfx.draw_textview(&mut msg).unwrap();
                 }
                 AboutState::InfoScreen { seen_press: _ } => {
