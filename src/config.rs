@@ -423,6 +423,14 @@ impl GlobalConfig {
         )
         .ok();
     }
+
+    pub fn power_off(&self) {
+        xous::send_message(
+            self.power_server,
+            xous::Message::new_scalar(PowerManagerOp::PowerOff.to_usize().unwrap(), 0, 0, 0, 0),
+        )
+        .ok();
+    }
 }
 
 // GlobalConfig *must* be thread-safe. Don't add stuff to it that's not Send + Sync

@@ -73,6 +73,13 @@ pub fn create_submenu(vault_conn: xous::CID, actions_conn: xous::CID, menu_mgr: 
         action_payload: MenuPayload::Scalar([0, 0, 0, 0]),
         close_on_select: true,
     });
+    menu_items.push(MenuItem {
+        name: String::from("Power Off"),
+        action_conn: Some(vault_conn),
+        action_opcode: VaultOp::PowerOff.to_u32().unwrap(),
+        action_payload: MenuPayload::Scalar([0, 0, 0, 0]),
+        close_on_select: true,
+    });
 
     menu_matic(menu_items, "Token Menu", Some(menu_mgr), vault_conn, VaultOp::MenuDone.to_usize().unwrap())
         .expect("couldn't create MenuMatic manager")

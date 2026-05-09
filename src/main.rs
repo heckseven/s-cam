@@ -825,6 +825,32 @@ fn main() -> ! {
                 vault_ui.reset_about_state();
                 vault_ui.redraw();
             }
+            Some(VaultOp::PowerOff) => {
+                global_config.lock().unwrap().power_off();
+                *mode.lock().unwrap() = VaultMode::Idle;
+                modals
+                    .dynamic_notification(
+                        None,
+                        Some(&format!("Power down in 5 seconds.\n-----------\nPress any key to power on.",)),
+                    )
+                    .ok();
+                tt.sleep_ms(1000).ok();
+                for t in (1..5).rev() {
+                    modals
+                        .dynamic_notification_update(
+                            None,
+                            Some(&format!(
+                                "Power down in {} seconds.\n-----------\nPress any key to power on.",
+                                t
+                            )),
+                        )
+                        .ok();
+                    tt.sleep_ms(1000).ok();
+                }
+                tt.sleep_ms(1000).ok();
+                // !--- should diverge here
+                vault_ui.redraw();
+            }
             Some(VaultOp::ImageLoad) => xous::msg_scalar_unpack!(msg, load, _, _, _, {
                 if load == 0 {
                     vault_ui.user_bitmap.take();

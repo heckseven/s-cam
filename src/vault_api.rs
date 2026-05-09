@@ -56,6 +56,7 @@ pub(crate) enum VaultOp {
     DefconHelp,
     About,
     TokenMode,
+    PowerOff,
 
     BasisChange,
 
