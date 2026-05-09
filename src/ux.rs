@@ -445,6 +445,8 @@ impl AboutState {
     }
 
     fn is_terminal(&self) -> bool { matches!(self, AboutState::End { seen_press: _ } | AboutState::Error(_)) }
+
+    fn is_diagnostics(&self) -> bool { matches!(self, AboutState::Diagnostics { seen_press: _ }) }
 }
 
 /// Centralizes tunable UI parameters for TOTP
@@ -472,8 +474,6 @@ impl TotpLayout {
 pub struct VaultUi {
     #[allow(dead_code)]
     main_cid: CID,
-    #[allow(dead_code)]
-    pump_conn: CID,
     actions_conn: CID,
     gfx: Gfx,
     display_list: ScrollableList,
@@ -529,7 +529,6 @@ impl VaultUi {
         item_lists: Arc<Mutex<ItemLists>>,
         mode: Arc<Mutex<VaultMode>>,
         animate: Arc<AtomicBool>,
-        pump_conn: xous::CID,
         actions_conn: xous::CID,
     ) -> Self {
         let pddb = pddb::Pddb::new();
@@ -549,7 +548,6 @@ impl VaultUi {
         let height = screen_size.y;
         Self {
             main_cid: cid,
-            pump_conn,
             actions_conn,
             gfx,
             screen_size,
@@ -1514,6 +1512,14 @@ impl VaultUi {
                 self.about_state = old.handle_input(k);
                 if self.about_state.is_terminal() {
                     *self.mode.lock().unwrap() = VaultMode::Idle;
+                }
+                if self.about_state.is_diagnostics() {
+                    if k == '↑' {
+                        let xns = xous_names::XousNames::new().unwrap();
+                        let keystore = keystore::Keystore::new(&xns);
+                        keystore.bootwait(Some(false)).unwrap();
+                        log::info!("Bootwait secret disable activated");
+                    }
                 }
                 // don't allow scanning to start during the tour
                 if k != '🔥' { Some(k) } else { None }
