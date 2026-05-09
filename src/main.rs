@@ -39,19 +39,7 @@ use crate::actions::ActionOp;
 use crate::config::GlobalConfig;
 
 /*
-To do:
-
-- Testing
-    - [/] more color testing (using beta build with test commands)
-    - [/] look for more corner cases, particularly race conditions on boot
-
-- Release
-    - [ ] baobit release - https://github.com/sbellem/baobit?tab=readme-ov-file#4-preparing-a-release
-    - [ ] make repos public after embargo
-    - [ ] make one-pager for the brochure (see jeff notes for name of person to contact)
-
-  k0 hash check: dca9ea49
-
+  k0 hash check correct value: dca9ea49
 */
 
 pub(crate) const SERVER_NAME_VAULT2: &str = "_Vault2_";
