@@ -41,17 +41,17 @@ use crate::config::GlobalConfig;
 /*
 To do:
 
+- Immediate:
+    - [ ] make merged working gerber for AQS of NH carrier boards
+
 - Testing
-    - [ ] wear badge and confirm that deep sleep works as expected
     - [ ] more color testing (using beta build with test commands)
-    - [ ] stability on power management - more testing
-        - [ ] write a suspend/resume stress tester
-    - [x] check for light glitch on WFI transitions
-    - [x] check for battery voltage reading correctness
+    - [ ] look for more corner cases, particularly race conditions on boot
 
 - Release
     - [ ] baobit release - https://github.com/sbellem/baobit?tab=readme-ov-file#4-preparing-a-release
     - [ ] make repos public after embargo
+    - [ ] make one-pager for the brochure (see jeff notes for name of person to contact)
 
   k0 hash check: dca9ea49
 
@@ -106,17 +106,18 @@ fn main() -> ! {
     log::set_max_level(log::LevelFilter::Info);
     log::info!("dc34-vault PID is {}", xous::process::id());
 
+    // Register the server with xous
     let xns = xous_names::XousNames::new().unwrap();
+    let sid = xns.register_name(SERVER_NAME_VAULT2, None).expect("can't register server");
+    let conn = xous::connect(sid).unwrap();
+
+    log::info!("logo");
     let gfx = Gfx::new(&xns).unwrap();
     gfx.clear().ok();
     // show the DC logo
     gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
     gfx.flush().ok();
     let tt = ticktimer_server::Ticktimer::new().unwrap();
-
-    // Register the server with xous
-    let sid = xns.register_name(SERVER_NAME_VAULT2, None).expect("can't register server");
-    let conn = xous::connect(sid).unwrap();
 
     // global shared state
     let mode = Arc::new(Mutex::new(VaultMode::Idle));
@@ -127,30 +128,15 @@ fn main() -> ! {
     let opensk_mutex = Arc::new(Mutex::new(0));
     let allow_host = Arc::new(AtomicBool::new(false));
 
-    // spawn the TOTP pumper
-    let pump_sid = xous::create_server().unwrap();
-    crate::totp::pumper(pump_sid, conn, animate.clone());
-    let pump_conn = xous::connect(pump_sid).unwrap();
-
-    // respond to keyboard events - register with the `Gfx` subsystem, so we're getting keypresses
-    // filtered by the modals interface
-    gfx.register_listener(SERVER_NAME_VAULT2, VaultOp::KeyPress.to_u32().unwrap() as usize);
-
     // spawn the actions server. This is responsible for grooming the UX elements. It
     // has to be in its own thread because it uses blocking modal calls that would cause
     // redraws of the background list to block/fail.
     let actions_sid = xous::create_server().unwrap();
     let actions_conn = xous::connect(actions_sid).unwrap();
 
-    let mut vault_ui = VaultUi::new(
-        &xns,
-        conn.clone(),
-        item_lists.clone(),
-        mode.clone(),
-        animate.clone(),
-        pump_conn,
-        actions_conn,
-    );
+    log::info!("handlers");
+    let mut vault_ui =
+        VaultUi::new(&xns, conn.clone(), item_lists.clone(), mode.clone(), animate.clone(), actions_conn);
 
     action_handler::action_handler(
         conn.clone(),
@@ -160,8 +146,7 @@ fn main() -> ! {
         action_active.clone(),
     );
 
-    fido2::fido2_handler(conn, allow_host.clone(), opensk_mutex.clone(), animate.clone());
-
+    log::info!("menus");
     let menu_sid = xous::create_server().unwrap();
     let menu_mgr = submenu::create_submenu(conn, actions_conn, menu_sid);
     let tour_menu_sid = xous::create_server().unwrap();
@@ -175,18 +160,24 @@ fn main() -> ! {
 
     // give the system a second to stabilize, then try to mount
     tt.sleep_ms(1000).ok();
+    log::info!("pddb mount...");
     let pddb = pddb::Pddb::new();
     pddb.try_mount();
+    log::info!("mounted!");
     vault_ui.apply_glyph_style();
 
     #[cfg(feature = "factory-new")]
     tests::reset_lifecycle();
 
+    log::info!("Read config...");
     // this must init after PDDB is mounted
     let (global_config, init_mode) = GlobalConfig::init();
     let global_config = Arc::new(Mutex::new(global_config));
     *mode.lock().unwrap() = init_mode;
     vault_ui.set_global_config(global_config.clone());
+
+    log::info!("Fido2 service");
+    fido2::fido2_handler(conn, allow_host.clone(), opensk_mutex.clone(), animate.clone());
 
     // overrides for testing
     #[cfg(feature = "production")]
@@ -214,9 +205,19 @@ fn main() -> ! {
     .ok();
     vault_ui.refresh_draw_list();
 
+    // spawn the animation pumper, stuck in the TOTP crate for legacy reasons
+    log::info!("animation");
+    let pump_sid = xous::create_server().unwrap();
+    crate::totp::pumper(pump_sid, conn, animate.clone());
+    let pump_conn = xous::connect(pump_sid).unwrap();
     // kickstart the pumper
     xous::send_message(pump_conn, xous::Message::new_scalar(0, 0, 0, 0, 0))
         .expect("couldn't start the pumper");
+
+    // respond to keyboard events - register with the `Gfx` subsystem, so we're getting keypresses
+    // filtered by the modals interface
+    gfx.register_listener(SERVER_NAME_VAULT2, VaultOp::KeyPress.to_u32().unwrap() as usize);
+
     let mut menu_active = false;
     let mut jig_ready_seen = false;
     let mut boot_sent = false;
