@@ -290,6 +290,8 @@ impl GlobalConfig {
         log::info!("Mutation rate set to {:?}", new_rate);
     }
 
+    pub fn get_mutation_rate(&self) -> MutationRate { self.mutation_rate }
+
     pub fn generate_my_nonce(&mut self) {
         loop {
             let mut nonce = [0u8; 12];
@@ -331,10 +333,11 @@ impl GlobalConfig {
         }
     }
 
-    pub fn get_egg(&self) -> Option<Haploid> {
+    pub fn get_egg(&self, rate: Option<MutationRate>) -> Option<Haploid> {
         if let Some(gene) = self.gene_cache {
             let mut gamete = gene.meiosis();
-            mutate(&mut gamete, self.mutation_rate);
+            // pick the larger of the internal rate or the passed-in rate
+            mutate(&mut gamete, rate.unwrap_or(self.mutation_rate).max(self.mutation_rate));
             Some(gamete)
         } else {
             None

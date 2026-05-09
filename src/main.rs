@@ -41,12 +41,9 @@ use crate::config::GlobalConfig;
 /*
 To do:
 
-- Immediate:
-    - [ ] make merged working gerber for AQS of NH carrier boards
-
 - Testing
-    - [ ] more color testing (using beta build with test commands)
-    - [ ] look for more corner cases, particularly race conditions on boot
+    - [/] more color testing (using beta build with test commands)
+    - [/] look for more corner cases, particularly race conditions on boot
 
 - Release
     - [ ] baobit release - https://github.com/sbellem/baobit?tab=readme-ov-file#4-preparing-a-release
@@ -607,19 +604,33 @@ fn main() -> ! {
                                                 let incoming_type =
                                                     BadgeType::try_from(msg[15]).unwrap_or(BadgeType::None);
 
+                                                let my_rate =
+                                                    global_config.lock().unwrap().get_mutation_rate();
                                                 // if reproducing among the same badge type, elevate
                                                 // the mutation rate - adds more diversity more
                                                 // quickly for populations that are isolated
-                                                if incoming_type == global_config.lock().unwrap().badge_type()
-                                                {
+                                                let bt = global_config.lock().unwrap().badge_type();
+                                                let inbreeding = incoming_type == bt;
+                                                let inbreeding_rate = match bt {
+                                                    BadgeType::Goon => MutationRate::Elevated,
+                                                    BadgeType::Community => MutationRate::Elevated,
+                                                    BadgeType::CtfContest => MutationRate::Radioactive,
+                                                    BadgeType::Village => MutationRate::Apocalyptic,
+                                                    _ => MutationRate::Radioactive,
+                                                };
+                                                let rate = if inbreeding {
                                                     log::info!(
                                                         "Inbreeding detected, elevating mutation rate"
                                                     );
-                                                    mutate(&mut sperm, MutationRate::Elevated);
-                                                }
+                                                    mutate(&mut sperm, inbreeding_rate.max(my_rate));
+                                                    Some(inbreeding_rate.max(my_rate))
+                                                } else {
+                                                    None
+                                                };
 
                                                 // perform syngamy
-                                                let egg = global_config.lock().unwrap().get_egg().unwrap();
+                                                let egg =
+                                                    global_config.lock().unwrap().get_egg(rate).unwrap();
                                                 log::info!(
                                                     "Replacing individual with {:x?}, {:x?}",
                                                     egg,
