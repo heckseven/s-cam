@@ -831,7 +831,7 @@ impl VaultUi {
                                     conn,
                                     xous::Message::new_blocking_scalar(
                                         susres::api::Opcode::PlatformSpecific.to_usize().unwrap(),
-                                        bao1x_hal_service::api::ClockOp::DeepSleep.to_usize().unwrap(),
+                                        bao1x_hal::clocks::ClockOp::DeepSleep.to_usize().unwrap(),
                                         0,
                                         0,
                                         0,

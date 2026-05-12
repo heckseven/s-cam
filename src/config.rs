@@ -237,9 +237,9 @@ impl GlobalConfig {
     }
 
     pub fn update_power_state(&mut self, current_mode: VaultMode) {
-        const SHORT_TIMEOUT: usize = 30;
-        const MEDIUM_TIMEOUT: usize = 60;
-        const LONG_TIMEOUT: usize = 90;
+        const SHORT_TIMEOUT: usize = 50;
+        const MEDIUM_TIMEOUT: usize = 75;
+        const LONG_TIMEOUT: usize = 100;
         // handles None case, as well as Some(previous_mode) not the same as Some(current_mode)
         if self.previous_mode != Some(current_mode) {
             let (enable, duration_sec) = match current_mode {
