@@ -55,7 +55,11 @@ pub(crate) struct GlobalConfig {
     gene_cache: Option<Diploid>,
     /// This storage allows someone to "undo" a new pattern if they don't like it
     prior_gene: Option<Diploid>,
+    /// tracks the dynamic rate as users try to increase it
     mutation_rate: MutationRate,
+    /// snapshots the rate at a given point to make the protocol less frustrating
+    /// (i.e. if there's some goof-ups or delays you don't lose the rate you "earned")
+    final_rate: MutationRate,
     nonce_mine: Option<[u8; 12]>,
     previous_mode: Option<VaultMode>,
 }
@@ -206,6 +210,7 @@ impl GlobalConfig {
                 gene_cache: gene,
                 prior_gene: None,
                 mutation_rate: MutationRate::Baseline,
+                final_rate: MutationRate::Baseline,
                 nonce_mine: None,
                 previous_mode: None,
             },
@@ -285,12 +290,13 @@ impl GlobalConfig {
 
     pub fn badge_type(&self) -> BadgeType { self.badge_type }
 
-    pub fn set_mutation_rate(&mut self, new_rate: MutationRate) {
-        self.mutation_rate = new_rate;
-        log::info!("Mutation rate set to {:?}", new_rate);
-    }
+    pub fn set_mutation_rate(&mut self, new_rate: MutationRate) { self.mutation_rate = new_rate; }
+
+    pub fn lock_rate(&mut self) { self.final_rate = self.mutation_rate; }
 
     pub fn get_mutation_rate(&self) -> MutationRate { self.mutation_rate }
+
+    pub fn get_final_rate(&self) -> MutationRate { self.final_rate }
 
     pub fn generate_my_nonce(&mut self) {
         loop {
@@ -322,7 +328,7 @@ impl GlobalConfig {
         if let Some(gene) = self.gene_cache {
             let mut d = [0u8; 16];
             let mut gamete = gene.meiosis();
-            mutate(&mut gamete, self.mutation_rate);
+            mutate(&mut gamete, self.final_rate);
             let serialized = gamete.serialize();
             let len = serialized.len().min(15); // save last byte for badge type
             d[..len].copy_from_slice(&serialized[..len]);
@@ -337,7 +343,7 @@ impl GlobalConfig {
         if let Some(gene) = self.gene_cache {
             let mut gamete = gene.meiosis();
             // pick the larger of the internal rate or the passed-in rate
-            mutate(&mut gamete, rate.unwrap_or(self.mutation_rate).max(self.mutation_rate));
+            mutate(&mut gamete, rate.unwrap_or(self.final_rate).max(self.final_rate));
             Some(gamete)
         } else {
             None

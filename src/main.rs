@@ -207,6 +207,7 @@ fn main() -> ! {
     let mut jig_ready_seen = false;
     let mut boot_sent = false;
     let mut mutation_param: u8 = 0;
+    let mut k_last = '\u{0000}';
     loop {
         global_config.lock().unwrap().update_power_state(mode.lock().unwrap().clone());
         let msg = xous::receive_message(sid).unwrap();
@@ -223,6 +224,7 @@ fn main() -> ! {
                 } else {
                     mutation_param = mutation_param.saturating_sub(1);
                 }
+                global_config.lock().unwrap().set_mutation_rate(MutationRate::from_param(mutation_param));
                 /*
                 if mutation_param % 2 == 0 {
                     log::info!("{}", mutation_param);
@@ -251,11 +253,15 @@ fn main() -> ! {
                 let mode_now = *mode.lock().unwrap();
                 let k = char::from_u32(k1 as u32).unwrap_or('\u{0000}');
                 if k == '🔽' || k == '🔼' {
-                    mutation_param = mutation_param.saturating_add(6);
+                    mutation_param = mutation_param.saturating_add(8);
                 }
                 if k == '↑' || k == '↓' {
-                    mutation_param = mutation_param.saturating_add(3);
+                    if (k_last == '↓' && k == '↑') || (k_last == '↑' && k == '↓') {
+                        mutation_param = mutation_param.saturating_add(2);
+                    }
+                    k_last = k;
                 }
+                global_config.lock().unwrap().set_mutation_rate(MutationRate::from_param(mutation_param));
                 log::debug!("key {:x}", k1);
 
                 // on the very first `~` received, this will transition a factory test state. In normal
@@ -300,10 +306,6 @@ fn main() -> ! {
                             menu_active = true;
                         }
                         '🔥' => {
-                            global_config
-                                .lock()
-                                .unwrap()
-                                .set_mutation_rate(MutationRate::from_param(mutation_param));
                             vault_ui.camera_transition();
                             let prior_mode = animate.swap(false, Ordering::SeqCst);
                             xous::send_message(
@@ -592,26 +594,26 @@ fn main() -> ! {
                                                 let incoming_type =
                                                     BadgeType::try_from(msg[15]).unwrap_or(BadgeType::None);
 
-                                                let my_rate =
-                                                    global_config.lock().unwrap().get_mutation_rate();
+                                                let my_rate = global_config.lock().unwrap().get_final_rate();
                                                 // if reproducing among the same badge type, elevate
                                                 // the mutation rate - adds more diversity more
                                                 // quickly for populations that are isolated
                                                 let bt = global_config.lock().unwrap().badge_type();
                                                 let inbreeding = incoming_type == bt;
+                                                // slightly higher baseline for humans because their nominal
+                                                // pattern is already the "average" pattern and it's harder to
+                                                // get something new out of that.
                                                 let inbreeding_rate = match bt {
-                                                    BadgeType::Goon => MutationRate::Elevated,
-                                                    BadgeType::Community => MutationRate::Elevated,
-                                                    BadgeType::CtfContest => MutationRate::Radioactive,
-                                                    BadgeType::Village => MutationRate::Apocalyptic,
-                                                    _ => MutationRate::Radioactive,
+                                                    BadgeType::Human => MutationRate::Elevated,
+                                                    _ => MutationRate::Baseline,
                                                 };
                                                 let rate = if inbreeding {
                                                     log::info!(
                                                         "Inbreeding detected, elevating mutation rate"
                                                     );
-                                                    mutate(&mut sperm, inbreeding_rate.max(my_rate));
-                                                    Some(inbreeding_rate.max(my_rate))
+                                                    let final_rate = inbreeding_rate.max(my_rate);
+                                                    mutate(&mut sperm, final_rate);
+                                                    Some(final_rate)
                                                 } else {
                                                     None
                                                 };
@@ -626,6 +628,36 @@ fn main() -> ! {
                                                 );
                                                 global_config.lock().unwrap().replace_gene(egg, sperm);
                                                 global_config.lock().unwrap().render_gene();
+
+                                                #[cfg(feature = "qa-test")]
+                                                {
+                                                    // rate feedback
+                                                    let text = match rate.unwrap_or(my_rate) {
+                                                        MutationRate::None => "none",
+                                                        MutationRate::Baseline => "baseline",
+                                                        MutationRate::Elevated => "elevated",
+                                                        MutationRate::Radioactive => "RADIOACTIVE",
+                                                        MutationRate::Apocalyptic => "APOCALYPTIC",
+                                                    };
+                                                    use core::fmt::Write as TextViewWrite;
+
+                                                    use ux_api::minigfx::*;
+
+                                                    let mut msg = TextView::new(
+                                                        ux_api::service::api::Gid::dummy(),
+                                                        TextBounds::CenteredTop(Rectangle::new(
+                                                            Point::new(0, 0),
+                                                            Point::new(127, 16),
+                                                        )),
+                                                    );
+                                                    write!(msg, "{}", text).ok();
+                                                    msg.draw_border = false;
+                                                    msg.clear_area = false;
+                                                    msg.ellipsis = true;
+                                                    msg.invert = true;
+                                                    gfx.draw_textview(&mut msg).unwrap();
+                                                    gfx.flush().ok();
+                                                }
 
                                                 // raise the confirmation menu
                                                 {

@@ -150,6 +150,7 @@ ed25519 = ["ed25519-compact"]
 
 # when selected, resets the badge state to factory new
 factory-new = []
+qa-test = []
 
 default = [
     "with_ctap1",

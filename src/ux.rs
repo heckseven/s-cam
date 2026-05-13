@@ -829,7 +829,7 @@ impl VaultUi {
                                     .expect("Can't connect to SUSRES");
                                 match xous::send_message(
                                     conn,
-                                    xous::Message::new_blocking_scalar(
+                                    xous::Message::new_scalar(
                                         susres::api::Opcode::PlatformSpecific.to_usize().unwrap(),
                                         bao1x_hal::clocks::ClockOp::DeepSleep.to_usize().unwrap(),
                                         0,
@@ -874,6 +874,31 @@ impl VaultUi {
                     tv.draw_border = false;
                     write!(tv, "DEV MODE").ok();
                     self.gfx.draw_textview(&mut tv).ok();
+                }
+
+                // rate feedback
+                let rate = self.global_config.as_ref().unwrap().lock().unwrap().get_mutation_rate();
+                match rate {
+                    MutationRate::Radioactive | MutationRate::Apocalyptic | MutationRate::Elevated => {
+                        let mut msg = TextView::new(
+                            Gid::dummy(),
+                            TextBounds::CenteredTop(Rectangle::new(Point::new(0, 0), Point::new(127, 10))),
+                        );
+                        msg.style = GlyphStyle::Small;
+                        if rate == MutationRate::Elevated {
+                            write!(msg, "elevated").ok();
+                        } else if rate == MutationRate::Radioactive {
+                            write!(msg, "RADIOACTIVE").ok();
+                        } else if rate == MutationRate::Apocalyptic {
+                            write!(msg, "~APOCALYPTIC~").ok();
+                        }
+                        msg.draw_border = false;
+                        msg.clear_area = false;
+                        msg.ellipsis = true;
+                        msg.invert = true;
+                        self.gfx.draw_textview(&mut msg).unwrap();
+                    }
+                    _ => {}
                 }
             }
             VaultMode::ShowKey { quantum } | VaultMode::ResponseGene { quantum } => {
@@ -1611,6 +1636,7 @@ impl VaultUi {
                 '←' | '→' => {
                     if let Some(config) = self.global_config.as_mut() {
                         let mut c = config.lock().unwrap();
+                        c.lock_rate(); // lock in the mutation rate at this point in time
                         let data = c.nonce_data();
                         let encoded = base45::encode(&data);
                         let code =

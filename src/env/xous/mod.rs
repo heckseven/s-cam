@@ -721,7 +721,12 @@ impl UserPresence for XousEnv {
                 return Err(UserPresenceError::Timeout);
             }
             let key_hit = kbhit.load(Ordering::SeqCst);
-            if key_hit != 0 && key_hit != '↓' as u32 {
+            if key_hit == '∴' as u32
+                || key_hit == '🔥' as u32
+                || key_hit == '↑' as u32
+                || key_hit == '←' as u32
+                || key_hit == '→' as u32
+            {
                 // approve
                 self.modals.dynamic_notification_close().ok();
                 self.animate.store(saved_animate, Ordering::SeqCst);
@@ -738,6 +743,7 @@ impl UserPresence for XousEnv {
                 }
                 return Err(UserPresenceError::Declined);
             }
+            // all other key types, just ignore - these are e.g. accelerometer, RTC events, etc.
 
             // delay, and keepalive
             self.send_keepalive_up_needed(KEEPALIVE_DELAY, cid).map_err(|e| e.into())?;
