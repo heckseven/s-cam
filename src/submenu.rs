@@ -74,9 +74,9 @@ pub fn create_submenu(vault_conn: xous::CID, actions_conn: xous::CID, menu_mgr: 
         close_on_select: true,
     });
     menu_items.push(MenuItem {
-        name: String::from("Power Off"),
+        name: String::from("Screen Off"),
         action_conn: Some(vault_conn),
-        action_opcode: VaultOp::PowerOff.to_u32().unwrap(),
+        action_opcode: VaultOp::ScreenOff.to_u32().unwrap(),
         action_payload: MenuPayload::Scalar([0, 0, 0, 0]),
         close_on_select: true,
     });

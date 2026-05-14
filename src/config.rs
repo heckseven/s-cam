@@ -242,9 +242,9 @@ impl GlobalConfig {
     }
 
     pub fn update_power_state(&mut self, current_mode: VaultMode) {
-        const SHORT_TIMEOUT: usize = 50;
-        const MEDIUM_TIMEOUT: usize = 75;
-        const LONG_TIMEOUT: usize = 100;
+        const SHORT_TIMEOUT: usize = 42;
+        const MEDIUM_TIMEOUT: usize = 69;
+        const LONG_TIMEOUT: usize = 0x69;
         // handles None case, as well as Some(previous_mode) not the same as Some(current_mode)
         if self.previous_mode != Some(current_mode) {
             let (enable, duration_sec) = match current_mode {
@@ -262,7 +262,7 @@ impl GlobalConfig {
                 VaultMode::ResponseGene { quantum: _ } => (true, LONG_TIMEOUT),
                 VaultMode::ShowKey { quantum: _ } => (true, LONG_TIMEOUT),
                 VaultMode::TokenTour => (true, MEDIUM_TIMEOUT),
-                VaultMode::Tour => (true, LONG_TIMEOUT),
+                VaultMode::Tour => (true, MEDIUM_TIMEOUT),
             };
             self.power_manager_config(enable, Some(duration_sec));
         }
@@ -434,6 +434,14 @@ impl GlobalConfig {
         xous::send_message(
             self.power_server,
             xous::Message::new_scalar(PowerManagerOp::PowerOff.to_usize().unwrap(), 0, 0, 0, 0),
+        )
+        .ok();
+    }
+
+    pub fn screen_off(&self) {
+        xous::send_message(
+            self.power_server,
+            xous::Message::new_scalar(PowerManagerOp::ScreenOffRequest.to_usize().unwrap(), 0, 0, 0, 0),
         )
         .ok();
     }

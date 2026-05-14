@@ -1457,8 +1457,12 @@ impl VaultUi {
     pub(crate) fn handle_key(&mut self, k: char) -> Option<char> {
         if k == '🔼' {
             self.orientation = DisplayOrientation::Normal;
+            self.redraw();
+            return Some(k);
         } else if k == '🔽' {
             self.orientation = DisplayOrientation::UpsideDown;
+            self.redraw();
+            return Some(k);
         }
         let mode_at_entry = (*self.mode.lock().unwrap()).clone();
         log::debug!("handle_key: {:?}", mode_at_entry);

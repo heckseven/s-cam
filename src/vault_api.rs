@@ -57,6 +57,7 @@ pub(crate) enum VaultOp {
     About,
     TokenMode,
     PowerOff,
+    ScreenOff,
 
     BasisChange,
 

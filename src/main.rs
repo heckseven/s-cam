@@ -871,6 +871,9 @@ fn main() -> ! {
                 // !--- should diverge here
                 vault_ui.redraw();
             }
+            Some(VaultOp::ScreenOff) => {
+                global_config.lock().unwrap().screen_off();
+            }
             Some(VaultOp::ImageLoad) => xous::msg_scalar_unpack!(msg, load, _, _, _, {
                 if load == 0 {
                     vault_ui.user_bitmap.take();
