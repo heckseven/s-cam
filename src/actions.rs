@@ -153,7 +153,7 @@ impl ActionManager {
 
     /// This will create a password for `url`, associating it with a `username`. Returns an Option<&str>
     /// if the user selects to immediately use the password.
-    pub(crate) fn add_password(&mut self, url: &str) -> Result<String, String> {
+    pub(crate) fn add_password(&mut self, url: &str) -> Result<Option<String>, String> {
         // 1. Pick or enter a username from the username list. The list always has an entry for <Add New...>,
         //    which prompts a user to enter a new one, and save it to the list.
         // 2. Present a default password using standard parameters. Options are "Use", "Edit", "Configure",
@@ -177,6 +177,7 @@ impl ActionManager {
             Vec::new()
         };
 
+        let mut transmit_password;
         let username = {
             let mut usernames_refs: Vec<&str> = usernames.iter().map(AsRef::as_ref).collect();
             usernames_refs.push(t!("vault.add_new", locales::LANG));
@@ -222,7 +223,8 @@ impl ActionManager {
                 pw = Some(generate(&pools, generator_config.length, true));
             }
             let password_options = vec![
-                t!("vault.pw.approval", locales::LANG),
+                "Save and type",
+                "Save and close",
                 t!("vault.edit", locales::LANG),
                 t!("vault.configure", locales::LANG),
                 t!("vault.cancel", locales::LANG),
@@ -234,7 +236,11 @@ impl ActionManager {
                 &pw.as_ref().unwrap()
             )) {
                 Ok(response) => {
-                    if response == t!("vault.pw.approval", locales::LANG) {
+                    if response == "Save and type" {
+                        transmit_password = true;
+                        break;
+                    } else if response == "Save and close" {
+                        transmit_password = false;
                         break;
                     } else if response == t!("vault.edit", locales::LANG) {
                         let new_pw = &self
@@ -339,6 +345,7 @@ impl ActionManager {
                 Err(e) => return Err(format!("Couldn't get password approval: {:?}", e)),
             }
         }
+        self.modals.dynamic_notification(Some("Saving password..."), None).ok();
         // create password from url/username/pw tuple
         let now = crate::utc_now().timestamp() as u64;
         let mut record = storage::PasswordRecord {
@@ -367,7 +374,8 @@ impl ActionManager {
                 .serialize(file)
                 .map_err(|e| format!("Error saving generator config: {:?}", e))?;
         }
-        Ok(pw.unwrap())
+        self.modals.dynamic_notification_close().ok();
+        if transmit_password { Ok(pw) } else { Ok(None) }
     }
 
     /// This routine is now required to update the itemlist data as well as the PDDB to save on
@@ -1159,9 +1167,11 @@ impl ActionManager {
             _ => {
                 use std::fmt::Write;
                 if !self.first_time {
+                    /* // skip this, it's distracting mostly
                     self.modals
                         .dynamic_notification(Some(t!("vault.reloading_database", locales::LANG)), None)
                         .ok();
+                    */
                 }
                 let start = self.tt.elapsed_ms();
                 let mut klen = 0;
@@ -1271,7 +1281,9 @@ impl ActionManager {
                 }
                 log::info!("readout took {} ms for {} elements", self.tt.elapsed_ms() - start, klen);
                 if !self.first_time {
+                    /*
                     self.modals.dynamic_notification_close().ok();
+                    */
                 } else {
                     self.first_time = false;
                 }
@@ -1390,8 +1402,18 @@ impl ActionManager {
                                                 }
                                                 if matches.len() == 0 {
                                                     match self.add_password(url) {
-                                                        Ok(pw) => {
+                                                        Ok(Some(pw)) => {
+                                                            self.modals
+                                                                .dynamic_notification(
+                                                                    Some("Autotyping password..."),
+                                                                    None,
+                                                                )
+                                                                .ok();
                                                             self.usb_dev.send_str(&pw).ok();
+                                                            self.modals.dynamic_notification_close().ok();
+                                                        }
+                                                        Ok(None) => {
+                                                            // do nothing
                                                         }
                                                         Err(e) => {
                                                             log::error!(
@@ -1417,8 +1439,15 @@ impl ActionManager {
                                                         t!("vault.pw.approval", locales::LANG),
                                                         url
                                                     )) {
+                                                        self.modals
+                                                            .dynamic_notification(
+                                                                Some("Autotyping password..."),
+                                                                None,
+                                                            )
+                                                            .ok();
                                                         self.usb_dev.send_str(&pw.password).ok();
                                                         self.increment_pw_usage(&matches[0].guid, &mut pw);
+                                                        self.modals.dynamic_notification_close().ok();
                                                     }
                                                 } else {
                                                     // disambiguate which item to type
@@ -1448,11 +1477,20 @@ impl ActionManager {
                                                                         .expect(
                                                                             "entry should exist if it is in the item list",
                                                                         );
+                                                                    self.modals
+                                                                        .dynamic_notification(
+                                                                            Some("Autotyping password..."),
+                                                                            None,
+                                                                        )
+                                                                        .ok();
                                                                     self.usb_dev.send_str(&pw.password).ok();
                                                                     self.increment_pw_usage(
                                                                         &entry.guid,
                                                                         &mut pw,
                                                                     );
+                                                                    self.modals
+                                                                        .dynamic_notification_close()
+                                                                        .ok();
                                                                 }
                                                             }
                                                         }

@@ -574,11 +574,18 @@
         "zh": "笔录"
     },
     "vault.pw.approval": {
-        "en": "Use",
-        "en-tts": "Use",
-        "fr": "Utiliser",
-        "ja": "使用",
-        "zh": "使用"
+        "en": "Save and type",
+        "en-tts": "Save and type",
+        "fr": "Enregistrer et saisir",
+        "ja": "保存して入力",
+        "zh": "保存并输入"
+    },
+    "vault.pw.approval_close": {
+        "en": "Save and close",
+        "en-tts": "Save and close",
+        "fr": "Enregistrer et fermer",
+        "ja": "保存して閉じる",
+        "zh": "保存并关闭"
     },
     "vault.readout_active": {
         "en": "🔓Readout mode active.🔓\n\nHost is permitted to read and write unlocked records.\n\nPlease run your host scripts, then press any key to restore security.",
