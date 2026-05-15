@@ -177,7 +177,7 @@ impl ActionManager {
             Vec::new()
         };
 
-        let mut transmit_password;
+        let transmit_password;
         let username = {
             let mut usernames_refs: Vec<&str> = usernames.iter().map(AsRef::as_ref).collect();
             usernames_refs.push(t!("vault.add_new", locales::LANG));
