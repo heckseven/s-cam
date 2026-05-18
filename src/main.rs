@@ -40,15 +40,17 @@ use crate::config::GlobalConfig;
 
 /*
   k0 hash check correct value: dca9ea49
-
 */
 
 // Reproducible bootloader:
 // git clone https://github.com/sbellem/baobit.git
 // cd baobit
-// git checkout 4c9aa70f4dddf633ea3e4ea2310bb6509a118396
+// git checkout 4be6e2d6f6a694942ef6cc333ff2b91f73966644
 // rm -rf boot1 && ROOT=boot1 make boot1-lite
 // Artifacts in boot1/*.img
+//
+// OS hash for production-rc2:
+// xous-core at b439d312a45479419fb8853481ce92269eecf7ff
 
 pub(crate) const SERVER_NAME_VAULT2: &str = "_Vault2_";
 
