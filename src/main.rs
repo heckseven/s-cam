@@ -211,6 +211,9 @@ fn main() -> ! {
     // filtered by the modals interface
     gfx.register_listener(SERVER_NAME_VAULT2, VaultOp::KeyPress.to_u32().unwrap() as usize);
 
+    // this message is needed as a CI trigger
+    log::info!("{}FIDO.READY,{}", bao1x_hal::board::BOOKEND_START, bao1x_hal::board::BOOKEND_END);
+
     let mut menu_active = false;
     let mut jig_ready_seen = false;
     let mut boot_sent = false;

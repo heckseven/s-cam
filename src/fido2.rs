@@ -44,6 +44,12 @@ pub(crate) fn fido2_handler(
                                     let mut reply = RawFidoReport::default();
                                     reply.packet.copy_from_slice(&pkt_reply);
                                     let status = ctap.env().main_hid_connection().u2f_send(reply);
+                                    // This sleep is necessary because Baochip's high speed bus can overwhelm
+                                    // a receiver. Most hosts envision a slow, full-speed device, and this is
+                                    // a fast, high-speed device. Without this sleep, you end up with missed
+                                    // sequence numbers on the receiver side if the host can't drain the
+                                    // packets fast enough!
+                                    std::thread::sleep(std::time::Duration::from_millis(2));
                                     match status {
                                         Ok(()) => {
                                             log::trace!("Sent U2F packet");
@@ -103,6 +109,12 @@ pub(crate) fn fido2_handler(
                                     let mut reply = RawFidoReport::default();
                                     reply.packet.copy_from_slice(&pkt_reply);
                                     let status = ctap.env().main_hid_connection().u2f_send(reply);
+                                    // if Vendor code also complains of incorrect sequence numbers malformed
+                                    // data or inconsistent timeouts, try uncommenting the below. It could
+                                    // also be because the host is silently dropping HID packets from the
+                                    // vendor interface!
+                                    //
+                                    // std::thread::sleep(std::time::Duration::from_millis(1));
                                     match status {
                                         Ok(()) => {
                                             log::trace!("Sent U2F packet");

@@ -615,7 +615,7 @@ impl XousEnv {
         for mut pkt in keepalive_msg {
             match self.main_connection.send_and_maybe_recv(&mut pkt, timeout) {
                 Ok(SendOrRecvStatus::Timeout) => {
-                    log::debug!("Sending a KEEPALIVE packet timed out");
+                    log::warn!("Sending a KEEPALIVE packet timed out");
                     // TODO: abort user presence test?
                 }
                 Err(_) => panic!("Error sending KEEPALIVE packet"),
@@ -721,11 +721,14 @@ impl UserPresence for XousEnv {
                 return Err(UserPresenceError::Timeout);
             }
             let key_hit = kbhit.load(Ordering::SeqCst);
+            // log::info!("key hit {} {}", key_hit, unsafe { char::from_u32_unchecked(key_hit) });
+            // 'y' is what is used in CI to test
             if key_hit == '∴' as u32
                 || key_hit == '🔥' as u32
                 || key_hit == '↑' as u32
                 || key_hit == '←' as u32
                 || key_hit == '→' as u32
+                || key_hit == 'y' as u32
             {
                 // approve
                 self.modals.dynamic_notification_close().ok();
