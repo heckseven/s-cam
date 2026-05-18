@@ -52,8 +52,6 @@ use crate::config::GlobalConfig;
 // OS hash for production-rc2:
 // xous-core at b439d312a45479419fb8853481ce92269eecf7ff
 
-pub(crate) const SERVER_NAME_VAULT2: &str = "_Vault2_";
-
 #[derive(Copy, Clone, PartialEq, Eq, Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum VaultMode {
     Idle,
@@ -221,6 +219,7 @@ fn main() -> ! {
     let mut boot_sent = false;
     let mut mutation_param: u8 = 0;
     let mut k_last = '\u{0000}';
+    let mut skip_one_key = false;
     loop {
         global_config.lock().unwrap().update_power_state(mode.lock().unwrap().clone());
         let msg = xous::receive_message(sid).unwrap();
@@ -262,7 +261,15 @@ fn main() -> ! {
                 animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                 vault_ui.redraw();
             }
+            Some(VaultOp::SkipKey) => {
+                skip_one_key = true;
+            }
             Some(VaultOp::KeyPress) => xous::msg_scalar_unpack!(msg, k1, _k2, _k3, _k4, {
+                if skip_one_key {
+                    skip_one_key = false;
+                    vault_ui.redraw();
+                    continue;
+                }
                 let mode_now = *mode.lock().unwrap();
                 let k = char::from_u32(k1 as u32).unwrap_or('\u{0000}');
                 if k == '🔽' || k == '🔼' {

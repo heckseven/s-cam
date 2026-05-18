@@ -69,6 +69,8 @@ pub(crate) enum VaultOp {
     ImageLoad = 1024,
     // monkey patch to force jig mode, for re-tested units in the factory
     Jig = 1025,
+    // monkey patch to skip the first key after a WFI event
+    SkipKey = 1026,
 }
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
