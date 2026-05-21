@@ -36,7 +36,7 @@ use qrcode::QrCode;
 use xous_ipc::Buffer;
 
 use crate::actions::ActionOp;
-use crate::config::GlobalConfig;
+use crate::config::{GlobalConfig, read_badgetype_pins};
 
 /*
   k0 hash check correct value: dca9ea49
@@ -151,6 +151,28 @@ fn main() -> ! {
 
     let modals = modals::Modals::new(&xns).unwrap();
 
+    let mut boot_sent = false;
+    // work around factory init issue - the mount below can take quite a while to complete
+    // on the very first boot as the disk has to initialize. So if the BadgeType is none,
+    // fake that the boot has been started, to prevent the WDT from resetting us. The flip side
+    // is that if we have a boot issue in token mode, the WDT won't save us from any deadlocks/errors
+    // that could happen between here and the start of the main loop. I think this is OK given
+    // the situation - the priority is to get a patch in now that doesn't require a lot of regression
+    // testing that meets the deadline, we can fix this later on with a firmware update if it turns
+    // out that we really need the WDT to recover from problems (honestly - we shouldn't. WDT
+    // is a band-aid to hide problem, especially while on battery, and in token mode, we're not on battery!)
+    match read_badgetype_pins() {
+        BadgeType::None => {
+            boot_sent = true;
+            let power_server = xns.request_connection_blocking(dc34_api::POWER_MANAGER_SERVER).unwrap();
+            xous::send_message(
+                power_server,
+                xous::Message::new_blocking_scalar(PowerManagerOp::Boot.to_usize().unwrap(), 0, 0, 0, 0),
+            )
+            .ok();
+        }
+        _ => (),
+    }
     // give the system a second to stabilize, then try to mount
     tt.sleep_ms(1000).ok();
     log::info!("pddb mount...");
@@ -216,7 +238,6 @@ fn main() -> ! {
 
     let mut menu_active = false;
     let mut jig_ready_seen = false;
-    let mut boot_sent = false;
     let mut mutation_param: u8 = 0;
     let mut k_last = '\u{0000}';
     let mut skip_one_key = false;
