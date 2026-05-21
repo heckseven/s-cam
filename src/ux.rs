@@ -822,30 +822,7 @@ impl VaultUi {
 
                         if let Some(since) = self.low_batt_since {
                             if std::time::Instant::now().duration_since(since).as_secs() > LOWBATT_TIMEOUT_S {
-                                // TODO: wrap this in something more ergonomic
-                                let xns = xous_names::XousNames::new().unwrap();
-                                let conn = xns
-                                    .request_connection_blocking(susres::api::SERVER_NAME_SUSRES)
-                                    .expect("Can't connect to SUSRES");
-                                match xous::send_message(
-                                    conn,
-                                    xous::Message::new_scalar(
-                                        susres::api::Opcode::PlatformSpecific.to_usize().unwrap(),
-                                        bao1x_hal::clocks::ClockOp::DeepSleep.to_usize().unwrap(),
-                                        0,
-                                        0,
-                                        0,
-                                    ),
-                                ) {
-                                    Ok(xous::Result::Scalar1(result)) => {
-                                        if result == 1 {
-                                            log::info!("Should be in deep sleep!");
-                                        } else {
-                                            log::error!("Couldn't initiate deep sleep")
-                                        }
-                                    }
-                                    _ => panic!("Couldn't send deep sleep message to susres"),
-                                }
+                                self.global_config.as_ref().unwrap().lock().unwrap().power_off();
                             }
                         } else {
                             self.low_batt_since = Some(std::time::Instant::now())
