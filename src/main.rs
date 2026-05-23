@@ -236,6 +236,17 @@ fn main() -> ! {
     // this message is needed as a CI trigger
     log::info!("{}FIDO.READY,{}", bao1x_hal::board::BOOKEND_START, bao1x_hal::board::BOOKEND_END);
 
+    // "warm up" the first menu manger to reduce UI latency using a dummy key press
+    // the purpose of this dry run is to get all the UI code wired into main memory
+    // instead of hanging out in swap.
+    gfx.dry_run(true).ok();
+    tour_menu_mgr.redraw();
+    tour_menu_mgr.key_press('↑');
+    // restore the logo so that the back buffer is in a consistent state
+    gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
+    // gfx.flush().ok(); // i don't think this is necessary
+    gfx.dry_run(false).ok();
+
     let mut menu_active = false;
     let mut jig_ready_seen = false;
     let mut mutation_param: u8 = 0;

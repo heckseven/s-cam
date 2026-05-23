@@ -1236,7 +1236,7 @@ impl VaultUi {
                 } else {
                     match &self.tour_state {
                         TourState::Welcome { seen_press: _ } => {
-                            self.gfx.bitmap_diffusion(&bitmaps::tour_welcome::BITMAP, None, None).ok();
+                            self.gfx.bitmap(&bitmaps::tour_welcome::BITMAP, None, None).ok();
                         }
                         // no diffusion so the menu transition is snappy
                         TourState::LightGeneExplainer1 { seen_press: _ } => {
