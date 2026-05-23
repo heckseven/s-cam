@@ -27,7 +27,7 @@
      units="px"
      width="128px"
      inkscape:zoom="5.1241863"
-     inkscape:cx="76.79268"
+     inkscape:cx="77.08541"
      inkscape:cy="67.718069"
      inkscape:window-width="1906"
      inkscape:window-height="1366"
@@ -146,24 +146,24 @@
     <text
        xml:space="preserve"
        style="font-size:16px;line-height:1.25;font-family:sans-serif"
-       x="62.466179"
-       y="47.367733"
+       x="64.466179"
+       y="17.367733"
        id="text5523"><tspan
          sodipodi:role="line"
-         x="62.466179"
-         y="47.367733"
+         x="64.466179"
+         y="17.367733"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan76457">Your badge</tspan><tspan
          sodipodi:role="line"
-         x="62.466179"
-         y="67.62355"
+         x="64.466179"
+         y="37.859982"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan906">has a unique</tspan><tspan
          sodipodi:role="line"
-         x="62.466179"
-         y="87.879372"
+         x="64.466179"
+         y="58.352234"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan908">light pattern.</tspan></text>
+         id="tspan908">light pattern!</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:16px;line-height:1.25;font-family:sans-serif"
@@ -175,5 +175,31 @@
          y="114.62787"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan76457-0" /></text>
+    <text
+       xml:space="preserve"
+       style="font-size:13.3333px;line-height:1;font-family:sans-serif"
+       x="63.953426"
+       y="81.46595"
+       id="text5523-75"><tspan
+         sodipodi:role="line"
+         x="63.953426"
+         y="81.46595"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:13.3333px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
+         id="tspan170327">(Press any button</tspan><tspan
+         sodipodi:role="line"
+         x="63.95343"
+         y="95.209457"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:13.3333px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
+         id="tspan178193">to advance;</tspan><tspan
+         sodipodi:role="line"
+         x="63.953426"
+         y="108.95296"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:13.3333px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
+         id="tspan178197">raise the menu</tspan><tspan
+         sodipodi:role="line"
+         x="63.953426"
+         y="122.69647"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:13.3333px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
+         id="tspan178199">with the jog dial)</tspan></text>
   </g>
 </svg>

@@ -27,7 +27,7 @@
      units="px"
      width="128px"
      inkscape:zoom="5.1241863"
-     inkscape:cx="98.06435"
+     inkscape:cx="98.161927"
      inkscape:cy="67.718069"
      inkscape:window-width="1906"
      inkscape:window-height="1366"
@@ -153,12 +153,12 @@
          x="62.661335"
          y="21.022085"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan104293">1. Share your</tspan><tspan
+         id="tspan106738">1. Share a</tspan><tspan
          sodipodi:role="line"
          x="62.661335"
-         y="40.477905"
+         y="40.714336"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan106738">KEY</tspan></text>
+         id="tspan49675">NONCE</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:16px;line-height:1.2;font-family:sans-serif"
@@ -169,17 +169,17 @@
          x="65.394745"
          y="70.375359"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan106738-7">Show KEY</tspan><tspan
+         id="tspan14833">These are the</tspan><tspan
          sodipodi:role="line"
          x="65.394745"
-         y="89.831177"
+         y="90.067612"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan14831">with these</tspan><tspan
+         id="tspan88610">NONCE</tspan><tspan
          sodipodi:role="line"
          x="65.394745"
-         y="109.287"
+         y="109.75986"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan14833">buttons</tspan></text>
+         id="tspan88612">buttons</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:16px;line-height:1.25;font-family:sans-serif"

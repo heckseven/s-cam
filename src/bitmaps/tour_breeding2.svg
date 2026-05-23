@@ -27,8 +27,8 @@
      units="px"
      width="128px"
      inkscape:zoom="5.1241863"
-     inkscape:cx="76.79268"
-     inkscape:cy="67.718069"
+     inkscape:cx="77.08541"
+     inkscape:cy="85.08668"
      inkscape:window-width="1906"
      inkscape:window-height="1366"
      inkscape:window-x="26"
@@ -147,39 +147,29 @@
        xml:space="preserve"
        style="font-size:16px;line-height:1;font-family:sans-serif"
        x="63.685566"
-       y="22.68152"
+       y="18.68152"
        id="text5523"><tspan
          sodipodi:role="line"
          x="63.685566"
-         y="22.68152"
+         y="18.68152"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan114065"><tspan
+         id="tspan235867"><tspan
            id="tspan235859"
            style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-           dy="0">2. Sending</tspan></tspan><tspan
+           dy="0">2. Sender</tspan></tspan><tspan
          sodipodi:role="line"
          x="63.685566"
-         y="38.93734"
+         y="35.173771"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan26444">badge</tspan><tspan
+         id="tspan55504">scans your</tspan><tspan
          sodipodi:role="line"
          x="63.685566"
-         y="55.193161"
+         y="51.666019"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan235865">scans your</tspan><tspan
+         id="tspan55506">NONCE</tspan><tspan
          sodipodi:role="line"
          x="63.685566"
-         y="71.448982"
-         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan114067">KEY</tspan><tspan
-         sodipodi:role="line"
-         x="63.685566"
-         y="87.704803"
-         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan235867" /><tspan
-         sodipodi:role="line"
-         x="63.685566"
-         y="103.7048"
+         y="68.158272"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan235871" /></text>
     <text
@@ -193,21 +183,87 @@
          y="114.62787"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan76457-0" /></text>
-    <text
-       xml:space="preserve"
-       style="font-size:11px;line-height:1.25;font-family:sans-serif"
-       x="63.270966"
-       y="106.9783"
-       id="text280805"><tspan
-         sodipodi:role="line"
-         id="tspan280803"
-         x="63.270966"
-         y="106.9783"
-         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:11px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff">* Technically,</tspan><tspan
-         sodipodi:role="line"
-         x="63.270966"
-         y="120.90418"
-         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:11px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff"
-         id="tspan294763">it's a nonce</tspan></text>
+    <rect
+       style="fill:#ffffff;stroke:#ffffff;stroke-width:2.91218"
+       id="rect58016"
+       width="70"
+       height="70"
+       x="30"
+       y="59.456089" />
+    <g
+       id="g4542"
+       transform="matrix(0.02035143,0,0,-0.02059413,19.64857,138.69527)"
+       style="fill:#000000;stroke:none">
+      <path
+         id="path4544"
+         d="m 720,3190 v -490 h 490 490 v 490 490 H 1210 720 Z m 840,0 V 2840 H 1210 860 v 350 350 h 350 350 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+      <path
+         id="path4546"
+         d="m 1000,3190 v -210 h 210 210 v 210 210 h -210 -210 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+      <path
+         id="path4548"
+         d="m 2120,3610 v -70 h 140 140 v -210 -210 h -140 -140 v -210 -210 h 70 70 v 140 140 h 140 140 v 280 280 h -70 -70 v 70 70 h -140 -140 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+      <path
+         id="path4550"
+         d="m 2680,3190 v -490 h 490 490 v 490 490 h -490 -490 z m 840,0 v -350 h -350 -350 v 350 350 h 350 350 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+      <path
+         id="path4552"
+         d="m 2960,3190 v -210 h 210 210 v 210 210 h -210 -210 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+      <path
+         id="path4554"
+         d="m 1840,3120 v -420 h 70 70 v 420 420 h -70 -70 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+      <path
+         id="path4556"
+         d="m 2400,2770 v -70 h 70 70 v 70 70 h -70 -70 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+      <path
+         id="path4558"
+         d="m 1000,2490 v -70 h 70 70 v -140 -140 h -70 -70 v 70 70 H 860 720 v -70 -70 h 70 70 v -70 -70 h -70 -70 v -70 -70 h 210 210 v 70 70 h 70 70 v 70 70 h 70 70 v 70 70 h 70 70 v -70 -70 h 140 140 v -70 -70 h -140 -140 v -70 -70 h 140 140 v -210 -210 h 140 140 v -70 -70 h 70 70 v -70 -70 h 140 140 v -70 -70 h -70 -70 v -70 -70 h -70 -70 v 70 70 h -70 -70 v 70 70 h -140 -140 v -70 -70 h 70 70 v -70 -70 h 70 70 v -70 -70 h 140 140 v 70 70 h 70 70 v 70 70 h 70 70 V 880 740 h 70 70 v 280 280 h 140 140 v 70 70 h -70 -70 v 70 70 h 140 140 v 70 70 h -140 -140 v 70 70 h -70 -70 v -140 -140 h -70 -70 v 280 280 h 70 70 v 140 140 h 140 140 v -70 -70 h 70 70 v -70 -70 h -140 -140 v -70 -70 h 140 140 v 70 70 h 70 70 v 70 70 h -70 -70 v 70 70 h 140 140 v -280 -280 h -70 -70 v -70 -70 h 70 70 v -70 -70 h 70 70 v 70 70 h -70 -70 v 70 70 h 70 70 v 280 280 h -70 -70 v 70 70 h -350 -350 v -70 -70 h -70 -70 v 70 70 h -70 -70 v -70 -70 h -70 -70 v 70 70 h -490 -490 v -70 -70 h -140 -140 v 70 70 h -70 -70 z m 700,-140 v -70 h -70 -70 v 70 70 h 70 70 z m 980,-70 v -140 h -70 -70 v -70 -70 h -70 -70 v 70 70 h -70 -70 v -70 -70 h -70 -70 v -70 -70 h 140 140 v -70 -70 h -140 -140 v 70 70 h -140 -140 v 70 70 h 70 70 v 70 70 h -70 -70 v 70 70 h 140 140 v -70 -70 h 70 70 v 70 70 h 70 70 v -70 -70 h 70 70 v 140 140 h 70 70 z m -280,-770 v -70 h 70 70 v 70 70 h 70 70 v -70 -70 h 70 70 v -70 -70 h -70 -70 v 70 70 h -70 -70 v -70 -70 h -140 -140 v 70 70 h -70 -70 v 70 70 h 140 140 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+      <path
+         id="path4560"
+         d="M 720,1230 V 740 h 490 490 v 490 490 H 1210 720 Z m 840,0 V 880 H 1210 860 v 350 350 h 350 350 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+      <path
+         id="path4562"
+         d="m 1000,1230 v -210 h 210 210 v 210 210 h -210 -210 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+      <path
+         id="path4564"
+         d="m 3520,1370 v -70 h 70 70 v 70 70 h -70 -70 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+      <path
+         id="path4566"
+         d="m 3240,1090 v -70 h 210 210 v 70 70 h -210 -210 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+      <path
+         id="path4568"
+         d="m 2960,950 v -70 h 70 70 v -70 -70 h 140 140 v 70 70 h -140 -140 v 70 70 h -70 -70 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+      <path
+         id="path4570"
+         d="m 3520,810 v -70 h 70 70 v 70 70 h -70 -70 z"
+         inkscape:connector-curvature="0"
+         style="fill:#000000" />
+    </g>
   </g>
 </svg>

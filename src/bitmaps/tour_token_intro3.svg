@@ -27,7 +27,7 @@
      units="px"
      width="128px"
      inkscape:zoom="5.1241863"
-     inkscape:cx="76.79268"
+     inkscape:cx="77.280563"
      inkscape:cy="67.718069"
      inkscape:window-width="1906"
      inkscape:window-height="1366"
@@ -145,30 +145,35 @@
          style="fill:#ffffff;fill-opacity:1;stroke-width:1.69454" /></text>
     <text
        xml:space="preserve"
-       style="font-size:16px;line-height:1.25;font-family:sans-serif"
+       style="font-size:16px;line-height:1;font-family:sans-serif"
        x="64.075874"
-       y="34.58585"
+       y="52.58585"
        id="text5523"><tspan
          sodipodi:role="line"
          x="64.075874"
-         y="34.58585"
+         y="52.58585"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan172583">Then, connect</tspan><tspan
+         id="tspan149959">Connect the</tspan><tspan
          sodipodi:role="line"
          x="64.075874"
-         y="54.841671"
+         y="69.078102"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan174143">to a computer</tspan><tspan
+         id="tspan149965">core module</tspan><tspan
          sodipodi:role="line"
          x="64.075874"
-         y="75.097488"
+         y="85.570351"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan174147">via USB to</tspan><tspan
+         id="tspan131318">to a computer</tspan><tspan
          sodipodi:role="line"
          x="64.075874"
-         y="95.35331"
+         y="102.0626"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
-         id="tspan174149">use your token.</tspan></text>
+         id="tspan131320">via the</tspan><tspan
+         sodipodi:role="line"
+         x="64.075874"
+         y="118.55485"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
+         id="tspan136020">USB-C port</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:16px;line-height:1.25;font-family:sans-serif"
@@ -180,5 +185,27 @@
          y="114.62787"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:16px;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1"
          id="tspan76457-0" /></text>
+    <path
+       style="fill:#ffffff;stroke:#ffffff;stroke-width:7.62371;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 73,11.967652 0.19516,23"
+       id="path17261-9-6" />
+    <path
+       sodipodi:type="star"
+       style="fill:#ffffff;stroke:#ffffff;stroke-width:4;stroke-miterlimit:4;stroke-dasharray:none"
+       id="path19828-4-2-6"
+       inkscape:flatsided="true"
+       sodipodi:sides="3"
+       sodipodi:cx="14.246164"
+       sodipodi:cy="110.19516"
+       sodipodi:r1="10"
+       sodipodi:r2="5"
+       sodipodi:arg1="3.1415927"
+       sodipodi:arg2="4.1887902"
+       inkscape:rounded="0"
+       inkscape:randomized="0"
+       transform="rotate(90,89.834414,93.555906)"
+       inkscape:transform-center-y="-2.5000038"
+       inkscape:transform-center-x="2e-06"
+       d="m 4.2461643,110.19516 15.0000007,-8.66025 -1e-6,17.3205 z" />
   </g>
 </svg>

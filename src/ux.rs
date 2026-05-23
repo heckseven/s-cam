@@ -267,7 +267,8 @@ macro_rules! tour_advance {
 }
 
 fn is_tour_advance_key(k: char) -> bool {
-    k == '←' || k == '→' || k == '🔥' || k == '↑' || k == '↓'
+    // up/down not used to advance because it's too easy to fat-finger with menu raising
+    k == '←' || k == '→' || k == '🔥' // || k == '↑' || k == '↓'
 }
 
 enum TourState {
@@ -901,9 +902,9 @@ impl VaultUi {
                         tv.style = GlyphStyle::Bold;
                         tv.draw_border = false;
                         if matches!(mode_at_entry, VaultMode::ShowKey { .. }) {
-                            write!(tv, "KEY").ok();
+                            write!(tv, "NCE").ok();
                         } else {
-                            write!(tv, "GENE").ok();
+                            write!(tv, "DAT").ok();
                         }
                         self.gfx.draw_textview(&mut tv).ok();
                     }
