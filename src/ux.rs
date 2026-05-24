@@ -521,6 +521,7 @@ pub struct VaultUi {
     phase: bool,
     edge: bool,
     last_mode: VaultMode,
+    pub bio_loaded: bool,
 }
 
 impl VaultUi {
@@ -584,6 +585,7 @@ impl VaultUi {
             phase: false,
             edge: false,
             last_mode: VaultMode::FactoryTest,
+            bio_loaded: false,
         }
     }
 
@@ -757,8 +759,9 @@ impl VaultUi {
 
         match mode_at_entry {
             VaultMode::Idle | VaultMode::ConfirmGene | VaultMode::IdleDevMode => {
+                let now = self.tt.elapsed_ms();
                 if let Some(bitmap) = self.user_bitmap.as_ref() {
-                    let edge = (self.tt.elapsed_ms() / 3000) % 2 == 0;
+                    let edge = (now / 3000) % 2 == 0;
                     if self.edge != edge || mode_at_entry != self.last_mode {
                         if self.phase {
                             self.gfx.bitmap_diffusion(bitmap, None, None).ok();
@@ -799,7 +802,7 @@ impl VaultUi {
 
                 // check battery voltage
                 if !self.batt_polled
-                    && (self.tt.elapsed_ms() / 1000) % 4 == 0
+                    && (now / 1000) % 4 == 0
                     && !self.global_config.as_ref().unwrap().lock().unwrap().is_plugged_in()
                 {
                     let voltage_code = self.adc.read_raw(
@@ -843,7 +846,7 @@ impl VaultUi {
                         Gid::dummy(),
                         TextBounds::CenteredTop(Rectangle::new(
                             Point::new(0, 127 - 12),
-                            Point::new(110, 128),
+                            Point::new(128, 128),
                         )),
                     );
                     tv.invert = true;
@@ -851,6 +854,22 @@ impl VaultUi {
                     tv.style = GlyphStyle::Bold;
                     tv.draw_border = false;
                     write!(tv, "DEV MODE").ok();
+                    self.gfx.draw_textview(&mut tv).ok();
+                }
+                // indicate BIO hacks
+                if self.bio_loaded && (now / 1000) % 2 == 0 {
+                    let mut tv = TextView::new(
+                        Gid::dummy(),
+                        TextBounds::CenteredTop(Rectangle::new(
+                            Point::new(0, 127 - 12),
+                            Point::new(128, 128),
+                        )),
+                    );
+                    tv.invert = true;
+                    tv.margin = Point::new(1, 1);
+                    tv.style = GlyphStyle::Bold;
+                    tv.draw_border = false;
+                    write!(tv, "BIO ACTIVE").ok();
                     self.gfx.draw_textview(&mut tv).ok();
                 }
 

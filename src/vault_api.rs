@@ -71,6 +71,8 @@ pub(crate) enum VaultOp {
     Jig = 1025,
     // monkey patch to skip the first key after a WFI event
     SkipKey = 1026,
+    // monkey patch to indicate if BIO hacks are active
+    BioActive = 1027,
 }
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]

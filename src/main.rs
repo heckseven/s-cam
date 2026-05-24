@@ -940,6 +940,12 @@ fn main() -> ! {
                     }
                 }
             }),
+            Some(VaultOp::BioActive) => xous::msg_scalar_unpack!(msg, active, _, _, _, {
+                vault_ui.bio_loaded = active != 0;
+                if !vault_ui.bio_loaded {
+                    global_config.lock().unwrap().render_gene();
+                }
+            }),
             Some(VaultOp::Jig) => {
                 *mode.lock().unwrap() = VaultMode::FactoryTest;
                 vault_ui.redraw();
