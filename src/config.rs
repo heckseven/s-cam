@@ -445,6 +445,20 @@ impl GlobalConfig {
         )
         .ok();
     }
+
+    pub fn pause_accel(&self, pause: bool) {
+        xous::send_message(
+            self.power_server,
+            xous::Message::new_blocking_scalar(
+                PowerManagerOp::PauseAccel.to_usize().unwrap(),
+                if pause { 1 } else { 0 },
+                0,
+                0,
+                0,
+            ),
+        )
+        .ok();
+    }
 }
 
 // GlobalConfig *must* be thread-safe. Don't add stuff to it that's not Send + Sync

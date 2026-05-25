@@ -358,8 +358,10 @@ fn main() -> ! {
                             menu_active = true;
                         }
                         '🔥' => {
+                            global_config.lock().unwrap().pause_accel(true);
                             vault_ui.camera_transition();
                             let prior_mode = animate.swap(false, Ordering::SeqCst);
+                            skip_one_key = true;
                             xous::send_message(
                                 actions_conn,
                                 xous::Message::new_blocking_scalar(
@@ -374,6 +376,7 @@ fn main() -> ! {
                             // wait a moment for the last frame to clear before redrawing the UI
                             tt.sleep_ms(100).ok();
                             animate.store(prior_mode, Ordering::SeqCst);
+                            global_config.lock().unwrap().pause_accel(false);
 
                             if mode_now == VaultMode::Totp || mode_now == VaultMode::Password {
                                 // reload DB to pickup the new data
@@ -558,6 +561,7 @@ fn main() -> ! {
                 let buffer = unsafe { Buffer::from_memory_message(msg.body.memory_message().unwrap()) };
                 let s: IpcString = buffer.to_original::<IpcString, _>().unwrap();
                 log::info!("mode: {:?}, s: {}", mode_now, s.s);
+                skip_one_key = false;
 
                 match mode_now {
                     VaultMode::GeneScan
