@@ -359,6 +359,7 @@ fn main() -> ! {
                         }
                         '🔥' => {
                             global_config.lock().unwrap().pause_accel(true);
+                            tt.sleep_ms(200).ok();
                             vault_ui.camera_transition();
                             let prior_mode = animate.swap(false, Ordering::SeqCst);
                             skip_one_key = true;
