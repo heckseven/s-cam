@@ -777,11 +777,21 @@ fn main() -> ! {
                                             }
                                         }
                                         _ => {
-                                            log::warn!("Unhandled string in main: {}", &s.s);
-                                            let mut qr_str =
-                                                String::from(t!("vault.error.qr", locales::LANG));
-                                            qr_str.push_str(&format!(": {}", &qr_str));
-                                            modals.show_notification(&qr_str, None).ok();
+                                            animate.store(false, Ordering::SeqCst);
+                                            modals
+                                                .dynamic_notification(
+                                                    Some(&format!("Unhandled QR code: {}", s.s)),
+                                                    None,
+                                                )
+                                                .ok();
+                                            tt.sleep_ms(3000).ok();
+                                            modals.dynamic_notification_close().ok();
+                                            *mode.lock().unwrap() = VaultMode::Idle;
+                                            vault_ui.redraw();
+                                            animate.store(
+                                                mode.lock().unwrap().should_animate(),
+                                                Ordering::SeqCst,
+                                            );
                                         }
                                     }
                                 } else {
