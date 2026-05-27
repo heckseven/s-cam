@@ -1452,16 +1452,20 @@ impl VaultUi {
     }
 
     pub(crate) fn handle_key(&mut self, k: char) -> Option<char> {
+        let mode_at_entry = (*self.mode.lock().unwrap()).clone();
         if k == '🔼' {
             self.orientation = DisplayOrientation::Normal;
             self.redraw();
-            return Some(k);
+            if mode_at_entry != VaultMode::StandAloneTest {
+                return Some(k);
+            }
         } else if k == '🔽' {
             self.orientation = DisplayOrientation::UpsideDown;
             self.redraw();
-            return Some(k);
+            if mode_at_entry != VaultMode::StandAloneTest {
+                return Some(k);
+            }
         }
-        let mode_at_entry = (*self.mode.lock().unwrap()).clone();
         log::debug!("handle_key: {:?}", mode_at_entry);
         let filtered_k = match mode_at_entry {
             VaultMode::FactoryTest => {
