@@ -124,6 +124,14 @@ impl StandAloneTestState {
                         orientation_changed || k.unwrap_or('\0') == '🔽' || k.unwrap_or('\0') == '🔼';
 
                     if orientation_changed {
+                        log::info!("Resetting tour state...");
+                        let pddb = Pddb::new();
+                        let mut key = pddb
+                            .get(DC34_DICT, DC34_TOUR, None, true, true, Some(1), None::<fn()>)
+                            .expect("couldn't get PDDB key");
+                        key.write(&[0]).ok();
+                        pddb.sync().ok();
+                        log::info!("...done!");
                         Self::Finish { seen_button: false }
                     } else {
                         Self::Flip { orientation_changed }
