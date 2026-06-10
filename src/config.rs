@@ -511,6 +511,8 @@ pub fn read_badgetype_pins() -> BadgeType {
         );
     }
     let mut bits: u8 = 0;
+    // few milliseconds for the pull-ups to do their magic
+    std::thread::sleep(std::time::Duration::from_millis(5));
     for (i, &(port, pin)) in SAO_GPIO[..3].iter().enumerate() {
         if iox.get_gpio_pin_value(port, pin) == IoxValue::High {
             bits |= 1 << (i as u8);
