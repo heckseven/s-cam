@@ -605,6 +605,10 @@ impl VaultUi {
         self.token_help_state = TokenHelpState::TokenRecap { seen_press: false };
     }
 
+    pub fn reset_factory_test(&mut self) {
+        self.factory_test = FactoryTestState::InitWait { start_time: std::time::Instant::now() };
+    }
+
     pub fn set_global_config(&mut self, config: Arc<Mutex<GlobalConfig>>) {
         self.global_config = Some(config);
     }

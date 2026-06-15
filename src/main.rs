@@ -963,6 +963,7 @@ fn main() -> ! {
             }),
             Some(VaultOp::Jig) => {
                 *mode.lock().unwrap() = VaultMode::FactoryTest;
+                vault_ui.reset_factory_test();
                 vault_ui.redraw();
             }
             _ => {
