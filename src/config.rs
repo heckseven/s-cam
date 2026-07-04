@@ -242,9 +242,19 @@ impl GlobalConfig {
     }
 
     pub fn update_power_state(&mut self, current_mode: VaultMode) {
+        #[cfg(not(feature = "uber"))]
         const SHORT_TIMEOUT: usize = 36;
+        #[cfg(not(feature = "uber"))]
         const MEDIUM_TIMEOUT: usize = 69;
+        #[cfg(not(feature = "uber"))]
         const LONG_TIMEOUT: usize = 0x69;
+
+        #[cfg(feature = "uber")]
+        const SHORT_TIMEOUT: usize = 4 * 60 * 60; // four hours
+        #[cfg(feature = "uber")]
+        const MEDIUM_TIMEOUT: usize = 8 * 60 * 60;
+        #[cfg(feature = "uber")]
+        const LONG_TIMEOUT: usize = 8 * 60 * 60;
         // handles None case, as well as Some(previous_mode) not the same as Some(current_mode)
         if self.previous_mode != Some(current_mode) {
             let (enable, duration_sec) = match current_mode {
