@@ -28,9 +28,16 @@ const JIG_TIMEOUT: u64 = 35;
 // full string on QR code needs to be factory://factory-aae949f6969-lorem-ipsum-data
 pub const FACTORY_STANDALONE_STRING: &'static str = "factory-aae949f6969-lorem-ipsum-data";
 
+#[cfg(not(feature = "uber"))]
 const LOWBATT_THRESH_MV: u32 = 2380;
+#[cfg(feature = "uber")]
+// loading is fairly light (80 mA << 0.2C) so 3200 should be darn near empty
+const LOWBATT_THRESH_MV: u32 = 3200;
 // how long to stay in low batt mode before forcing a sleep
+#[cfg(not(feature = "uber"))]
 const LOWBATT_TIMEOUT_S: u64 = 90;
+#[cfg(feature = "uber")]
+const LOWBATT_TIMEOUT_S: u64 = 180;
 
 pub const DEFAULT_FONT: GlyphStyle = GlyphStyle::Regular;
 pub const FONT_LIST: [&'static str; 6] = ["regular", "tall", "mono", "bold", "large", "small"];
