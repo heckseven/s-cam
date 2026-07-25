@@ -107,6 +107,7 @@ impl GlobalConfig {
             BadgeType::None
         };
         let badge_type_measured = read_badgetype_pins();
+        // init_light_gene(BadgeType::Uber); // only used to reset a badge to Uber in case of a mating failure
         let badge_type = if badge_code_len == 0 {
             if badge_type_measured != BadgeType::None {
                 attach_state = AttachState::FirstMate;
