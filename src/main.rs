@@ -264,11 +264,19 @@ fn main() -> ! {
         let modals = modals::Modals::new(&xns).unwrap();
         let mut in_progress = false;
         let mut msg_opt = None;
+        let power_server = xns.request_connection_blocking(dc34_api::POWER_MANAGER_SERVER).unwrap();
         loop {
             xous::reply_and_receive_next(status_server, &mut msg_opt).unwrap();
             let msg = msg_opt.as_mut().unwrap();
             if msg.body.id() == THROW_AWAY_OP {
                 if let Some(scalar) = msg.body.scalar_message() {
+                    // feed the WDT so we don't time-out
+                    xous::try_send_message(
+                        power_server,
+                        xous::Message::new_scalar(PowerManagerOp::FeedWdt.to_usize().unwrap(), 0, 0, 0, 0),
+                    )
+                    .ok();
+
                     if token == [scalar.arg2 as u32, scalar.arg3 as u32, scalar.arg4 as u32] {
                         let progress = scalar.arg1 as u32;
                         if progress == 100 {

@@ -607,6 +607,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "curve25519-dalek-bao1x"
+version = "4.2.0"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "curve25519-dalek-derive",
+ "digest 0.10.7",
+ "fiat-crypto",
+ "rustc_version 0.4.1",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "curve25519-dalek-derive"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f46882e17999c6cc590af592290432be3bce0428cb0d5f8b6715e4dc7b383eb3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "dc34-api"
 version = "0.1.0"
 dependencies = [
@@ -756,7 +781,16 @@ dependencies = [
  "der",
  "elliptic-curve",
  "rfc6979 0.3.1",
- "signature",
+ "signature 1.6.4",
+]
+
+[[package]]
+name = "ed25519"
+version = "2.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "115531babc129696a58c64a4fef0a8bf9e9698629fb97e9e40767d235cfbcd53"
+dependencies = [
+ "signature 2.2.0",
 ]
 
 [[package]]
@@ -764,6 +798,18 @@ name = "ed25519-compact"
 version = "1.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e18997d4604542d0736fae2c5ad6de987f0a50530cbcc14a7ce5a685328a252d"
+
+[[package]]
+name = "ed25519-dalek-compat"
+version = "2.2.0"
+dependencies = [
+ "curve25519-dalek-bao1x",
+ "ed25519",
+ "sha2",
+ "signature 2.2.0",
+ "subtle",
+ "zeroize",
+]
 
 [[package]]
 name = "either"
@@ -870,6 +916,12 @@ dependencies = [
  "rand_core",
  "subtle",
 ]
+
+[[package]]
+name = "fiat-crypto"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64cd1e32ddd350061ae6edb1b082d7c54915b5c672c389143b9a63403a109f24"
 
 [[package]]
 name = "find-msvc-tools"
@@ -1316,6 +1368,7 @@ dependencies = [
  "byteorder",
  "cipher",
  "digest 0.10.7",
+ "ed25519-dalek-compat",
  "hex 0.4.3",
  "hkdf",
  "keystore-api",
@@ -2352,6 +2405,15 @@ checksum = "74233d3b3b2f6d4b006dc19dee745e73e2a6bfb6f93607cd3b02bd5b00797d7c"
 dependencies = [
  "digest 0.10.7",
  "rand_core",
+]
+
+[[package]]
+name = "signature"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
+dependencies = [
+ "digest 0.10.7",
 ]
 
 [[package]]
