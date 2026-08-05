@@ -6,6 +6,46 @@ It provides the in-conference badge interactivity, namely, customizing lights by
 
 There's a couple easter eggs buried in the code here, if you care to look for them, and maybe even a flag to capture if you look hard enough.
 
+## Building
+
+Assumes the following directory structure:
+
+```
+ .
+ ├── dc34-api
+ ├── dc34-console
+ ├── dc34-vault
+ └── xous-core
+```
+
+And that these commands are run from *inside* the xous-core directory. Prerequisites:
+
+- Latest Rust
+- Run `cargo xtask install-toolkit` inside the `xous-core` repo
+
+```shell
+echo "===== Building Console ====="
+(
+    cd ../dc34-console &&
+    cargo build --release --target riscv32imac-unknown-xous-elf --features board-baosec --features oem-baosec-lite --features bao1x --features utralib/bao1x &&
+) || {
+    echo "dc34-console build failed!"
+    exit 1
+}
+
+echo "===== Building Vault ====="
+(
+    cd ../dc34-vault &&
+    cargo build --release --target riscv32imac-unknown-xous-elf --features board-baosec &&
+) || {
+    echo "dc34-vault build failed!"
+    exit 1
+}
+
+cargo xtask baosec-lite ../dc34-console/target/riscv32imac-unknown-xous-elf/release/dc34-console~flash ../dc34-vault/target/riscv32imac-unknown-xous-elf/release/dc34-vault \
+    --no-timestamp --feature usb --kernel-feature debug-proc --no-verify
+```
+
 ## Conference Mode
 
 When the core module is mated to the badge carrier, the module defaults to "conference" mode, which shows the Defcon logo, alternating with an image of your choice if you upload it using https://github.com/bunnie/dc34-image.
