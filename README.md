@@ -31,7 +31,7 @@ Thus detached, you can plug your badge into a computer via USB and use it as a 2
 
 ## Updates
 
-Firmware updates will be published at https://ci.betrusted.io/releases/latest/baochip/, under the `baosec-lite` directory.
+Get firmware updates at [https://ci.betrusted.io/releases/latest/baochip/dc34-badge/latest.zip](https://ci.betrusted.io/releases/latest/baochip/dc34-badge/latest.zip). The zip file must be extracted into the three constituent files (xous.uf2, swap.uf2, loader.uf2) prior to copying to the device!
 
 To perform an update:
 
