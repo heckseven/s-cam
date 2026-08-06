@@ -1,6 +1,7 @@
 # DC34 `vault` Application
 
-[!WARNING] Loading your own firmware onto your badge will wipe the light encryption key and cause your badge to enter developer mode.
+> [!WARNING]
+> Loading your own firmware onto your badge will wipe the light encryption key and cause your badge to enter developer mode.
 
 This is the `vault` application as customized for Defcon34.
 
