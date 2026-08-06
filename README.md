@@ -1,5 +1,7 @@
 # DC34 `vault` Application
 
+[!WARNING] Loading your own firmware onto your badge will wipe the light encryption key and cause your badge to enter developer mode.
+
 This is the `vault` application as customized for Defcon34.
 
 It provides the in-conference badge interactivity, namely, customizing lights by scanning encrypted QR codes between badges.
