@@ -621,6 +621,12 @@ fn main() -> ! {
                         match base45::decode(&s.s.as_bytes()) {
                             Ok(data) => {
                                 log::debug!("b45dec: {:x?}", data);
+                                if data.len() < DC34_HEADER.len() {
+                                    log::error!("protocol error: QR data too short");
+                                    *mode.lock().unwrap() = VaultMode::Idle;
+                                    animate.store(false, Ordering::SeqCst);
+                                    continue;
+                                }
                                 if data[..DC34_HEADER.len()] == DC34_HEADER {
                                     // assume we're scanning their key
                                     if data.len() < DC34_HEADER.len() + size_of::<Nonce>() {
