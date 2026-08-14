@@ -67,6 +67,9 @@ pub(crate) enum VaultOp {
     HandleQr,
     AbortQr,
 
+    // bookmark QR: ActionManager validated the URL; main builds the QrCode and sets qr_override
+    BookmarkQrReady,
+
     // monkey patch for last-minute custom image feature - discriminant is hard-coded into dc34-console
     ImageLoad = 1024,
     // monkey patch to force jig mode, for re-tested units in the factory

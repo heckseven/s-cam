@@ -618,6 +618,52 @@ impl VaultUi {
         }
     }
 
+    /// Load bookmarks from PDDB into the local cache. Call this before entering BookmarkList mode.
+    pub(crate) fn load_bookmarks(&mut self) {
+        use std::io::Read as StdRead;
+        self.bookmark_cache.clear();
+        self.bookmark_cursor = 0;
+        let pddb = self.pddb.borrow();
+        let keys = match pddb.list_keys(VAULT_BOOKMARKS_DICT, None) {
+            Ok(k) => k,
+            Err(e) => {
+                log::warn!("load_bookmarks: list_keys failed: {:?}", e);
+                return;
+            }
+        };
+        let mut entries: Vec<(String, String, String)> = Vec::new();
+        for key in keys.iter().filter(|k| k.as_str() != VAULT_BOOKMARKS_COUNTER_KEY) {
+            if let Ok(mut entry) = pddb.get(
+                VAULT_BOOKMARKS_DICT,
+                key,
+                None,
+                false,
+                false,
+                None,
+                None::<fn()>,
+            ) {
+                let mut data = Vec::new();
+                if entry.read_to_end(&mut data).is_ok() {
+                    if let Ok(body) = std::str::from_utf8(&data) {
+                        let mut parts = body.splitn(3, '\n');
+                        let url = parts.next().unwrap_or("").to_string();
+                        let label = parts.next().unwrap_or("").to_string();
+                        // Truncate URL for display to fit the small-font 21-column screen
+                        let display = if url.len() > 30 {
+                            format!("{}\u{2026}", &url[..29])
+                        } else {
+                            url
+                        };
+                        entries.push((key.clone(), display, label));
+                    }
+                }
+            }
+        }
+        // Sort by key (zero-padded hex u64) so entries appear in insertion order
+        entries.sort_by(|(a, _, _), (b, _, _)| a.cmp(b));
+        self.bookmark_cache = entries;
+    }
+
     pub fn reset_help_state(&mut self) { self.help_state = HelpState::BadgeRecap { seen_press: false }; }
 
     pub fn reset_about_state(&mut self) { self.about_state = AboutState::Bunnie { seen_press: false }; }
@@ -931,7 +977,9 @@ impl VaultUi {
                     _ => {}
                 }
             }
-            VaultMode::ShowKey { quantum } | VaultMode::ResponseGene { quantum } => {
+            VaultMode::ShowKey { quantum }
+            | VaultMode::ResponseGene { quantum }
+            | VaultMode::ShowBookmarkQr { quantum } => {
                 if let Some(code) = &self.qr_override {
                     if quantum & 7 == 0 {
                         self.clear_area();
@@ -955,6 +1003,8 @@ impl VaultUi {
                         tv.draw_border = false;
                         if matches!(mode_at_entry, VaultMode::ShowKey { .. }) {
                             write!(tv, "NCE").ok();
+                        } else if matches!(mode_at_entry, VaultMode::ShowBookmarkQr { .. }) {
+                            write!(tv, "BKM").ok();
                         } else {
                             write!(tv, "DAT").ok();
                         }
@@ -964,6 +1014,9 @@ impl VaultUi {
                         *self.mode.lock().unwrap() = VaultMode::ShowKey { quantum: quantum + 1 }
                     } else if matches!(mode_at_entry, VaultMode::ResponseGene { .. }) {
                         *self.mode.lock().unwrap() = VaultMode::ResponseGene { quantum: quantum + 1 }
+                    } else if matches!(mode_at_entry, VaultMode::ShowBookmarkQr { .. }) {
+                        *self.mode.lock().unwrap() =
+                            VaultMode::ShowBookmarkQr { quantum: quantum + 1 }
                     }
                 } else {
                     // if no code, go back to idle mode
@@ -1454,6 +1507,69 @@ impl VaultUi {
                     }
                 }
             } // _ => unimplemented!(),
+            VaultMode::BookmarkList => {
+                self.clear_area();
+                // Header row
+                let mut header = TextView::new(
+                    Gid::dummy(),
+                    TextBounds::CenteredTop(Rectangle::new(
+                        Point::new(0, 0),
+                        Point::new(127, 12),
+                    )),
+                );
+                header.style = GlyphStyle::Bold;
+                header.draw_border = false;
+                header.invert = true;
+                write!(header, "Bookmarks").ok();
+                self.gfx.draw_textview(&mut header).ok();
+
+                if self.bookmark_cache.is_empty() {
+                    let mut tv = TextView::new(
+                        Gid::dummy(),
+                        TextBounds::CenteredTop(Rectangle::new(
+                            Point::new(0, 14),
+                            Point::new(127, 127),
+                        )),
+                    );
+                    tv.style = GlyphStyle::Small;
+                    tv.draw_border = false;
+                    write!(tv, "No bookmarks.\nScan a URL QR to add one.").ok();
+                    self.gfx.draw_textview(&mut tv).ok();
+                } else {
+                    const VISIBLE: usize = 7;
+                    let n = self.bookmark_cache.len();
+                    let half = VISIBLE / 2;
+                    let start = if self.bookmark_cursor >= half {
+                        (self.bookmark_cursor - half).min(n.saturating_sub(VISIBLE))
+                    } else {
+                        0
+                    };
+                    let mut y = 14isize;
+                    for (i, (_, display, label)) in
+                        self.bookmark_cache.iter().enumerate().skip(start).take(VISIBLE)
+                    {
+                        let selected = i == self.bookmark_cursor;
+                        let mut tv = TextView::new(
+                            Gid::dummy(),
+                            TextBounds::BoundingBox(Rectangle::new(
+                                Point::new(0, y),
+                                Point::new(127, y + 15),
+                            )),
+                        );
+                        tv.style = GlyphStyle::Small;
+                        tv.draw_border = false;
+                        tv.ellipsis = true;
+                        tv.invert = selected;
+                        if label.is_empty() {
+                            write!(tv, "{}", display).ok();
+                        } else {
+                            write!(tv, "{}: {}", label, display).ok();
+                        }
+                        self.gfx.draw_textview(&mut tv).ok();
+                        y += 16;
+                    }
+                }
+            }
             VaultMode::ShowUrl => {
                 // Display the scanned URL with a header row and wrapped text
                 self.gfx.clear().ok();
@@ -1745,10 +1861,54 @@ impl VaultUi {
             // this is the state of the donor in response to query
             VaultMode::ResponseGene { quantum: _ } => {
                 self.global_config.as_mut().unwrap().lock().unwrap().clear_nonces();
+                // Clear qr_override so a subsequent gene exchange or bookmark QR renders fresh.
+                self.qr_override = None;
                 *self.mode.lock().unwrap() = VaultMode::Idle;
                 // eat the 'fire' button if it's pressed - we just want to go back to the idle
                 // screen in all button presses
                 if k != '🔥' { Some(k) } else { None }
+            }
+            VaultMode::BookmarkList => {
+                match k {
+                    '↑' => {
+                        if self.bookmark_cursor > 0 {
+                            self.bookmark_cursor -= 1;
+                        }
+                    }
+                    '↓' => {
+                        if self.bookmark_cursor + 1 < self.bookmark_cache.len() {
+                            self.bookmark_cursor += 1;
+                        }
+                    }
+                    '←' => {
+                        // back to idle
+                        *self.mode.lock().unwrap() = VaultMode::Idle;
+                    }
+                    '→' | '🔥' => {
+                        // select highlighted bookmark → trigger QR render via ActionManager
+                        if let Some((key, _, _)) = self.bookmark_cache.get(self.bookmark_cursor) {
+                            let key = key.clone();
+                            let ipc_key = crate::IpcString { s: key };
+                            if let Ok(buf) = xous_ipc::Buffer::into_buf(ipc_key) {
+                                buf.lend(
+                                    self.actions_conn,
+                                    crate::actions::ActionOp::BookmarkSelected
+                                        .to_u32()
+                                        .unwrap(),
+                                )
+                                .ok();
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                Some(k)
+            }
+            VaultMode::ShowBookmarkQr { quantum: _ } => {
+                // Any key clears the bookmark QR and returns to Idle
+                self.qr_override = None;
+                *self.mode.lock().unwrap() = VaultMode::Idle;
+                Some(k)
             }
             VaultMode::ShowUrl => {
                 // '←' triggers the type-out confirmation modal.

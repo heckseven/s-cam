@@ -1,6 +1,6 @@
 mod ux;
 mod sanitize;
-use crate::sanitize::{CAP_URL_DISPLAY, SanitizedUrl};
+use crate::sanitize::{CAP_BOOKMARK_URL, CAP_URL_DISPLAY, SanitizedUrl};
 use aes::{Aes256, cipher::BlockSizeUser};
 use aes_gcm_siv::aead::{Aead, Payload};
 use aes_gcm_siv::{Nonce, Tag};
@@ -73,6 +73,10 @@ pub enum VaultMode {
     Password,
     TokenHelp,
     ShowUrl,
+    /// User is browsing the saved bookmark list
+    BookmarkList,
+    /// Bookmark selected — show its URL as a QR code (reuses qr_override render path)
+    ShowBookmarkQr { quantum: u32 },
 }
 
 impl VaultMode {
@@ -94,6 +98,8 @@ impl VaultMode {
             VaultMode::TokenTour => false,
             VaultMode::Tour => false,
             VaultMode::ShowUrl => false,
+            VaultMode::BookmarkList => false,
+            VaultMode::ShowBookmarkQr { quantum: _ } => true,
         }
     }
 }
@@ -607,6 +613,57 @@ fn main() -> ! {
                 // reset rates
                 global_config.lock().unwrap().set_mutation_rate(MutationRate::Baseline);
                 mutation_param = 0;
+            }
+            Some(VaultOp::BookmarkQrReady) => {
+                let buffer =
+                    unsafe { Buffer::from_memory_message(msg.body.memory_message().unwrap()) };
+                let s: IpcString = buffer.to_original::<IpcString, _>().unwrap();
+                // ActionManager already validated with SanitizedUrl; re-validate for defence in depth.
+                match SanitizedUrl::new(&s.s, CAP_BOOKMARK_URL) {
+                    Ok(url) => {
+                        match QrCode::with_error_correction_level(
+                            url.as_str().as_bytes(),
+                            qrcode::EcLevel::M,
+                        ) {
+                            Ok(code) => {
+                                log::info!(
+                                    "Bookmark QR encoded {} bytes to version {:?}",
+                                    url.as_str().len(),
+                                    code.version()
+                                );
+                                vault_ui.qr_override = Some(code);
+                                *mode.lock().unwrap() = VaultMode::ShowBookmarkQr { quantum: 0 };
+                                animate.store(
+                                    VaultMode::ShowBookmarkQr { quantum: 0 }.should_animate(),
+                                    Ordering::SeqCst,
+                                );
+                                vault_ui.redraw();
+                            }
+                            Err(e) => {
+                                // Should not be reachable: ingest cap == render cap (both CAP_BOOKMARK_URL).
+                                log::error!(
+                                    "Bookmark QR encode failed (invariant violation): {:?}",
+                                    e
+                                );
+                                animate.store(false, Ordering::SeqCst);
+                                modals.show_notification("URL too long to render as QR", None).ok();
+                                animate
+                                    .store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
+                                *mode.lock().unwrap() = VaultMode::Idle;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "Bookmark URL sanitization failed unexpectedly: {:?}",
+                            e
+                        );
+                        animate.store(false, Ordering::SeqCst);
+                        modals.show_notification("Bookmark URL invalid", None).ok();
+                        animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
+                        *mode.lock().unwrap() = VaultMode::Idle;
+                    }
+                }
             }
             Some(VaultOp::HandleQr) => {
                 let mode_now = { *mode.lock().unwrap() };
