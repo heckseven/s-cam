@@ -13,6 +13,8 @@ pub const COMMAND_RESET_SESSION: u8 = 0x74;
 
 pub const VAULT_PASSWORD_DICT: &'static str = "vault.passwords";
 pub const VAULT_TOTP_DICT: &'static str = "vault.totp";
+pub const VAULT_BOOKMARKS_DICT: &'static str = "vault.bookmarks";
+pub const VAULT_BOOKMARKS_COUNTER_KEY: &'static str = "__counter__";
 /// contains the list of usernames
 pub const VAULT_CONFIG_USERNAMES: &'static str = "vault.config/usernames";
 /// contains the generator configuration record

@@ -12,6 +12,8 @@ use ctap_crypto::Hash256;
 use crate::totp::TotpAlgorithm;
 use crate::vault_api::VAULT_PASSWORD_DICT;
 use crate::vault_api::VAULT_TOTP_DICT;
+use crate::vault_api::VAULT_BOOKMARKS_COUNTER_KEY;
+use crate::vault_api::VAULT_BOOKMARKS_DICT;
 const VAULT_TOTP_ALLOC_HINT: usize = 128;
 const VAULT_PASSWORD_REC_VERSION: u32 = 1;
 
@@ -45,6 +47,41 @@ impl From<PasswordSerializationError> for Error {
     fn from(e: PasswordSerializationError) -> Self { Self::PasswordSerError(e) }
 }
 
+/// Errors returned by the bookmark storage methods.
+#[derive(Debug)]
+#[allow(dead_code)]
+pub enum BookmarkError {
+    IoError(std::io::Error),
+    ParseError(String),
+    CounterCorrupt,
+}
+impl From<std::io::Error> for BookmarkError {
+    fn from(e: std::io::Error) -> Self { Self::IoError(e) }
+}
+pub struct Bookmark {
+    pub key: String,
+    pub url: String,
+    pub label: String,
+    pub timestamp_unix: u64,
+}
+const fn const_str_eq(a: &str, b: &str) -> bool {
+    if a.len() != b.len() { return false; }
+    let a_bytes = a.as_bytes();
+    let b_bytes = b.as_bytes();
+    let mut i = 0;
+    while i < a_bytes.len() {
+        if a_bytes[i] != b_bytes[i] { return false; }
+        i += 1;
+    }
+    true
+}
+// Safety invariant: VAULT_BOOKMARKS_DICT must never be the dc34 dict.
+// No new code path in storage.rs may open, read, write, or reference "dc34" (the gene dict).
+// The string literal "dc34" may appear only in this comment and in the assertion message below.
+const _: () = assert!(
+    !const_str_eq(crate::vault_api::VAULT_BOOKMARKS_DICT, "dc34"),
+    "VAULT_BOOKMARKS_DICT must never equal the gene dict"
+);
 pub struct Manager {
     pddb: pddb::Pddb,
 }
@@ -102,7 +139,7 @@ impl Manager {
         }
     }
 
-    fn pddb_store(
+    pub(crate) fn pddb_store(
         &self,
         payload: &[u8],
         dict: &str,
@@ -137,7 +174,7 @@ impl Manager {
         }
     }
 
-    fn pddb_get(&self, dict: &str, key_name: &str) -> Result<Vec<u8>, Error> {
+    pub(crate) fn pddb_get(&self, dict: &str, key_name: &str) -> Result<Vec<u8>, Error> {
         match self.pddb.get(dict, key_name, None, false, false, None, Some(dc34_vault::basis_change)) {
             Ok(mut record) => {
                 let mut data = Vec::<u8>::new();
@@ -276,6 +313,152 @@ impl Manager {
 
         let basis = self.basis_for_key(&settings.dict, key_name)?;
         self.pddb.delete_key(&settings.dict, key_name, Some(&basis)).map_err(|error| Error::IoError(error))
+    }
+
+    pub(crate) fn bookmark_next_key(&mut self) -> Result<String, BookmarkError> {
+        let current: u64 = match self.pddb.get(
+            VAULT_BOOKMARKS_DICT,
+            VAULT_BOOKMARKS_COUNTER_KEY,
+            None,
+            false,
+            false,
+            None,
+            Some(dc34_vault::basis_change),
+        ) {
+            Ok(mut record) => {
+                let mut data = Vec::new();
+                record.read_to_end(&mut data)?;
+                let s = std::str::from_utf8(&data)
+                    .map_err(|_| BookmarkError::CounterCorrupt)?;
+                u64::from_str_radix(s.trim(), 16)
+                    .map_err(|_| BookmarkError::CounterCorrupt)?
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0u64,
+            Err(e) => return Err(BookmarkError::IoError(e)),
+        };
+        let next = current + 1;
+        let key = format!("{:016x}", next);
+        let counter_bytes = format!("{:x}", next).into_bytes();
+        match self.pddb.get(
+            VAULT_BOOKMARKS_DICT,
+            VAULT_BOOKMARKS_COUNTER_KEY,
+            None,
+            true,
+            true,
+            Some(20),
+            Some(dc34_vault::basis_change),
+        ) {
+            Ok(mut record) => { record.write_all(&counter_bytes)?; }
+            Err(e) => return Err(BookmarkError::IoError(e)),
+        }
+        Ok(key)
+    }
+
+    pub(crate) fn bookmark_store(&mut self, url: &str, label: &str) -> Result<String, BookmarkError> {
+        let key = self.bookmark_next_key()?;
+        let timestamp_unix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let body = format!("{}\n{}\n{}", url, label, timestamp_unix);
+        let body_bytes = body.into_bytes();
+        match self.pddb.get(
+            VAULT_BOOKMARKS_DICT,
+            &key,
+            None,
+            true,
+            true,
+            Some(VAULT_TOTP_ALLOC_HINT),
+            Some(dc34_vault::basis_change),
+        ) {
+            Ok(mut record) => { record.write_all(&body_bytes)?; }
+            Err(e) => return Err(BookmarkError::IoError(e)),
+        }
+        self.pddb.sync().unwrap_or(());
+        Ok(key)
+    }
+
+    pub(crate) fn bookmark_get(&mut self, key: &str) -> Result<Bookmark, BookmarkError> {
+        match self.pddb.get(
+            VAULT_BOOKMARKS_DICT,
+            key,
+            None,
+            false,
+            false,
+            None,
+            Some(dc34_vault::basis_change),
+        ) {
+            Ok(mut record) => {
+                let mut data = Vec::new();
+                record.read_to_end(&mut data)?;
+                Self::parse_bookmark_body(key, &data)
+            }
+            Err(e) => Err(BookmarkError::IoError(e)),
+        }
+    }
+
+    pub(crate) fn bookmark_list(&mut self) -> Result<Vec<Bookmark>, BookmarkError> {
+        let all_keys = match self.pddb.list_keys(VAULT_BOOKMARKS_DICT, None) {
+            Ok(keys) => keys,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+            Err(e) => return Err(BookmarkError::IoError(e)),
+        };
+        let mut bm_keys: Vec<String> = all_keys
+            .into_iter()
+            .filter(|k| k.as_str() != VAULT_BOOKMARKS_COUNTER_KEY)
+            .collect();
+        bm_keys.sort();
+        let mut bookmarks = Vec::with_capacity(bm_keys.len());
+        for key in &bm_keys {
+            let data = match self.pddb.get(
+                VAULT_BOOKMARKS_DICT,
+                key,
+                None,
+                false,
+                false,
+                None,
+                Some(dc34_vault::basis_change),
+            ) {
+                Ok(mut record) => {
+                    let mut buf = Vec::new();
+                    record.read_to_end(&mut buf)?;
+                    buf
+                }
+                Err(e) => return Err(BookmarkError::IoError(e)),
+            };
+            bookmarks.push(Self::parse_bookmark_body(key, &data)?);
+        }
+        Ok(bookmarks)
+    }
+
+    pub(crate) fn bookmark_delete(&mut self, key: &str) -> Result<(), BookmarkError> {
+        self.pddb
+            .delete_key(VAULT_BOOKMARKS_DICT, key, None)
+            .map_err(BookmarkError::IoError)?;
+        self.pddb.sync().unwrap_or(());
+        Ok(())
+    }
+
+    fn parse_bookmark_body(key: &str, data: &[u8]) -> Result<Bookmark, BookmarkError> {
+        let body = std::str::from_utf8(data)
+            .map_err(|_| BookmarkError::ParseError("non-UTF8 body".into()))?;
+        let mut lines = body.splitn(3, '\n');
+        let url = lines
+            .next()
+            .ok_or_else(|| BookmarkError::ParseError("missing url field".into()))?
+            .to_string();
+        let label = lines
+            .next()
+            .ok_or_else(|| BookmarkError::ParseError("missing label field".into()))?
+            .to_string();
+        let ts_str = lines
+            .next()
+            .ok_or_else(|| BookmarkError::ParseError("missing timestamp field".into()))?;
+        let timestamp_unix = ts_str
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| BookmarkError::ParseError(format!("bad timestamp: {:?}", ts_str)))?;
+        Ok(Bookmark { key: key.to_string(), url, label, timestamp_unix })
     }
 }
 
@@ -898,3 +1081,77 @@ pub fn hex(data: Vec<u8>) -> String {
 
     s
 }
+
+#[cfg(test)]
+mod bookmark_tests {
+    use super::*;
+
+    #[test]
+    fn test_bookmark_key_format() {
+        assert_eq!(format!("{:016x}", 1u64), "0000000000000001");
+        assert_eq!(format!("{:016x}", 100u64), "0000000000000064");
+        assert_eq!(format!("{:016x}", u64::MAX), "ffffffffffffffff");
+    }
+
+    #[test]
+    fn test_bookmark_key_sort_order() {
+        let mut keys = vec![
+            format!("{:016x}", 3u64),
+            format!("{:016x}", 1u64),
+            format!("{:016x}", 2u64),
+        ];
+        keys.sort();
+        assert_eq!(keys[0], format!("{:016x}", 1u64));
+        assert_eq!(keys[1], format!("{:016x}", 2u64));
+        assert_eq!(keys[2], format!("{:016x}", 3u64));
+    }
+
+    #[test]
+    fn test_bookmark_body_roundtrip() {
+        let url = "https://example.com/path?q=1";
+        let label = "Example";
+        let timestamp: u64 = 1_700_000_000;
+        let body = format!("{}\n{}\n{}", url, label, timestamp);
+        let bm = Manager::parse_bookmark_body("0000000000000001", body.as_bytes()).unwrap();
+        assert_eq!(bm.key, "0000000000000001");
+        assert_eq!(bm.url, url);
+        assert_eq!(bm.label, label);
+        assert_eq!(bm.timestamp_unix, timestamp);
+    }
+
+    #[test]
+    fn test_bookmark_body_missing_fields() {
+        let body = b"https://example.com";
+        let result = Manager::parse_bookmark_body("0000000000000001", body);
+        assert!(result.is_err(), "body missing label and timestamp should be rejected");
+    }
+
+    #[test]
+    fn test_counter_key_filtered() {
+        let keys = vec![
+            "0000000000000001".to_string(),
+            "__counter__".to_string(),
+            "0000000000000002".to_string(),
+        ];
+        let filtered: Vec<_> = keys.iter().filter(|k| k.as_str() != "__counter__").collect();
+        assert_eq!(filtered.len(), 2);
+        assert!(!filtered.iter().any(|k| k.as_str() == "__counter__"));
+    }
+
+    #[test]
+    fn test_bookmarks_dict_is_not_dc34() {
+        assert_ne!(
+            crate::vault_api::VAULT_BOOKMARKS_DICT,
+            "dc34",
+            "VAULT_BOOKMARKS_DICT must never equal the gene dict"
+        );
+    }
+
+    #[test]
+    fn test_bookmark_body_non_utf8() {
+        let bad: &[u8] = &[0xFF, 0xFE, b'\n', b'l', b'\n', b'0'];
+        let result = Manager::parse_bookmark_body("key", bad);
+        assert!(matches!(result, Err(BookmarkError::ParseError(_))));
+    }
+}
+
