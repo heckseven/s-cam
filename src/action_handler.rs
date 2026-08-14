@@ -114,6 +114,14 @@ pub(crate) fn action_handler(
                         manager.type_out_url(&url_ipc.s);
                         manager.deactivate();
                     }
+                    Some(ActionOp::SaveBookmark) => {
+                        let buffer =
+                            unsafe { Buffer::from_memory_message(msg.body.memory_message().unwrap()) };
+                        let url_ipc = buffer.to_original::<crate::IpcString, _>().unwrap();
+                        manager.activate();
+                        manager.save_bookmark(&url_ipc.s);
+                        manager.deactivate();
+                    }
                     Some(ActionOp::Quit) => {
                         break;
                     }

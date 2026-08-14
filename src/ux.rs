@@ -1917,9 +1917,10 @@ impl VaultUi {
                     '←' => {
                         if let Some(ref url_str) = self.show_url.clone() {
                             self.modals
-                                .add_list(vec!["Type to host", "Cancel"])
+                            self.modals
+                                .add_list(vec!["Type to host", "Save as Bookmark", "Cancel"])
                                 .expect("ShowUrl modal list");
-                            let prompt = format!("Type URL to host?\n{}", url_str);
+                            let prompt = format!("URL options:\n{}", url_str);
                             match self.modals.get_radiobutton(&prompt) {
                                 Ok(ref response) if response == "Type to host" => {
                                     // Dispatch type-out to ActionManager (the ONLY HID call site).
@@ -1937,6 +1938,21 @@ impl VaultUi {
                                     // Type-out complete (success or USB error shown by ActionManager).
                                     self.show_url = None;
                                     *self.mode.lock().unwrap() = VaultMode::Idle;
+                                }
+                                Ok(ref response) if response == "Save as Bookmark" => {
+                                    // Dispatch bookmark save to ActionManager.
+                                    let ipc = crate::IpcString { s: url_str.clone() };
+                                    let buf = xous_ipc::Buffer::into_buf(ipc)
+                                        .expect("IpcString buf");
+                                    buf.lend(
+                                        self.actions_conn,
+                                        ActionOp::SaveBookmark
+                                            .to_u32()
+                                            .unwrap(),
+                                    )
+                                    .ok();
+                                    // Bookmark saved (success/error shown by ActionManager).
+                                    // Stay in ShowUrl so user can also type-out or dismiss.
                                 }
                                 _ => {
                                     // Cancel or modal error: remain in ShowUrl.

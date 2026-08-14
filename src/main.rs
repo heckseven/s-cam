@@ -1117,6 +1117,12 @@ fn main() -> ! {
                 vault_ui.reset_factory_test();
                 vault_ui.redraw();
             }
+            Some(VaultOp::ListBookmarks) => {
+                vault_ui.load_bookmarks();
+                *mode.lock().unwrap() = VaultMode::BookmarkList;
+                animate.store(VaultMode::BookmarkList.should_animate(), Ordering::SeqCst);
+                vault_ui.redraw();
+            }
             _ => {
                 log::error!("Got unknown message: {:?}", msg);
             }

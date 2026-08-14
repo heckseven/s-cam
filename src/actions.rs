@@ -67,6 +67,9 @@ pub enum ActionOp {
     /// URL type-out: dispatch from ShowUrl confirmation modal (Task 5)
     TypeOutUrl,
 
+    /// Save current ShowUrl URL as a bookmark; URL passed as IpcString buffer
+    SaveBookmark,
+
     #[cfg(feature = "vault-testing")]
     /// Testing
     GenerateTests,
@@ -1909,6 +1912,31 @@ impl ActionManager {
                 // Should be unreachable: show_url invariant guarantees the URL is valid.
                 log::error!("type_out_url: re-validation failed (should be unreachable)");
                 self.modals.show_notification("Internal error: URL invalid", None).ok();
+            }
+        }
+    }
+
+    pub(crate) fn save_bookmark(&mut self, url: &str) {
+        use crate::sanitize::{CAP_BOOKMARK_URL, SanitizedUrl};
+        // Validate against bookmark cap (more restrictive than display cap).
+        match SanitizedUrl::new(url, CAP_BOOKMARK_URL) {
+            Ok(sanitized) => {
+                // Use the URL itself as the label (empty label is fine for now).
+                match self.storage.borrow_mut().bookmark_store(sanitized.as_str(), "") {
+                    Ok(key) => {
+                        log::info!("Bookmark saved: key={}", key);
+                        self.modals.show_notification("Bookmark saved", None).ok();
+                    }
+                    Err(e) => {
+                        log::error!("bookmark_store failed: {:?}", e);
+                        self.modals.show_notification("Could not save bookmark", None).ok();
+                    }
+                }
+            }
+            Err(_) => {
+                // URL is valid for display but exceeds QR cap.
+                log::warn!("save_bookmark: URL too long for bookmark (>{} bytes)", CAP_BOOKMARK_URL);
+                self.modals.show_notification("URL too long to bookmark", None).ok();
             }
         }
     }
