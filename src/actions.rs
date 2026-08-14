@@ -1514,6 +1514,12 @@ impl ActionManager {
                             "time" => {
                                 self.set_time(data);
                             }
+                            // URL recognition: forward to main loop ShowUrl handler (Task 3)
+                            "http" | "https" => {
+                                let msg = IpcString { s: qr_uri.to_owned() };
+                                let buf = Buffer::into_buf(msg).unwrap();
+                                buf.send(self.main_conn, VaultOp::HandleQr.to_u32().unwrap()).ok();
+                            }
                             _ => {
                                 self.modals
                                     .show_notification(t!("vault.error.qr_unrecognized", locales::LANG), None)

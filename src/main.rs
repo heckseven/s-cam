@@ -1,4 +1,6 @@
 mod ux;
+mod sanitize;
+use crate::sanitize::{CAP_URL_DISPLAY, SanitizedUrl};
 use aes::{Aes256, cipher::BlockSizeUser};
 use aes_gcm_siv::aead::{Aead, Payload};
 use aes_gcm_siv::{Nonce, Tag};
@@ -70,6 +72,7 @@ pub enum VaultMode {
     Totp,
     Password,
     TokenHelp,
+    ShowUrl,
 }
 
 impl VaultMode {
@@ -90,6 +93,7 @@ impl VaultMode {
             VaultMode::ShowKey { quantum: _ } => true,
             VaultMode::TokenTour => false,
             VaultMode::Tour => false,
+            VaultMode::ShowUrl => false,
         }
     }
 }
@@ -618,6 +622,23 @@ fn main() -> ! {
                     VaultMode::GeneScan
                     | VaultMode::ResponseGene { quantum: _ }
                     | VaultMode::ShowKey { quantum: _ } => {
+                        // URL recognition BEFORE base45 (Task 3)
+                        let s_lower_g = s.s.to_ascii_lowercase();
+                        if s_lower_g.starts_with("http://") || s_lower_g.starts_with("https://") {
+                            match SanitizedUrl::new(&s.s, CAP_URL_DISPLAY) {
+                                Ok(url) => {
+                                    vault_ui.show_url = Some(url.as_str().to_owned());
+                                    *mode.lock().unwrap() = VaultMode::ShowUrl;
+                                    animate.store(VaultMode::ShowUrl.should_animate(), Ordering::SeqCst);
+                                    vault_ui.redraw();
+                                }
+                                Err(_) => {
+                                    animate.store(false, Ordering::SeqCst);
+                                    modals.show_notification("URL invalid or too long", None).ok();
+                                    animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
+                                }
+                            }
+                        } else {
                         match base45::decode(&s.s.as_bytes()) {
                             Ok(data) => {
                                 log::debug!("b45dec: {:x?}", data);
@@ -859,9 +880,26 @@ fn main() -> ! {
                                 }
                             }
                         }
+                        } // end else for URL-first check
                     }
                     _ => {
-                        if let Some((request, data)) = s.s.split_once("://") {
+                        // URL recognition before other dispatch (Task 3)
+                        let s_lower_d = s.s.to_ascii_lowercase();
+                        if s_lower_d.starts_with("http://") || s_lower_d.starts_with("https://") {
+                            match SanitizedUrl::new(&s.s, CAP_URL_DISPLAY) {
+                                Ok(url) => {
+                                    vault_ui.show_url = Some(url.as_str().to_owned());
+                                    *mode.lock().unwrap() = VaultMode::ShowUrl;
+                                    animate.store(VaultMode::ShowUrl.should_animate(), Ordering::SeqCst);
+                                    vault_ui.redraw();
+                                }
+                                Err(_) => {
+                                    animate.store(false, Ordering::SeqCst);
+                                    modals.show_notification("URL invalid or too long", None).ok();
+                                    animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
+                                }
+                            }
+                        } else if let Some((request, data)) = s.s.split_once("://") {
                             match request {
                                 "test" => {
                                     vault_ui.test_string(&s.s);
@@ -874,7 +912,7 @@ fn main() -> ! {
                                 _ => {
                                     log::warn!("Unhandled string in main: {}", &s.s);
                                     let mut qr_str = String::from(t!("vault.error.qr", locales::LANG));
-                                    qr_str.push_str(&format!(": {}", &qr_str));
+                                    qr_str.push_str(&format!(": {}", &s.s)); // FIXED: was &qr_str (bug: appended to itself)
                                     modals.show_notification(&qr_str, None).ok();
                                 }
                             }

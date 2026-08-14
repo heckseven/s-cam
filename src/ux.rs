@@ -526,6 +526,8 @@ pub struct VaultUi {
 
     // when Some(), override the display state with this String in QR code format
     pub qr_override: Option<QrCode>,
+    // URL to display in ShowUrl mode (always validated by SanitizedUrl::new)
+    pub show_url: Option<String>,
 
     // adc for reading battery level
     adc: Adc,
@@ -593,6 +595,7 @@ impl VaultUi {
             token_help_state: TokenHelpState::TokenRecap { seen_press: false },
             global_config: None,
             qr_override: None,
+            show_url: None,
             adc: Adc::new(),
             batt_polled: false,
             low_batt_since: None,
@@ -1440,6 +1443,32 @@ impl VaultUi {
                     }
                 }
             } // _ => unimplemented!(),
+            VaultMode::ShowUrl => {
+                // Display the scanned URL with a header row and wrapped text
+                self.gfx.clear().ok();
+                // Header: "URL" label in an inverted row at top
+                let mut header = TextView::new(
+                    Gid::dummy(),
+                    TextBounds::CenteredTop(Rectangle::new(Point::new(0, 0), Point::new(127, 12))),
+                );
+                header.style = GlyphStyle::Bold;
+                header.draw_border = false;
+                header.invert = true;
+                write!(header, "URL").ok();
+                self.gfx.draw_textview(&mut header).ok();
+                // URL text: left-aligned, starting below header, wraps at display width
+                if let Some(url) = &self.show_url {
+                    let mut tv = TextView::new(
+                        Gid::dummy(),
+                        TextBounds::BoundingBox(Rectangle::new(Point::new(0, 13), Point::new(127, 127))),
+                    );
+                    tv.style = GlyphStyle::Small;
+                    tv.draw_border = false;
+                    tv.ellipsis = true; // truncation indicator if URL exceeds display capacity
+                    write!(tv, "{}", url).ok();
+                    self.gfx.draw_textview(&mut tv).ok();
+                }
+            }
         }
         self.gfx.flush().ok();
         self.last_mode = (*self.mode.lock().unwrap()).clone();
@@ -1709,6 +1738,12 @@ impl VaultUi {
                 // eat the 'fire' button if it's pressed - we just want to go back to the idle
                 // screen in all button presses
                 if k != '🔥' { Some(k) } else { None }
+            }
+            VaultMode::ShowUrl => {
+                // Any key press clears the URL display and returns to Idle
+                self.show_url = None;
+                *self.mode.lock().unwrap() = VaultMode::Idle;
+                Some(k)
             }
             // catch-all for now
             _ => Some(k),
