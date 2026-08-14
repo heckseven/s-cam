@@ -61,6 +61,12 @@ pub enum ActionOp {
     /// QR ops
     AcquireQr,
 
+    /// Bookmark ops: key passed as IpcString buffer; retrieves URL, validates, sends BookmarkQrReady to main
+    BookmarkSelected,
+
+    /// URL type-out: dispatch from ShowUrl confirmation modal (Task 5)
+    TypeOutUrl,
+
     #[cfg(feature = "vault-testing")]
     /// Testing
     GenerateTests,
@@ -1590,6 +1596,52 @@ impl ActionManager {
         key
     }
 
+    /// Retrieves a bookmark by key from PDDB, validates its URL via SanitizedUrl, then sends the
+    /// validated URL to main as `VaultOp::BookmarkQrReady`. Main constructs the QrCode.
+    pub(crate) fn bookmark_selected(&mut self, key: &str) {
+        // Step 1: retrieve bookmark record from PDDB
+        let bookmark = match self.storage.borrow_mut().bookmark_get(key) {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("bookmark_get failed for key {}: {:?}", key, e);
+                self.report_err("Bookmark not found", None::<crate::storage::BookmarkError>);
+                return;
+            }
+        };
+
+        // Step 2: validate the stored URL via SanitizedUrl (should always succeed — URL was
+        // validated at ingest with the same cap; if it fails that is a data integrity violation).
+        let url = match crate::sanitize::SanitizedUrl::new(
+            &bookmark.url,
+            crate::sanitize::CAP_BOOKMARK_URL,
+        ) {
+            Ok(u) => u,
+            Err(e) => {
+                log::error!(
+                    "Bookmark URL '{}' failed SanitizedUrl::new (invariant violation): {:?}",
+                    &bookmark.url,
+                    e
+                );
+                self.report_err(
+                    "Bookmark URL invalid",
+                    None::<crate::storage::BookmarkError>,
+                );
+                return;
+            }
+        };
+
+        // Step 3: send validated URL to main; main builds QrCode and assigns qr_override.
+        let msg = crate::IpcString { s: url.as_str().to_owned() };
+        match xous_ipc::Buffer::into_buf(msg) {
+            Ok(buf) => {
+                buf.send(self.main_conn, crate::VaultOp::BookmarkQrReady.to_u32().unwrap()).ok();
+            }
+            Err(e) => {
+                log::error!("bookmark_selected: IPC buffer error: {:?}", e);
+            }
+        }
+    }
+
     pub(crate) fn unlock_basis(&mut self) {
         match self.pddb.borrow().unlock_basis(
             DENIABLE_BASIS_NAME,
@@ -1835,6 +1887,30 @@ impl ActionManager {
         self.pddb.borrow().sync().ok();
         self.modals.dynamic_notification_close().ok();
         log::info!("~~fin~~");
+    }
+
+    pub(crate) fn type_out_url(&mut self, url: &str) {
+        use crate::sanitize::{CAP_URL_DISPLAY, SanitizedUrl, send_str_sanitized};
+        // Re-validate: by construction the URL in show_url was already validated,
+        // but we re-check here as the ONLY HID call site for URL type-out.
+        match SanitizedUrl::new(url, CAP_URL_DISPLAY) {
+            Ok(sanitized) => {
+                match send_str_sanitized(&self.usb_dev, &sanitized) {
+                    Ok(_) => {
+                        self.modals.show_notification("URL typed to host", None).ok();
+                    }
+                    Err(e) => {
+                        log::error!("USB HID type-out error: {:?}", e);
+                        self.modals.show_notification("USB not connected", None).ok();
+                    }
+                }
+            }
+            Err(_) => {
+                // Should be unreachable: show_url invariant guarantees the URL is valid.
+                log::error!("type_out_url: re-validation failed (should be unreachable)");
+                self.modals.show_notification("Internal error: URL invalid", None).ok();
+            }
+        }
     }
 
     fn report_err<T: std::fmt::Debug>(&self, note: &str, e: Option<T>) {

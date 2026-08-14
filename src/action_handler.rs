@@ -97,6 +97,23 @@ pub(crate) fn action_handler(
                         manager.retrieve_db();
                         xous::return_scalar(msg.sender, 1).unwrap();
                     }),
+                    Some(ActionOp::BookmarkSelected) => {
+                        let buffer = unsafe {
+                            Buffer::from_memory_message(msg.body.memory_message().unwrap())
+                        };
+                        let ipc_key = buffer.to_original::<crate::IpcString, _>().unwrap();
+                        manager.activate();
+                        manager.bookmark_selected(&ipc_key.s);
+                        manager.deactivate();
+                    }
+                    Some(ActionOp::TypeOutUrl) => {
+                        let buffer =
+                            unsafe { Buffer::from_memory_message(msg.body.memory_message().unwrap()) };
+                        let url_ipc = buffer.to_original::<crate::IpcString, _>().unwrap();
+                        manager.activate();
+                        manager.type_out_url(&url_ipc.s);
+                        manager.deactivate();
+                    }
                     Some(ActionOp::Quit) => {
                         break;
                     }

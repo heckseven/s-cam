@@ -14,6 +14,7 @@ use ux_api::widgets::ScrollableList;
 use xous::CID;
 
 use crate::action_handler::SelectedEntry;
+use crate::actions::ActionOp;
 use crate::config::AttachState;
 use crate::*;
 
@@ -529,11 +530,18 @@ pub struct VaultUi {
     // URL to display in ShowUrl mode (always validated by SanitizedUrl::new)
     pub show_url: Option<String>,
 
+    // Bookmark list cache: (pddb_key, display_text, label). Populated by load_bookmarks().
+    bookmark_cache: Vec<(String, String, String)>,
+    // Index of the currently highlighted bookmark in bookmark_cache
+    bookmark_cursor: usize,
+
     // adc for reading battery level
     adc: Adc,
     batt_polled: bool,
     low_batt_since: Option<Instant>,
 
+    // modals for ShowUrl confirmation (type-out flow)
+    modals: modals::Modals,
     pub user_bitmap: Option<[u32; 512]>,
     phase: bool,
     edge: bool,
@@ -596,6 +604,9 @@ impl VaultUi {
             global_config: None,
             qr_override: None,
             show_url: None,
+            bookmark_cache: Vec::new(),
+            bookmark_cursor: 0,
+            modals: modals::Modals::new(xns).unwrap(),
             adc: Adc::new(),
             batt_polled: false,
             low_batt_since: None,
@@ -1740,10 +1751,47 @@ impl VaultUi {
                 if k != '🔥' { Some(k) } else { None }
             }
             VaultMode::ShowUrl => {
-                // Any key press clears the URL display and returns to Idle
-                self.show_url = None;
-                *self.mode.lock().unwrap() = VaultMode::Idle;
-                Some(k)
+                // '←' triggers the type-out confirmation modal.
+                // Any other key clears ShowUrl and returns to Idle.
+                match k {
+                    '←' => {
+                        if let Some(ref url_str) = self.show_url.clone() {
+                            self.modals
+                                .add_list(vec!["Type to host", "Cancel"])
+                                .expect("ShowUrl modal list");
+                            let prompt = format!("Type URL to host?\n{}", url_str);
+                            match self.modals.get_radiobutton(&prompt) {
+                                Ok(ref response) if response == "Type to host" => {
+                                    // Dispatch type-out to ActionManager (the ONLY HID call site).
+                                    let ipc = crate::IpcString { s: url_str.clone() };
+                                    let buf = xous_ipc::Buffer::into_buf(ipc)
+                                        .expect("IpcString buf");
+                                    // Blocking lend: returns after ActionManager finishes.
+                                    buf.lend(
+                                        self.actions_conn,
+                                        ActionOp::TypeOutUrl
+                                            .to_u32()
+                                            .unwrap(),
+                                    )
+                                    .ok();
+                                    // Type-out complete (success or USB error shown by ActionManager).
+                                    self.show_url = None;
+                                    *self.mode.lock().unwrap() = VaultMode::Idle;
+                                }
+                                _ => {
+                                    // Cancel or modal error: remain in ShowUrl.
+                                }
+                            }
+                        }
+                        None
+                    }
+                    _ => {
+                        // Any other key exits ShowUrl.
+                        self.show_url = None;
+                        *self.mode.lock().unwrap() = VaultMode::Idle;
+                        Some(k)
+                    }
+                }
             }
             // catch-all for now
             _ => Some(k),
