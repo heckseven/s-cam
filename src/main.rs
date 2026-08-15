@@ -12,7 +12,6 @@ mod storage;
 mod submenu;
 mod theme;
 mod totp;
-mod tourmenu;
 pub mod vault_api;
 use ux_api::service::gfx::Gfx;
 pub use vault_api::*;
@@ -20,7 +19,6 @@ mod action_handler;
 mod bitmaps;
 mod config;
 mod fido2;
-mod genemenu;
 mod generator;
 mod idlemenu;
 mod tests;
@@ -139,6 +137,21 @@ fn run_camera_scan(
     vault_ui.redraw();
 }
 
+/// Which menu is currently on screen, if any.
+///
+/// The tree is two levels deep, so "is a menu open" is no longer a bool: key presses have to
+/// reach the menu that is actually showing, and a screen's BACK has to reopen the menu it was
+/// opened from rather than always the top level.
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum ActiveMenu {
+    None,
+    Root,
+    Login,
+    Settings,
+    /// the vault's own menu, used outside the idle screen
+    Vault,
+}
+
 fn main() -> ! {
     log_server::init_wait().unwrap();
     log::set_max_level(log::LevelFilter::Info);
@@ -187,12 +200,12 @@ fn main() -> ! {
     log::info!("menus");
     let menu_sid = xous::create_server().unwrap();
     let menu_mgr = submenu::create_submenu(conn, actions_conn, menu_sid);
-    let tour_menu_sid = xous::create_server().unwrap();
-    let tour_menu_mgr = tourmenu::create_submenu(conn, actions_conn, tour_menu_sid);
-    let gene_menu_sid = xous::create_server().unwrap();
-    let gene_menu_mgr = genemenu::create_submenu(conn, actions_conn, gene_menu_sid);
+    let login_menu_sid = xous::create_server().unwrap();
+    let login_menu_mgr = idlemenu::create_login(conn, login_menu_sid);
+    let settings_menu_sid = xous::create_server().unwrap();
+    let settings_menu_mgr = idlemenu::create_settings(conn, settings_menu_sid);
     let idle_menu_sid = xous::create_server().unwrap();
-    let idle_menu_mgr = idlemenu::create_submenu(conn, actions_conn, idle_menu_sid);
+    let idle_menu_mgr = idlemenu::create_root(conn, idle_menu_sid);
 
     let modals = modals::Modals::new(&xns).unwrap();
 
@@ -297,8 +310,8 @@ fn main() -> ! {
     // the purpose of this dry run is to get all the UI code wired into main memory
     // instead of hanging out in swap.
     gfx.dry_run(true).ok();
-    tour_menu_mgr.redraw();
-    tour_menu_mgr.key_press('↑');
+    idle_menu_mgr.redraw();
+    idle_menu_mgr.key_press('↑');
     // restore the logo so that the back buffer is in a consistent state
     gfx.bitmap(&bitmaps::scam_logo::BITMAP, None, None).ok();
     // gfx.flush().ok(); // i don't think this is necessary
@@ -354,7 +367,9 @@ fn main() -> ! {
         }
     }
 
-    let mut menu_active = false;
+    let mut active_menu = ActiveMenu::None;
+    // which menu a screen was opened from, so its BACK returns there rather than to the top
+    let mut menu_origin = ActiveMenu::Root;
     let mut jig_ready_seen = false;
     let mut mutation_param: u8 = 0;
     let mut k_last = '\u{0000}';
@@ -380,7 +395,7 @@ fn main() -> ! {
                 if mutation_param % 2 == 0 {
                     log::info!("{}", mutation_param);
                 }*/
-                if !menu_active {
+                if active_menu == ActiveMenu::None {
                     vault_ui.redraw();
                 }
             }
@@ -394,7 +409,8 @@ fn main() -> ! {
                 vault_ui.redraw();
             }
             Some(VaultOp::MenuDone) => {
-                menu_active = false;
+                active_menu = ActiveMenu::None;
+                menu_origin = ActiveMenu::Root;
                 // update the TOTP codes, in case there were changes
                 vault_ui.refresh_draw_list();
                 animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
@@ -431,17 +447,12 @@ fn main() -> ! {
                     vault_ui.jig_ready();
                     jig_ready_seen = true;
                 }
-                if menu_active {
-                    if false {
-                        tour_menu_mgr.key_press(k);
-                    } else if false {
-                        gene_menu_mgr.key_press(k);
-                    } else if matches!(mode_now, VaultMode::Idle)
-                        || matches!(mode_now, VaultMode::Idle)
-                    {
-                        idle_menu_mgr.key_press(k);
-                    } else {
-                        menu_mgr.key_press(k);
+                if active_menu != ActiveMenu::None {
+                    match active_menu {
+                        ActiveMenu::Login => login_menu_mgr.key_press(k),
+                        ActiveMenu::Settings => settings_menu_mgr.key_press(k),
+                        ActiveMenu::Vault => menu_mgr.key_press(k),
+                        _ => idle_menu_mgr.key_press(k),
                     }
                 } else {
                     // let the UI get first whack at filtering keys - the '∴' key may be intercepted
@@ -451,18 +462,19 @@ fn main() -> ! {
                     match k.unwrap_or('\0') {
                         '∴' => {
                             animate.store(false, Ordering::SeqCst);
-                            if false {
-                                tour_menu_mgr.redraw();
-                            } else if false {
-                                gene_menu_mgr.redraw();
-                            } else if matches!(mode_now, VaultMode::Idle)
-                                || matches!(mode_now, VaultMode::Idle)
-                            {
-                                idle_menu_mgr.redraw();
+                            // Reopen whichever menu this screen was reached from. A screen
+                            // under "login deets" belongs to that submenu, not the top level.
+                            active_menu = if matches!(mode_now, VaultMode::Idle) {
+                                menu_origin
                             } else {
-                                menu_mgr.redraw();
+                                ActiveMenu::Vault
+                            };
+                            match active_menu {
+                                ActiveMenu::Login => login_menu_mgr.redraw(),
+                                ActiveMenu::Settings => settings_menu_mgr.redraw(),
+                                ActiveMenu::Vault => menu_mgr.redraw(),
+                                _ => idle_menu_mgr.redraw(),
                             }
-                            menu_active = true;
                         }
                         '🔥' => {
                             skip_one_key = true;
@@ -904,7 +916,7 @@ fn main() -> ! {
                                                 });
                                                 /*
                                                 animate.store(false, Ordering::SeqCst);
-                                                menu_active = true;
+                                                active_menu = ActiveMenu::Root;
 
                                                 gene_menu_mgr.redraw();
                                                 */
@@ -1123,7 +1135,8 @@ fn main() -> ! {
                 vault_ui.redraw();
             }
             Some(VaultOp::ScreenOff) => {
-                menu_active = false;
+                menu_origin = active_menu;
+                active_menu = ActiveMenu::None;
                 global_config.lock().unwrap().screen_off();
             }
             Some(VaultOp::ImageLoad) => xous::msg_scalar_unpack!(msg, load, _, _, _, {
@@ -1159,52 +1172,78 @@ fn main() -> ! {
                 // The menu widget closes on select, so the flag it set must drop here too.
                 // Leaving it set routes every later key back into the closed menu and the
                 // screen below never sees one - that is what made every BACK button dead.
-                menu_active = false;
+                menu_origin = active_menu;
+                active_menu = ActiveMenu::None;
                 *mode.lock().unwrap() = VaultMode::Password;
                 animate.store(VaultMode::Password.should_animate(), Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::List2faDigits) => {
-                menu_active = false;
+                menu_origin = active_menu;
+                active_menu = ActiveMenu::None;
                 *mode.lock().unwrap() = VaultMode::Totp;
                 animate.store(VaultMode::Totp.should_animate(), Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::ListPasskeys) => {
-                menu_active = false;
+                menu_origin = active_menu;
+                active_menu = ActiveMenu::None;
                 vault_ui.load_passkeys();
                 *mode.lock().unwrap() = VaultMode::Passkeys;
                 animate.store(false, Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::ListPhotos) => {
-                menu_active = false;
+                menu_origin = active_menu;
+                active_menu = ActiveMenu::None;
                 vault_ui.load_photos();
                 *mode.lock().unwrap() = VaultMode::PhotoList;
                 animate.store(false, Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::SettingsBling) => {
-                menu_active = false;
+                menu_origin = active_menu;
+                active_menu = ActiveMenu::None;
                 vault_ui.load_photos(); // photos are selectable as standby images
                 *mode.lock().unwrap() = VaultMode::SettingsBling;
                 animate.store(false, Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::SettingsBlinky) => {
-                menu_active = false;
+                menu_origin = active_menu;
+                active_menu = ActiveMenu::None;
                 *mode.lock().unwrap() = VaultMode::SettingsBlinky;
                 animate.store(false, Ordering::SeqCst);
                 vault_ui.redraw();
             }
+            // Submenu navigation. These do not close the menu tree - they swap which menu is
+            // showing - so they must not clear menu_origin.
+            Some(VaultOp::MenuRoot) => {
+                active_menu = ActiveMenu::Root;
+                menu_origin = ActiveMenu::Root;
+                animate.store(false, Ordering::SeqCst);
+                idle_menu_mgr.redraw();
+            }
+            Some(VaultOp::MenuLogin) => {
+                active_menu = ActiveMenu::Login;
+                animate.store(false, Ordering::SeqCst);
+                login_menu_mgr.redraw();
+            }
+            Some(VaultOp::MenuSettings) => {
+                active_menu = ActiveMenu::Settings;
+                animate.store(false, Ordering::SeqCst);
+                settings_menu_mgr.redraw();
+            }
             Some(VaultOp::ShowAbout) => {
-                menu_active = false;
+                menu_origin = active_menu;
+                active_menu = ActiveMenu::None;
                 *mode.lock().unwrap() = VaultMode::AboutQr { quantum: 0 };
                 animate.store(true, Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::ListBookmarks) => {
-                menu_active = false;
+                menu_origin = active_menu;
+                active_menu = ActiveMenu::None;
                 vault_ui.load_bookmarks();
                 *mode.lock().unwrap() = VaultMode::BookmarkList;
                 animate.store(VaultMode::BookmarkList.should_animate(), Ordering::SeqCst);

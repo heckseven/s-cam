@@ -25,11 +25,26 @@ SRC = pathlib.Path(__file__).resolve().parent.parent / "src"
 
 
 def menu_entries(text):
-    """Yield (label, opcode) for each entry in the idle menu's entry table."""
-    table = re.search(r"let entries:.*?\n    \];", text, re.S)
-    if not table:
-        sys.exit("could not find the menu entry table in idlemenu.rs")
-    return re.findall(r'\("([^"]+)",\s*VaultOp::(\w+)', table.group(0))
+    """Yield (menu, label, opcode) for every entry across the whole menu tree.
+
+    The tree is built by three functions sharing one builder, so there is no single table to
+    parse any more. Each `create_*` passes a slice of `("label", VaultOp::Op)` pairs; find
+    them all, or a whole submenu could go unchecked - which is exactly how the settings
+    entries went unreachable before.
+    """
+    menus = re.findall(r"pub fn create_(\w+)\(.*?\n\}", text, re.S)
+    if not menus:
+        sys.exit("could not find any create_* menu builders in idlemenu.rs")
+
+    out = []
+    for name in menus:
+        body = re.search(r"pub fn create_%s\(.*?\n\}" % name, text, re.S).group(0)
+        pairs = re.findall(r'\("([^"]+)",\s*VaultOp::(\w+)\)', body)
+        if not pairs:
+            sys.exit(f"create_{name} defines no menu entries - has the shape changed?")
+        for label, opcode in pairs:
+            out.append((name, label, opcode))
+    return out
 
 
 def handler_bodies(text):
@@ -67,34 +82,41 @@ def main():
     bodies = handler_bodies((SRC / "main.rs").read_text())
     problems = []
 
+    # Opcodes that move between menus rather than opening a screen. They deliberately keep the
+    # menu tree open, so they must NOT clear the active menu the way screen handlers do.
+    navigation = {"MenuRoot", "MenuLogin", "MenuSettings", "MenuDone"}
+
     seen = {}
-    for label, opcode in entries:
-        if opcode in seen:
+    for menu, label, opcode in entries:
+        key = (menu, opcode)
+        if key in seen:
             problems.append(
-                f'"{label}" and "{seen[opcode]}" both send VaultOp::{opcode}, '
+                f'create_{menu}: "{label}" and "{seen[key]}" both send VaultOp::{opcode}, '
                 f"so one of them is unreachable"
             )
-        seen[opcode] = label
+        seen[key] = label
 
         body = bodies.get(opcode)
         if body is None:
-            problems.append(f'"{label}" sends VaultOp::{opcode}, which main.rs does not handle')
+            problems.append(
+                f'create_{menu}: "{label}" sends VaultOp::{opcode}, which main.rs does not handle'
+            )
         elif "msg_blocking_scalar_unpack!" in body:
             problems.append(
-                f'"{label}" sends VaultOp::{opcode}, whose handler uses '
+                f'create_{menu}: "{label}" sends VaultOp::{opcode}, whose handler uses '
                 f"msg_blocking_scalar_unpack! - menu scalars are non-blocking and will never match"
             )
-        elif "menu_active = false" not in body:
+        elif opcode not in navigation and "active_menu = ActiveMenu::None" not in body:
             problems.append(
-                f'"{label}" sends VaultOp::{opcode}, whose handler never clears menu_active - '
-                f"keys will keep going to the closed menu and the screen it opens will be inert"
+                f'create_{menu}: "{label}" sends VaultOp::{opcode}, whose handler never closes '
+                f"the menu - keys will keep going to it and the screen it opens will be inert"
             )
 
     for p in problems:
         print(f"FAIL: {p}")
     if problems:
         return 1
-    print(f"OK: all {len(entries)} menu entries reach a live non-blocking handler")
+    print(f"OK: all {len(entries)} menu entries across {len(set(m for m, _, _ in entries))} menus are live")
     return 0
 
 

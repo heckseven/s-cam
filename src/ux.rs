@@ -1711,10 +1711,12 @@ impl VaultUi {
             }
             VaultMode::PhotoPreview => {
                 match k {
-                    // discard: the shot was never stored, so leaving is all that is needed
+                    // Discard and go back where the camera was opened from, which is the
+                    // standby screen - the only place it can be started for photos. The shot
+                    // was never stored, so there is nothing else to undo.
                     '←' => {
                         self.pending_photo = None;
-                        return self.to_menu();
+                        *self.mode.lock().unwrap() = VaultMode::Idle;
                     }
                     '🔥' => {
                         self.reopen_camera();

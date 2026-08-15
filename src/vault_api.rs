@@ -111,6 +111,12 @@ pub(crate) enum VaultOp {
     SettingsBlinky = 1034,
     /// QR of the repo README
     ShowAbout = 1036,
+    /// reopen the top-level menu, e.g. from a submenu's "back"
+    MenuRoot = 1037,
+    /// open the login-details submenu
+    MenuLogin = 1038,
+    /// open the settings submenu
+    MenuSettings = 1039,
 }
 
 // Compile-time guard on the VaultOp wire contract.
@@ -138,6 +144,9 @@ const _: () = assert!(VaultOp::ListPhotos as isize == 1032);
 const _: () = assert!(VaultOp::SettingsBling as isize == 1033);
 const _: () = assert!(VaultOp::SettingsBlinky as isize == 1034);
 const _: () = assert!(VaultOp::ShowAbout as isize == 1036);
+const _: () = assert!(VaultOp::MenuRoot as isize == 1037);
+const _: () = assert!(VaultOp::MenuLogin as isize == 1038);
+const _: () = assert!(VaultOp::MenuSettings as isize == 1039);
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct IpcString {

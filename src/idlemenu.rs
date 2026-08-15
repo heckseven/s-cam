@@ -3,47 +3,81 @@ use ux_api::menu::*;
 
 use crate::VaultOp;
 
-/// The S-CAM menu. Each entry maps to exactly one store, which is the point: the badge holds
-/// three kinds of credential and the old tree named only two of them, leaving FIDO2
-/// credentials stored but invisible. See DECISIONS.md.
-pub fn create_submenu(vault_conn: xous::CID, actions_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
+/// The S-CAM menu tree.
+///
+/// Three menus, one builder. The tree is two levels deep: the credential screens sit under
+/// "login deets" and the device settings under "settings", so the top level stays short
+/// enough to read on a 128px panel without scrolling past the useful entries.
+///
+/// Every entry closes its menu on select. Actions arrive at the main loop as NON-blocking
+/// scalars (see ux-api menu.rs), so each opcode below must be handled that way and must
+/// clear `menu_active` - `tools/check-menu-wiring.py` fails the build otherwise.
+fn build(
+    title: &'static str,
+    entries: &[(&str, VaultOp)],
+    vault_conn: xous::CID,
+    menu_mgr: xous::SID,
+) -> MenuMatic {
     let mut menu_items = Vec::<MenuItem>::new();
-
-    // (label, opcode, connection)
-    let entries: [(&str, u32, xous::CID); 10] = [
-        ("passwords",     VaultOp::ListPasswords.to_u32().unwrap(),  vault_conn),
-        ("2fa digits",    VaultOp::List2faDigits.to_u32().unwrap(),  vault_conn),
-        ("passkeys",      VaultOp::ListPasskeys.to_u32().unwrap(),   vault_conn),
-        ("bookmarks",     VaultOp::ListBookmarks.to_u32().unwrap(),  vault_conn),
-        ("photos",        VaultOp::ListPhotos.to_u32().unwrap(),     vault_conn),
-        // The three settings sit inline rather than behind a "settings" entry. A submenu
-        // needs a second MenuMatic and its own back handling for three items, and the
-        // single "settings" entry it replaced went straight to standby image anyway, so
-        // LED pattern and screen off had no route from the menu at all.
-        ("standby image", VaultOp::SettingsBling.to_u32().unwrap(),  vault_conn),
-        ("led pattern",   VaultOp::SettingsBlinky.to_u32().unwrap(), vault_conn),
-        ("screen off",    VaultOp::ScreenOff.to_u32().unwrap(),      vault_conn),
-        ("about",         VaultOp::ShowAbout.to_u32().unwrap(),      vault_conn),
-        // BACK closes the menu and returns to standby. It maps to MenuDone, not PowerOff -
-        // "screen off" is its own entry, and "exit" read as powering the badge down.
-        ("back",          VaultOp::MenuDone.to_u32().unwrap(),       vault_conn),
-    ];
-
-    for (name, opcode, conn) in entries {
+    for (name, op) in entries {
         menu_items.push(MenuItem {
-            name: String::from(name),
-            action_conn: Some(conn),
-            action_opcode: opcode,
+            name: String::from(*name),
+            action_conn: Some(vault_conn),
+            action_opcode: op.to_u32().unwrap(),
             action_payload: MenuPayload::Scalar([0, 0, 0, 0]),
             close_on_select: true,
         });
     }
-
-    // Menu actions are delivered as NON-blocking scalars (ux-api menu.rs), so every opcode
-    // above must be handled that way in the main loop. Routing one at a blocking-scalar
-    // handler is why "Scan URL" silently did nothing.
-    let _ = actions_conn;
-
-    menu_matic(menu_items, crate::theme::BADGE_NAME, Some(menu_mgr), vault_conn, VaultOp::MenuDone.to_usize().unwrap())
+    menu_matic(menu_items, title, Some(menu_mgr), vault_conn, VaultOp::MenuDone.to_usize().unwrap())
         .expect("couldn't create MenuMatic manager")
+}
+
+/// Top level. "back" closes the menu and returns to standby; it maps to MenuDone rather than
+/// PowerOff, because "screen off" is its own entry under settings and two shutdown-sounding
+/// paths would be ambiguous.
+pub fn create_root(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
+    build(
+        crate::theme::BADGE_NAME,
+        &[
+            ("login deets", VaultOp::MenuLogin),
+            // the badge's saved URLs, which only ever arrive by scanning a QR code
+            ("qr collection", VaultOp::ListBookmarks),
+            ("photos", VaultOp::ListPhotos),
+            ("settings", VaultOp::MenuSettings),
+            ("about", VaultOp::ShowAbout),
+            ("back", VaultOp::MenuDone),
+        ],
+        vault_conn,
+        menu_mgr,
+    )
+}
+
+/// The three credential stores. They are separate screens because they are separate stores:
+/// a passkey is not a password, and the old tree named only two of the three.
+pub fn create_login(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
+    build(
+        "LOGIN DEETS",
+        &[
+            ("2fa digits", VaultOp::List2faDigits),
+            ("passkeys", VaultOp::ListPasskeys),
+            ("passwords", VaultOp::ListPasswords),
+            ("back", VaultOp::MenuRoot),
+        ],
+        vault_conn,
+        menu_mgr,
+    )
+}
+
+pub fn create_settings(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
+    build(
+        "SETTINGS",
+        &[
+            ("bling", VaultOp::SettingsBling),
+            ("blinky", VaultOp::SettingsBlinky),
+            ("screen off", VaultOp::ScreenOff),
+            ("back", VaultOp::MenuRoot),
+        ],
+        vault_conn,
+        menu_mgr,
+    )
 }
