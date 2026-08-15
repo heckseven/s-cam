@@ -89,6 +89,24 @@ pub(crate) enum VaultOp {
     // a low opcode that other components may already emit, silently turning a previously
     // ignored message into a live camera-acquisition call.
     ScanUrl = 1028,
+
+    // S-CAM menu targets. Explicitly numbered from 1029 for the same reason ScanUrl is:
+    // taking the next free auto-discriminant would claim a low opcode that other
+    // components may already emit.
+    /// stored passwords
+    ListPasswords = 1029,
+    /// TOTP entries, shown to the user as "2FA DIGITS"
+    List2faDigits = 1030,
+    /// FIDO2 credentials, shown to the user as "PASSKEYS" - a screen that does not exist today
+    ListPasskeys = 1031,
+    /// captured photos
+    ListPhotos = 1032,
+    /// display image selection
+    SettingsBling = 1033,
+    /// LED pattern selection
+    SettingsBlinky = 1034,
+    /// QR of the repo README
+    ShowAbout = 1036,
 }
 
 // Compile-time guard on the VaultOp wire contract.
@@ -109,6 +127,13 @@ const _: () = assert!(VaultOp::BioActive as isize == 1027);
 // The auto-numbered block must never grow into the hard-coded 1024+ range.
 const _: () = assert!((VaultOp::ListBookmarks as isize) < 1024);
 const _: () = assert!(VaultOp::ScanUrl as isize == 1028);
+const _: () = assert!(VaultOp::ListPasswords as isize == 1029);
+const _: () = assert!(VaultOp::List2faDigits as isize == 1030);
+const _: () = assert!(VaultOp::ListPasskeys as isize == 1031);
+const _: () = assert!(VaultOp::ListPhotos as isize == 1032);
+const _: () = assert!(VaultOp::SettingsBling as isize == 1033);
+const _: () = assert!(VaultOp::SettingsBlinky as isize == 1034);
+const _: () = assert!(VaultOp::ShowAbout as isize == 1036);
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct IpcString {

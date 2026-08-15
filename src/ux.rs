@@ -831,6 +831,27 @@ impl VaultUi {
         log::debug!("redraw mode: {:?}", mode_at_entry);
 
         match mode_at_entry {
+            VaultMode::Passkeys
+            | VaultMode::PhotoList
+            | VaultMode::SettingsBling
+            | VaultMode::SettingsBlinky => {
+                let (title, left, mid, right) = match mode_at_entry {
+                    VaultMode::Passkeys => ("PASSKEYS", Some("BACK"), Some("DEL"), Some("VIEW")),
+                    VaultMode::PhotoList => ("PHOTOS", Some("BACK"), Some("DEL"), Some("VIEW")),
+                    VaultMode::SettingsBling => ("BLING", Some("BACK"), None, Some("PICK")),
+                    _ => ("BLINKY", Some("BACK"), None, Some("PICK")),
+                };
+                self.clear_area();
+                crate::theme::heading(&self.gfx, self.screen_size, title);
+                crate::theme::button_labels(&self.gfx, self.screen_size, left, mid, right);
+                self.gfx.flush().ok();
+            }
+            VaultMode::AboutQr { quantum: _ } => {
+                self.clear_area();
+                crate::theme::heading(&self.gfx, self.screen_size, "ABOUT");
+                crate::theme::button_labels(&self.gfx, self.screen_size, Some("BACK"), None, None);
+                self.gfx.flush().ok();
+            }
             VaultMode::Idle | VaultMode::Idle | VaultMode::Idle => {
                 let now = self.tt.elapsed_ms();
                 if let Some(bitmap) = self.user_bitmap.as_ref() {

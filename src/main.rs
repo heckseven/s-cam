@@ -66,11 +66,26 @@ pub enum VaultMode {
     BookmarkList,
     /// Bookmark selected — show its URL as a QR code (reuses qr_override render path)
     ShowBookmarkQr { quantum: u32 },
+    /// FIDO2 credentials - stored today but with no screen until now
+    Passkeys,
+    /// captured photos
+    PhotoList,
+    /// display image selection
+    SettingsBling,
+    /// LED pattern selection
+    SettingsBlinky,
+    /// QR of the repo README
+    AboutQr { quantum: u32 },
 }
 
 impl VaultMode {
     pub fn should_animate(&self) -> bool {
         match self {
+            VaultMode::Passkeys
+            | VaultMode::PhotoList
+            | VaultMode::SettingsBling
+            | VaultMode::SettingsBlinky => false,
+            VaultMode::AboutQr { .. } => true,
             VaultMode::Idle => true,
             VaultMode::Idle => true,
             VaultMode::Password => false,
@@ -1116,6 +1131,41 @@ fn main() -> ! {
                 tt.sleep_ms(100).ok();
                 animate.store(prior_animate, Ordering::SeqCst);
                 global_config.lock().unwrap().pause_accel(false);
+            }
+            Some(VaultOp::ListPasswords) => {
+                *mode.lock().unwrap() = VaultMode::Password;
+                animate.store(VaultMode::Password.should_animate(), Ordering::SeqCst);
+                vault_ui.redraw();
+            }
+            Some(VaultOp::List2faDigits) => {
+                *mode.lock().unwrap() = VaultMode::Totp;
+                animate.store(VaultMode::Totp.should_animate(), Ordering::SeqCst);
+                vault_ui.redraw();
+            }
+            Some(VaultOp::ListPasskeys) => {
+                *mode.lock().unwrap() = VaultMode::Passkeys;
+                animate.store(false, Ordering::SeqCst);
+                vault_ui.redraw();
+            }
+            Some(VaultOp::ListPhotos) => {
+                *mode.lock().unwrap() = VaultMode::PhotoList;
+                animate.store(false, Ordering::SeqCst);
+                vault_ui.redraw();
+            }
+            Some(VaultOp::SettingsBling) => {
+                *mode.lock().unwrap() = VaultMode::SettingsBling;
+                animate.store(false, Ordering::SeqCst);
+                vault_ui.redraw();
+            }
+            Some(VaultOp::SettingsBlinky) => {
+                *mode.lock().unwrap() = VaultMode::SettingsBlinky;
+                animate.store(false, Ordering::SeqCst);
+                vault_ui.redraw();
+            }
+            Some(VaultOp::ShowAbout) => {
+                *mode.lock().unwrap() = VaultMode::AboutQr { quantum: 0 };
+                animate.store(true, Ordering::SeqCst);
+                vault_ui.redraw();
             }
             Some(VaultOp::ListBookmarks) => {
                 vault_ui.load_bookmarks();
