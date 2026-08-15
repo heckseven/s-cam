@@ -174,7 +174,7 @@ fn main() -> ! {
     match read_badgetype_pins() {
         BadgeType::None => {
             boot_sent = true;
-            let power_server = vault_api::connect_to_server(&xns, dc34_api::POWER_MANAGER_SERVER);
+            let power_server = xns.request_connection_blocking(dc34_api::POWER_MANAGER_SERVER).unwrap();
             xous::send_message(
                 power_server,
                 xous::Message::new_blocking_scalar(PowerManagerOp::Boot.to_usize().unwrap(), 0, 0, 0, 0),
@@ -274,7 +274,7 @@ fn main() -> ! {
         let modals = modals::Modals::new(&xns).unwrap();
         let mut in_progress = false;
         let mut msg_opt = None;
-        let power_server = vault_api::connect_to_server(&xns, dc34_api::POWER_MANAGER_SERVER);
+        let power_server = xns.request_connection_blocking(dc34_api::POWER_MANAGER_SERVER).unwrap();
         loop {
             xous::reply_and_receive_next(status_server, &mut msg_opt).unwrap();
             let msg = msg_opt.as_mut().unwrap();
