@@ -1155,3 +1155,46 @@ mod bookmark_tests {
     }
 }
 
+
+// ---- S-CAM settings: default bookmark ----
+pub(crate) const VAULT_SETTINGS_DICT: &str = "vault.settings";
+pub(crate) const SETTING_DEFAULT_BOOKMARK: &str = "default_bookmark";
+
+/// Record which bookmark the idle screen's left button shows.
+///
+/// The idle button depended on a "default bookmark" that nothing defined; this is that
+/// definition. Stored as the bookmark's PDDB key so renaming its label cannot orphan it.
+pub(crate) fn set_default_bookmark(pddb: &pddb::Pddb, key: &str) -> Result<(), std::io::Error> {
+    let mut k = pddb.get(
+        VAULT_SETTINGS_DICT, SETTING_DEFAULT_BOOKMARK, None, true, true, Some(64), None::<fn()>,
+    )?;
+    use std::io::Write;
+    k.write_all(key.as_bytes())?;
+    Ok(())
+}
+
+/// The PDDB key of the default bookmark, if one has been marked.
+pub(crate) fn default_bookmark_key(pddb: &pddb::Pddb) -> Option<String> {
+    let mut buf = [0u8; 64];
+    let mut k = pddb.get(
+        VAULT_SETTINGS_DICT, SETTING_DEFAULT_BOOKMARK, None, false, false, Some(64), None::<fn()>,
+    ).ok()?;
+    use std::io::Read;
+    let n = k.read(&mut buf).ok()?;
+    let key = core::str::from_utf8(&buf[..n]).ok()?.trim_end_matches('\0').trim().to_string();
+    if key.is_empty() { None } else { Some(key) }
+}
+
+/// The URL of the default bookmark, read straight from its dict entry.
+pub(crate) fn default_bookmark_url(pddb: &pddb::Pddb) -> Option<String> {
+    let key = default_bookmark_key(pddb)?;
+    let mut buf = [0u8; crate::vault_api::VAULT_ALLOC_HINT];
+    let mut k = pddb.get(
+        crate::vault_api::VAULT_BOOKMARKS_DICT, &key, None, false, false, None, None::<fn()>,
+    ).ok()?;
+    use std::io::Read;
+    let n = k.read(&mut buf).ok()?;
+    let raw = core::str::from_utf8(&buf[..n]).ok()?;
+    // stored form is label\nurl; fall back to the whole record if there is no newline
+    Some(raw.split('\n').last().unwrap_or(raw).trim().to_string())
+}

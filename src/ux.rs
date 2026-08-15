@@ -5,6 +5,9 @@ use std::sync::{Arc, Mutex};
 
 use bao1x_hal_service::Adc;
 use blitstr2::GlyphStyle;
+
+/// Patterns implemented in dc34-console; index 0 restores gene expression.
+const LED_PATTERN_COUNT: usize = 5;
 use chrono::Datelike;
 use qrcode::{Color, QrCode};
 use ux_api::minigfx::*;
@@ -527,6 +530,8 @@ pub struct VaultUi {
 
     // when Some(), override the display state with this String in QR code format
     pub qr_override: Option<QrCode>,
+    /// index into the console's pattern set; 0 means gene expression
+    led_pattern: usize,
     // URL to display in ShowUrl mode (always validated by SanitizedUrl::new)
     pub show_url: Option<String>,
 
@@ -603,6 +608,7 @@ impl VaultUi {
             token_help_state: TokenHelpState::TokenRecap { seen_press: false },
             global_config: None,
             qr_override: None,
+            led_pattern: 0,
             show_url: None,
             bookmark_cache: Vec::new(),
             bookmark_cursor: 0,
@@ -1397,34 +1403,52 @@ impl VaultUi {
                 Some(k)
             }
             VaultMode::Idle => match k {
-                '←' | '→' => {
-                    if let Some(config) = self.global_config.as_mut() {
-                        let mut c = config.lock().unwrap();
-                        c.lock_rate(); // lock in the mutation rate at this point in time
-                        let data = c.nonce_data();
-                        let encoded = base45::encode(&data);
-                        let code =
-                            QrCode::with_error_correction_level(encoded.as_bytes(), qrcode::EcLevel::M)
-                                .expect("couldn't build QR code");
-                        log::info!(
-                            "Nonce encoded {} bytes to Qrcode version {:?}",
-                            encoded.as_bytes().len(),
-                            code.version()
-                        );
-
-                        self.qr_override = Some(code);
-                        {
-                            *self.mode.lock().unwrap() = VaultMode::Idle;
+                // LEFT - show the default bookmark as a QR, press again to dismiss.
+                // "Default" is set explicitly from the bookmarks list; nothing defined it before.
+                '←' => {
+                    if self.qr_override.is_some() {
+                        self.qr_override = None;
+                    } else {
+                        let url = crate::storage::default_bookmark_url(&self.pddb.borrow());
+                        match url {
+                            Some(u) => match QrCode::with_error_correction_level(
+                                u.as_bytes(),
+                                qrcode::EcLevel::M,
+                            ) {
+                                Ok(code) => self.qr_override = Some(code),
+                                Err(e) => log::warn!("default bookmark will not fit in a QR: {:?}", e),
+                            },
+                            None => log::info!("no default bookmark set"),
                         }
+                    }
+                    self.redraw();
+                    None
+                }
+                // MIDDLE - open the camera. Routed through the main loop because
+                // ActionOp::AcquireQr is a blocking scalar and the key path cannot send one.
+                '🔥' => Some(k),
+                // RIGHT - context dependent. The LED ring is on the badge carrier, so
+                // cycling patterns is meaningless while detached; cycle the standby image
+                // instead rather than leaving a dead control.
+                '→' => {
+                    let attached = self
+                        .global_config
+                        .as_ref()
+                        .map(|c| c.lock().unwrap().is_badge_attached())
+                        .unwrap_or(false);
+                    if attached {
+                        self.led_pattern = (self.led_pattern + 1) % (LED_PATTERN_COUNT + 1);
+                        if let Some(config) = self.global_config.as_ref() {
+                            config.lock().unwrap().set_led_pattern(self.led_pattern);
+                        }
+                    } else {
+                        log::info!("detached: right button cycles the standby image");
                     }
                     None
                 }
-                '🔥' => {
-                    *self.mode.lock().unwrap() = VaultMode::Idle;
-                    Some(k)
-                }
                 _ => Some(k),
             },
+
             VaultMode::Idle => Some(k),
             // this is the next state of the recipient after showing the key
             // this is the state of the donor in response to query
