@@ -72,6 +72,19 @@ name now maps to exactly one store:
 | 3 | Departure Mono **11px only** | 22px comes free later via integer 2x scaling of the same pack. |
 | 4 | Font lives in the flash-resident gfx server | Text renders via `gfx.draw_textview()`, so the font costs the app's page budget ~0. |
 
+## Boot and idle behaviour
+
+| # | Decision |
+|---|---|
+| 1 | **`IdleDevMode` collapses into `Idle`.** Identical power and redraw behaviour; its key arm handled nothing, and this badge is permanently in it. |
+| 2 | **Detached (`Unattached`) boots to the idle screen**, not the password list. That is the configuration the device is actually carried in. |
+| 3 | **`DEV MODE` removed with no replacement.** Permanent, irreversible state — an always-on indicator says nothing actionable. |
+| 4 | **The right idle button is context-dependent**: LED patterns when mounted, standby image when detached. The LED ring lives on the carrier, so cycling patterns while detached would be a dead control. |
+
+Consequence: every `AttachState` now routes to `Idle`, so it stops being a boot-mode
+selector. It is still read — the right button and `blinky` need to know whether a carrier is
+present — but the collapse removes the last use of `k0`. See [STATE-TABLE.md](STATE-TABLE.md).
+
 ## Constraints that shape all of the above
 
 - **dc34-vault must stay <= 307 pages**, currently 298 with `incremental = false`

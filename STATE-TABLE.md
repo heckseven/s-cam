@@ -84,9 +84,34 @@ the read can go, and with it the last dependency on the erased key.
 
 `k0_hash()` (`config.rs:237`) needs checking before removal; it is unrelated to routing.
 
-## Open questions
+## Decisions — resolved 2026-08-15
 
-1. Collapse `IdleDevMode` into `Idle`? (recommended)
-2. Route `Unattached` to `Idle` rather than `Password`? (needed for item 7 to mean anything)
-3. Anything that should still distinguish a developer-mode badge on screen, given the label
-   is being removed and the state is permanent?
+1. **Collapse `IdleDevMode` into `Idle`.** One idle state. Its key arm handled nothing and
+   this badge is permanently in it, so this is what makes the idle buttons work at all.
+2. **`Unattached` boots to `Idle`.** The detached module is the device actually carried
+   day to day; without this the item-7 idle screen does not exist where it is needed.
+   Passwords remain reachable from the menu.
+3. **Remove `DEV MODE` with no replacement.** The state is permanent and irreversible, so
+   an always-on indicator conveys nothing actionable.
+4. **The right idle button is context-dependent.** It cycles LED patterns when mounted to
+   the carrier, and cycles the standby image when detached — the LED ring is physically on
+   the carrier, so pattern cycling is meaningless without it. The three-slot label bar
+   shows which, so the button is never a dead control.
+
+## Resulting routing — every cell targets `Idle`
+
+| AttachState | S-CAM |
+|---|---|
+| FirstMate | `Idle` |
+| FactoryNew | `Idle` |
+| TestedStandAlone | `Idle` |
+| Matched | `Idle` |
+| Mismatched | `Idle` |
+| Unattached | `Idle` |
+
+Every path now converges, which means `AttachState` no longer selects a boot mode at all.
+It is still needed — the idle screen's right button and the `blinky` setting depend on
+knowing whether a carrier is present — but it stops being a routing input.
+
+That collapse is what removes the last use of `k0`: it existed only to separate `FactoryNew`
+from `TestedStandAlone`, and both now go to the same place.
