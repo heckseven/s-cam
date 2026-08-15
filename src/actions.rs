@@ -1312,6 +1312,32 @@ impl ActionManager {
         log::debug!("heap usage B: {}", heap_usage());
     }
 
+    /// Store the frame currently on the panel as a photo.
+    ///
+    /// The frame is already thresholded to 1bpp by the display pipeline, so it is bit-identical
+    /// to the badge's own bitmap format and needs no conversion.
+    fn capture_photo(&mut self) {
+        let stored = match self.gfx.acquire_frame() {
+            Ok(capture) if capture.ok => storage::photo_store(&self.pddb.borrow(), &capture.bits),
+            Ok(_) => {
+                log::warn!("frame capture reported failure");
+                None
+            }
+            Err(e) => {
+                log::warn!("frame capture failed: {:?}", e);
+                None
+            }
+        };
+        let msg = match stored {
+            Some(key) => {
+                log::info!("photo stored as {}", key);
+                "PHOTO SAVED"
+            }
+            None => "PHOTO STORE FULL",
+        };
+        self.modals.show_notification(msg, None).ok();
+    }
+
     pub(crate) fn acquire_qr(&mut self) {
         let qr_data = match self.gfx.acquire_qr() {
             Ok(qr_data) => qr_data,
@@ -1320,6 +1346,14 @@ impl ActionManager {
                 return;
             }
         };
+        // RIGHT ends the camera as a capture request. The camera server reports which key
+        // aborted the scan because this side is blocked for the whole acquisition and cannot
+        // watch the buttons itself. The panel still holds the last camera frame here, so
+        // grabbing it now is what "take a photo" means.
+        if qr_data.abort_key == Some('→') {
+            self.capture_photo();
+            return;
+        }
         if let Some(meta) = qr_data.meta {
             log::info!("QR code metadata: {}", meta);
         }

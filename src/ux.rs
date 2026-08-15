@@ -576,35 +576,6 @@ pub const BLINKY_CHOICES: [&str; 6] =
     ["GENE (DEFAULT)", "RAINBOW", "CHASE", "BREATHE", "EMBER", "RIOT"];
 
 impl VaultUi {
-    /// Capture the panel as a photo and store it.
-    ///
-    /// Returns false when the cap is reached, so the caller can say so rather than
-    /// silently discarding the shot.
-    pub(crate) fn capture_photo(&mut self) -> bool {
-        match self.gfx.acquire_frame() {
-            Ok(capture) if capture.ok => {
-                // scope the borrow so load_photos() can take its own
-                let stored = crate::storage::photo_store(&self.pddb.borrow(), &capture.bits);
-                match stored {
-                    Some(key) => {
-                        log::info!("photo stored as {}", key);
-                        self.load_photos();
-                        true
-                    }
-                    None => false,
-                }
-            }
-            Ok(_) => {
-                log::warn!("frame capture reported failure");
-                false
-            }
-            Err(e) => {
-                log::warn!("frame capture failed: {:?}", e);
-                false
-            }
-        }
-    }
-
     /// Apply a standby-image choice: 0 and 1 are the built-ins, higher indices are photos.
     ///
     /// A captured photo is already in the badge's bitmap format, so "use this photo as the
@@ -1822,13 +1793,16 @@ impl VaultUi {
         self.gfx.clear().ok();
         let mut tv = TextView::new(
             Gid::dummy(),
-            TextBounds::CenteredTop(Rectangle::new(Point::new(0, 52), Point::new(127, 96))),
+            TextBounds::CenteredTop(Rectangle::new(Point::new(0, 40), Point::new(127, 120))),
         );
         tv.invert = true;
         tv.margin = Point::new(2, 2);
-        tv.style = GlyphStyle::Bold;
+        tv.style = crate::theme::FONT;
         tv.draw_border = false;
-        write!(tv, "Starting\ncamera...").ok();
+        // This splash is the only place the camera controls can be shown. Once the camera
+        // starts it owns the panel outright and this side is blocked inside the acquire call,
+        // so there is no later opportunity to label the buttons.
+        write!(tv, "STARTING CAMERA\n\nRIGHT = PHOTO\nANY OTHER = CANCEL").ok();
         self.gfx.draw_textview(&mut tv).ok();
         self.redraw();
     }
