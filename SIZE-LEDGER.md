@@ -115,3 +115,76 @@ llvm-nm --size-sort --radix=d -S <elf> # symbol attribution
 
 Bitmaps are identified by signature — anonymous, read-only, exactly 2,048 bytes — because
 `pub const` items carry no name in the symbol table.
+
+## MEASURED: flash budget and PDDB (task 1.9)
+
+### The ja/emoji trim yields zero — drop it
+
+It was proposed on the assumption that blitstr2's Japanese and emoji glyph sets bloat the
+flash-resident image. They do not, because they are never linked:
+
+```
+bao-video .rodata total          284,328 bytes
+ja CODEPOINTS[11081] + GLYPHS[88648]  398,916 bytes
+```
+
+The entire read-only section of the graphics server is smaller than the Japanese tables alone,
+so they cannot be present. They are `pub const`, and Rust discards unreferenced const data —
+the same reason the app's bitmaps had to be measured by size signature rather than by name.
+
+**Gate A Q5 resolves to zero.** Dropping it removes one edit from the resident-image fork.
+
+### Flash / resident-image budget
+
+```
+kernel image        3,187,216 bytes
+free remaining        196,848 bytes  = 48 pages
+```
+
+That is the budget the LED pattern engine, Departure Mono and `AcquireFrame` draw on. All
+three are small against 48 pages, and it is a separate pool from the app's 307-page limit.
+
+### bao-video sections, for reference
+
+| section | bytes |
+|---|---:|
+| `.rodata` | 284,328 |
+| `.text` | 204,352 |
+| `.eh_frame` | 27,744 |
+| `.gcc_except_table` | 15,560 |
+| `.eh_frame_hdr` | 5,636 |
+
+Two anonymous blocks of 65,536 bytes each are `rqrr`'s Galois-field multiply tables
+(`GF16_mod`, `GF256_mod`) — QR decoding, not fonts.
+
+### PDDB: nine keys in dict `dc34`
+
+| key | vault | console | notes |
+|---|:--:|:--:|---|
+| `k0` | 1 | 0 | wiped and one-way. Sole remaining role is deriving `AttachState` at `config.rs:136-142` |
+| `gene` | via api | via api | reached through `get_light_gene`/`save_light_gene`, not the constant. **Protected feature** |
+| `badge` | 1 | 2 | badge type |
+| `image` | 2 | 3 | existing standby image, `[u32; 512]` |
+| `tour` | 3 | 2 | in the legacy cut's blast radius (`set_skip_tour`) |
+| `tokentour` | 2 | 0 | in the legacy cut's blast radius |
+| `bio.code` | 0 | 4 | **console only** — BIO program, read up to 0xf00 bytes |
+| `bio.pins` | 0 | 4 | console only |
+| `bio.clk` | 0 | 5 | console only |
+
+The three `bio.*` keys are written and read solely by dc34-console. Rebuilding the console
+does not by itself invalidate them — they are PDDB data, not compiled-in — but any change to
+the BIO program's expected layout would, and that is worth checking before the LED work lands.
+
+Cutting tour and factory should also drop `tour` and `tokentour` writes; the keys become inert
+rather than harmful.
+
+### Photo and image storage headroom
+
+```
+27 photos            55,296 bytes   1.32% of the 4 MiB PDDB
++ 27 standby images 110,592 bytes   2.64%
+page-granular worst 221,184 bytes   5.27%
+```
+
+The 27 cap is conservative even at page granularity. Storage was never the constraint —
+browsing-UI code size is.
