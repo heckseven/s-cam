@@ -93,9 +93,19 @@ pub(crate) fn action_handler(
                         xous::return_scalar(msg.sender, 1).unwrap();
                     }),
                     Some(ActionOp::AcquireQr) => msg_blocking_scalar_unpack!(msg, _, _, _, _, {
-                        manager.acquire_qr();
+                        let capture = manager.acquire_qr();
                         manager.retrieve_db();
-                        xous::return_scalar(msg.sender, 1).unwrap();
+                        // The UI thread grabs the frame, so it has to learn the camera ended
+                        // with the photo button; this return value is the only channel out.
+                        xous::return_scalar(
+                            msg.sender,
+                            if capture {
+                                dc34_vault::CAPTURE_REQUESTED
+                            } else {
+                                dc34_vault::CAPTURE_NONE
+                            },
+                        )
+                        .unwrap();
                     }),
                     Some(ActionOp::BookmarkSelected) => {
                         let buffer = unsafe {

@@ -114,7 +114,9 @@ const GUTTER_W: isize = 10;
 fn check_mark(gfx: &ux_api::service::gfx::Gfx, gutter: Rectangle) {
     let style = DrawStyle::new(PixelColor::Light, PixelColor::Light, 1);
     let x = gutter.tl().x + 2;
-    let y = gutter.tl().y + gutter.height() as isize / 2;
+    // +2: the row box is taller than the glyphs and its centre sits above the text's, so
+    // centring on the box alone left the mark visibly high against the label.
+    let y = gutter.tl().y + gutter.height() as isize / 2 + 2;
     let mut ol = ObjectList::new();
     // short down-stroke into the elbow, then the long up-stroke
     ol.push(ClipObjectType::Line(Line::new_with_style(
@@ -130,6 +132,16 @@ fn check_mark(gfx: &ux_api::service::gfx::Gfx, gutter: Rectangle) {
     )))
     .unwrap();
     gfx.draw_object_list(ol).unwrap();
+}
+
+/// Grow `inner` by one pixel on each side, clamped to `limit`.
+///
+/// One pixel of air keeps the brackets off the glyphs without making them look detached.
+fn pad(inner: Rectangle, limit: Rectangle) -> Rectangle {
+    Rectangle::new(
+        Point::new((inner.tl().x - 1).max(limit.tl().x), (inner.tl().y - 1).max(limit.tl().y)),
+        Point::new((inner.br().x + 1).min(limit.br().x), (inner.br().y + 1).min(limit.br().y)),
+    )
 }
 
 /// Draw a scrolling list with a cursor, between the heading and the button bar.
@@ -205,7 +217,11 @@ pub fn list(
             }
         }
         if index == cursor {
-            ux_api::widgets::scroll::draw_corner_brackets(gfx, row);
+            // Wrap the text, not the row. The server reports what it actually laid out, so
+            // the brackets track the label's width instead of spanning the full 128px and
+            // reading as a box around empty space.
+            let around = tv.bounds_computed.map(|b| pad(b, row)).unwrap_or(row);
+            ux_api::widgets::scroll::draw_corner_brackets(gfx, around);
         }
     }
 }

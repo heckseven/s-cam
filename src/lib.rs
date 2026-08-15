@@ -44,6 +44,13 @@ pub mod api;
 pub mod ctap;
 pub mod env;
 
+/// Return value from ActionOp::AcquireQr meaning "the camera was ended with the photo
+/// button". The caller is blocked inside that call for the whole scan and cannot watch the
+/// buttons itself, so the outcome has to come back through the return value.
+pub const CAPTURE_REQUESTED: usize = 2;
+/// Return value from ActionOp::AcquireQr for every other way the camera ended.
+pub const CAPTURE_NONE: usize = 1;
+
 pub const KEEPALIVE_DELAY_MS: u64 = 100;
 pub const KEEPALIVE_DELAY: Duration = Duration::from_millis(KEEPALIVE_DELAY_MS);
 

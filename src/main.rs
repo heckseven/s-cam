@@ -76,6 +76,10 @@ pub enum VaultMode {
     SettingsBlinky,
     /// QR of the repo README
     AboutQr { quantum: u32 },
+    /// a just-taken photo, not yet stored: keep / retake / discard
+    PhotoPreview,
+    /// a stored photo, opened from the photos list
+    PhotoView,
 }
 
 impl VaultMode {
@@ -83,10 +87,11 @@ impl VaultMode {
         match self {
             VaultMode::Passkeys
             | VaultMode::PhotoList
+            | VaultMode::PhotoPreview
+            | VaultMode::PhotoView
             | VaultMode::SettingsBling
             | VaultMode::SettingsBlinky => false,
             VaultMode::AboutQr { .. } => true,
-            VaultMode::Idle => true,
             VaultMode::Idle => true,
             VaultMode::Password => false,
             VaultMode::Totp => true,
@@ -1129,7 +1134,7 @@ fn main() -> ! {
                 vault_ui.camera_transition();
                 let prior_animate = animate.swap(false, Ordering::SeqCst);
                 skip_one_key = true;
-                xous::send_message(
+                let outcome = xous::send_message(
                     actions_conn,
                     xous::Message::new_blocking_scalar(
                         ActionOp::AcquireQr.to_usize().unwrap(),
@@ -1138,8 +1143,12 @@ fn main() -> ! {
                         0,
                         0,
                     ),
-                )
-                .ok();
+                );
+                // CAPTURE_REQUESTED means the camera was ended with the photo button. Grab the
+                // panel now, before the sleep and redraw below overwrite the last camera frame.
+                if matches!(outcome, Ok(xous::Result::Scalar1(dc34_vault::CAPTURE_REQUESTED))) {
+                    vault_ui.begin_photo_preview();
+                }
                 // wait a moment for the last frame to clear before redrawing the UI
                 tt.sleep_ms(100).ok();
                 animate.store(prior_animate, Ordering::SeqCst);

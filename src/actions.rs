@@ -1312,48 +1312,32 @@ impl ActionManager {
         log::debug!("heap usage B: {}", heap_usage());
     }
 
-    /// Store the frame currently on the panel as a photo.
+    /// Returns true when the camera was ended with the photo button.
     ///
-    /// The frame is already thresholded to 1bpp by the display pipeline, so it is bit-identical
-    /// to the badge's own bitmap format and needs no conversion.
-    fn capture_photo(&mut self) {
-        let stored = match self.gfx.acquire_frame() {
-            Ok(capture) if capture.ok => storage::photo_store(&self.pddb.borrow(), &capture.bits),
-            Ok(_) => {
-                log::warn!("frame capture reported failure");
-                None
-            }
-            Err(e) => {
-                log::warn!("frame capture failed: {:?}", e);
-                None
-            }
-        };
-        let msg = match stored {
-            Some(key) => {
-                log::info!("photo stored as {}", key);
-                "PHOTO SAVED"
-            }
-            None => "PHOTO STORE FULL",
-        };
-        self.modals.show_notification(msg, None).ok();
-    }
-
-    pub(crate) fn acquire_qr(&mut self) {
+    /// The frame itself is grabbed by the UI thread rather than here: it owns the preview
+    /// screen the shot has to be shown on, and a photo is only worth storing once the user
+    /// has seen it and kept it.
+    pub(crate) fn acquire_qr(&mut self) -> bool {
         let qr_data = match self.gfx.acquire_qr() {
             Ok(qr_data) => qr_data,
             Err(e) => {
                 log::error!("QR acquisition failed: {:?}", e);
-                return;
+                return false;
             }
         };
         // RIGHT ends the camera as a capture request. The camera server reports which key
         // aborted the scan because this side is blocked for the whole acquisition and cannot
-        // watch the buttons itself. The panel still holds the last camera frame here, so
-        // grabbing it now is what "take a photo" means.
+        // watch the buttons itself. Report it upward rather than storing anything here.
         if qr_data.abort_key == Some('→') {
-            self.capture_photo();
-            return;
+            return true;
         }
+        self.handle_qr(qr_data);
+        false
+    }
+
+    /// Act on a decoded QR payload. Split out of `acquire_qr` so that function can report the
+    /// camera's outcome as a bool without every arm in here having to produce one.
+    fn handle_qr(&mut self, qr_data: ux_api::service::api::QrAcquisition) {
         if let Some(meta) = qr_data.meta {
             log::info!("QR code metadata: {}", meta);
         }

@@ -486,9 +486,13 @@ impl TotpLayout {
 
     pub fn timer_box() -> Rectangle { Rectangle::new(Point::new(0, 40), Point::new(127, 50)) }
 
-    pub fn list_box() -> Rectangle { Rectangle::new(Point::new(0, 50), Point::new(127, 127)) }
+    /// The list stops short of the bottom to leave the button bar room. Running it to 127
+    /// drew rows underneath the labels.
+    pub fn list_box() -> Rectangle {
+        Rectangle::new(Point::new(0, 50), Point::new(127, 127 - crate::theme::LABEL_BAR_H))
+    }
 
-    pub fn list_font() -> GlyphStyle { GlyphStyle::Regular }
+    pub fn list_font() -> GlyphStyle { crate::theme::FONT }
 }
 
 pub struct VaultUi {
@@ -542,6 +546,8 @@ pub struct VaultUi {
     bling_cursor: usize,
     /// which standby image is in force; index into BUILTIN_IMAGES then photos
     standby_choice: usize,
+    /// a just-taken photo held for the preview screen, before the user keeps it
+    pending_photo: Option<[u32; 512]>,
     /// BLINKY: 0 is gene expression, 1..=LED_PATTERN_COUNT are standalone patterns
     blinky_cursor: usize,
     // URL to display in ShowUrl mode (always validated by SanitizedUrl::new)
@@ -568,7 +574,29 @@ pub struct VaultUi {
 
 /// Standby images that ship with the firmware. Captured photos are appended to this list
 /// at runtime, so "set a photo as the standby image" needs no separate mechanism.
+/// Move a list cursor one step, wrapping at both ends.
+///
+/// Every list screen shares this so they behave the same way: on a 128px panel a list runs
+/// off the bottom, and stopping dead at the first row makes the last entries feel out of
+/// reach. An empty list has nowhere to go.
+fn step_cursor(cursor: usize, len: usize, up: bool) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    if up {
+        if cursor == 0 { len - 1 } else { cursor - 1 }
+    } else if cursor + 1 >= len {
+        0
+    } else {
+        cursor + 1
+    }
+}
+
 pub const BUILTIN_IMAGES: [&str; 2] = ["S-CAM", "DEFCON"];
+
+/// Index into BUILTIN_IMAGES for the DEFCON logo. Named because the idle draw has to tell
+/// it from the S-CAM logo, and both are "no user bitmap".
+pub const DEFCON_IMAGE: usize = 1;
 
 /// Blinky choices. Index 0 is gene expression - the badge's protected behaviour and the
 /// default - and the rest map onto dc34-console's pattern table.
@@ -582,8 +610,9 @@ impl VaultUi {
     /// standby image" is a straight copy into user_bitmap with no conversion.
     pub(crate) fn apply_standby_choice(&mut self, choice: usize) {
         match choice {
-            0 => self.user_bitmap = None, // built-in S-CAM logo, drawn directly
-            1 => self.user_bitmap = None, // DEFCON logo; selected via the same path
+            // Both built-ins are drawn from flash, not from user_bitmap; the idle draw picks
+            // between them on standby_choice.
+            0 | DEFCON_IMAGE => self.user_bitmap = None,
             n => {
                 let idx = n - BUILTIN_IMAGES.len();
                 if let Some(key) = self.photo_cache.get(idx).cloned() {
@@ -669,6 +698,7 @@ impl VaultUi {
             photo_cursor: 0,
             bling_cursor: 0,
             standby_choice: 0,
+            pending_photo: None,
             blinky_cursor: 0,
             show_url: None,
             bookmark_cache: Vec::new(),
@@ -934,6 +964,31 @@ impl VaultUi {
                 );
                 self.gfx.flush().ok();
             }
+            VaultMode::PhotoPreview | VaultMode::PhotoView => {
+                let fresh = matches!(mode_at_entry, VaultMode::PhotoPreview);
+                match self.pending_photo.as_ref() {
+                    Some(bits) => {
+                        self.gfx.bitmap(bits, None, None).ok();
+                    }
+                    None => {
+                        self.clear_area();
+                        crate::theme::heading(&self.gfx, self.screen_size, "NO PHOTO");
+                    }
+                }
+                // A fresh shot is not stored yet, so it offers keep/retake; a stored one is
+                // browsed with the arrows and only needs a way out.
+                if fresh {
+                    crate::theme::button_labels(
+                        &self.gfx, self.screen_size,
+                        Some("BACK"), Some("RETAKE"), Some("SAVE"),
+                    );
+                } else {
+                    crate::theme::button_labels(
+                        &self.gfx, self.screen_size, Some("BACK"), None, None,
+                    );
+                }
+                self.gfx.flush().ok();
+            }
             VaultMode::SettingsBling => {
                 self.clear_area();
                 crate::theme::heading(&self.gfx, self.screen_size, "BLING");
@@ -982,17 +1037,16 @@ impl VaultUi {
             }
             VaultMode::Idle => {
                 let now = self.tt.elapsed_ms();
-                if let Some(bitmap) = self.user_bitmap.as_ref() {
-                    let edge = (now / 3000) % 2 == 0;
-                    if self.edge != edge || mode_at_entry != self.last_mode {
-                        if self.phase {
-                            self.gfx.bitmap_diffusion(bitmap, None, None).ok();
-                        } else {
-                            self.gfx.bitmap_diffusion(&bitmaps::scam_logo::BITMAP, None, None).ok();
-                        }
-                        self.phase = !self.phase;
-                    }
-                    self.edge = edge;
+                // Draw the chosen standby image, and only that one.
+                //
+                // This used to alternate the user's image with the S-CAM logo every three
+                // seconds, and both built-in choices cleared user_bitmap - so picking DEFCON
+                // left nothing to alternate with and the logo was drawn unconditionally. The
+                // selection is a setting, so the screen shows the selection.
+                if self.standby_choice == DEFCON_IMAGE {
+                    self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
+                } else if let Some(bitmap) = self.user_bitmap.as_ref() {
+                    self.gfx.bitmap(bitmap, None, None).ok();
                 } else {
                     self.gfx.bitmap(&bitmaps::scam_logo::BITMAP, None, None).ok();
                 }
@@ -1203,9 +1257,9 @@ impl VaultUi {
                     let mut tv = TextView::new(Gid::dummy(), TextBounds::CenteredTop(TotpLayout::list_box()));
                     tv.invert = true;
                     tv.margin = Point::new(0, 0);
-                    tv.style = self.style;
+                    tv.style = crate::theme::FONT;
                     tv.draw_border = false;
-                    write!(tv, "Scan QR code to add TOTP items").ok();
+                    write!(tv, "NO 2FA DIGITS.\nADD THEM BY SCANNING A QR CODE.").ok();
                     self.gfx.draw_textview(&mut tv).ok();
                 }
 
@@ -1236,6 +1290,10 @@ impl VaultUi {
                 timer_remaining.style = DrawStyle::new(PixelColor::Light, PixelColor::Light, 1);
                 object_list.push(ClipObjectType::Rect(timer_remaining)).unwrap();
                 self.gfx.draw_object_list(object_list).unwrap();
+                crate::theme::button_labels(
+                    &self.gfx, self.screen_size, Some("BACK"), None, Some("SEND"),
+                );
+                self.gfx.flush().ok();
             }
             VaultMode::Password => {
                 self.clear_area();
@@ -1253,17 +1311,19 @@ impl VaultUi {
                     box_text.draw_border = false;
                     box_text.clear_area = true;
                     box_text.invert = true;
-                    box_text.style = GlyphStyle::Bold;
+                    box_text.style = crate::theme::FONT;
                     if self.filter.len() == 0 {
-                        write!(
-                            box_text,
-                            "Add passwords using QR codes via browser extension: see defcon.org/34b"
-                        )
-                        .ok();
+                        write!(box_text, "NO PASSWORDS.\nADD THEM BY SCANNING A QR CODE.").ok();
                     } else {
-                        write!(box_text, "No passwords matching filter: {}", &self.filter).ok();
+                        write!(box_text, "NOTHING MATCHING {}", &self.filter).ok();
                     }
                     self.gfx.draw_textview(&mut box_text).expect("couldn't post empty notification");
+                    // The empty state used to return here, before any labels were drawn, which
+                    // left the screen with no way out and no indication there was one.
+                    crate::theme::heading(&self.gfx, self.screen_size, "PASSWORDS");
+                    crate::theme::button_labels(
+                        &self.gfx, self.screen_size, Some("BACK"), None, None,
+                    );
                     self.gfx.flush().ok();
                     return;
                 }
@@ -1308,6 +1368,10 @@ impl VaultUi {
                     insert_at = self.item_height * 2;
                 };
                 self.display_list.draw(insert_at);
+                crate::theme::button_labels(
+                    &self.gfx, self.screen_size, Some("BACK"), None, Some("TYPE"),
+                );
+                self.gfx.flush().ok();
             }// _ => unimplemented!(),
             VaultMode::BookmarkList => {
                 self.clear_area();
@@ -1345,28 +1409,27 @@ impl VaultUi {
                 // Display the scanned URL with a header row and wrapped text
                 self.gfx.clear().ok();
                 // Header: "URL" label in an inverted row at top
-                let mut header = TextView::new(
-                    Gid::dummy(),
-                    TextBounds::CenteredTop(Rectangle::new(Point::new(0, 0), Point::new(127, 12))),
-                );
-                header.style = GlyphStyle::Bold;
-                header.draw_border = false;
-                header.invert = true;
-                write!(header, "URL").ok();
-                self.gfx.draw_textview(&mut header).ok();
-                // URL text: left-aligned, starting below header, wraps at display width
+                crate::theme::heading(&self.gfx, self.screen_size, "URL");
+                // URL text: left-aligned, below the heading, stopping short of the button bar
                 if let Some(url) = &self.show_url {
                     let mut tv = TextView::new(
                         Gid::dummy(),
-                        TextBounds::BoundingBox(Rectangle::new(Point::new(0, 13), Point::new(127, 127))),
+                        TextBounds::BoundingBox(Rectangle::new(
+                            Point::new(0, crate::theme::LABEL_BAR_H),
+                            Point::new(127, 127 - crate::theme::LABEL_BAR_H),
+                        )),
                     );
-                    tv.style = GlyphStyle::Small;
+                    tv.style = crate::theme::FONT;
                     tv.draw_border = false;
                     tv.invert = true; // white on black, like every other screen
                     tv.ellipsis = true; // truncation indicator if URL exceeds display capacity
                     write!(tv, "{}", url).ok();
                     self.gfx.draw_textview(&mut tv).ok();
                 }
+                crate::theme::button_labels(
+                    &self.gfx, self.screen_size,
+                    Some("BACK"), Some("RETRY"), Some("SAVE"),
+                );
             }
         }
         self.gfx.flush().ok();
@@ -1398,6 +1461,73 @@ impl VaultUi {
         self.redraw();
     }
 
+    /// Grab the panel as a photo and show it for approval.
+    ///
+    /// Must run before anything else redraws: the frame lives in the panel buffer, and the
+    /// camera has already stopped by the time this is called. Nothing is stored yet - the
+    /// point of the preview is that the shot can be rejected.
+    pub(crate) fn begin_photo_preview(&mut self) {
+        match self.gfx.acquire_frame() {
+            Ok(capture) if capture.ok => {
+                self.pending_photo = Some(capture.bits);
+                *self.mode.lock().unwrap() = VaultMode::PhotoPreview;
+            }
+            Ok(_) => log::warn!("frame capture reported failure"),
+            Err(e) => log::warn!("frame capture failed: {:?}", e),
+        }
+    }
+
+    /// Store the held photo. Returns false when the store is full, so the screen can say so
+    /// rather than silently dropping the shot.
+    fn keep_pending_photo(&mut self) -> bool {
+        let Some(bits) = self.pending_photo else { return false };
+        let stored = crate::storage::photo_store(&self.pddb.borrow(), &bits);
+        match stored {
+            Some(key) => {
+                log::info!("photo stored as {}", key);
+                self.pending_photo = None;
+                self.load_photos();
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Reopen the camera. main.rs owns the camera path because AcquireQr is a blocking
+    /// scalar, so ask it rather than trying to drive the camera from here.
+    fn retake_photo(&mut self) {
+        self.pending_photo = None;
+        *self.mode.lock().unwrap() = VaultMode::Idle;
+        xous::send_message(
+            self.main_cid,
+            xous::Message::new_scalar(VaultOp::ScanUrl.to_usize().unwrap(), 0, 0, 0, 0),
+        )
+        .ok();
+    }
+
+    /// Load the photo under the photos-list cursor for full-screen viewing.
+    fn show_selected_photo(&mut self) {
+        if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
+            match crate::storage::photo_get(&self.pddb.borrow(), &key) {
+                Some(bits) => {
+                    self.pending_photo = Some(bits);
+                    *self.mode.lock().unwrap() = VaultMode::PhotoView;
+                }
+                None => log::warn!("photo {} could not be read", key),
+            }
+        }
+    }
+
+    /// Leave a submenu the way it was entered: back to the menu, not past it to standby.
+    ///
+    /// The app cannot raise the menu widget itself - main.rs owns it - so the way back is to
+    /// return the menu key and let main.rs open it. Dropping to Idle instead skipped a level
+    /// and made every submenu feel like a dead end.
+    fn to_menu(&mut self) -> Option<char> {
+        *self.mode.lock().unwrap() = VaultMode::Idle;
+        Some('∴')
+    }
+
     pub(crate) fn handle_key(&mut self, k: char) -> Option<char> {
         let mode_at_entry = (*self.mode.lock().unwrap()).clone();
         if k == '🔼' {
@@ -1424,13 +1554,16 @@ impl VaultUi {
                             self.display_list.key_action('↓');
                         }
                     }
-                    '←' => {
+                    // LEFT is back on every screen; the menu already reaches 2fa digits
+                    // directly, so the old left-types / right-switches pair is retired.
+                    '←' => return self.to_menu(),
+                    '→' => {
                         if let Some(item) = self.get_selected_item() {
                             // print any errors within this function as a panic at this line
                             self.handle_autotype(item.guid, false).unwrap();
                         }
                     }
-                    '→' => {
+                    '\u{0}' => {
                         {
                             *self.mode.lock().unwrap() = VaultMode::Totp;
                         }
@@ -1462,13 +1595,14 @@ impl VaultUi {
                     '↓' => {
                         self.display_list.key_action('↓');
                     }
-                    '←' => {
+                    '←' => return self.to_menu(),
+                    '→' => {
                         if let Some(code) = self.update_selected_totp_code() {
                             // ignore USB errors while sending code
                             self.usb_dev.send_str(&code).ok();
                         }
                     }
-                    '→' => {
+                    '\u{0}' => {
                         {
                             // lock needs to go out of scope so we don't hang the later ops
                             *self.mode.lock().unwrap() = VaultMode::Password;
@@ -1495,14 +1629,13 @@ impl VaultUi {
                 Some(k)
             }
             VaultMode::Passkeys => {
+                let mut leaving = false;
                 match k {
-                    '↑' => self.passkey_cursor = self.passkey_cursor.saturating_sub(1),
-                    '↓' => {
-                        if self.passkey_cursor + 1 < self.passkey_cache.len() {
-                            self.passkey_cursor += 1;
-                        }
+                    '↑' | '↓' => {
+                        self.passkey_cursor =
+                            step_cursor(self.passkey_cursor, self.passkey_cache.len(), k == '↑')
                     }
-                    '←' => *self.mode.lock().unwrap() = VaultMode::Idle,
+                    '←' => leaving = true,
                     '🔥' => {
                         if let Some(p) = self.passkey_cache.get(self.passkey_cursor) {
                             let key = p.key.clone();
@@ -1516,18 +1649,24 @@ impl VaultUi {
                     }
                     _ => {}
                 }
+                if leaving {
+                    return self.to_menu();
+                }
                 self.redraw();
                 None
             }
             VaultMode::PhotoList => {
+                let mut leaving = false;
                 match k {
-                    '↑' => self.photo_cursor = self.photo_cursor.saturating_sub(1),
-                    '↓' => {
-                        if self.photo_cursor + 1 < self.photo_cache.len() {
-                            self.photo_cursor += 1;
-                        }
+                    '↑' | '↓' => {
+                        self.photo_cursor =
+                            step_cursor(self.photo_cursor, self.photo_cache.len(), k == '↑')
                     }
-                    '←' => *self.mode.lock().unwrap() = VaultMode::Idle,
+                    '←' => leaving = true,
+                    '→' => {
+                        self.show_selected_photo();
+                        return None;
+                    }
                     '🔥' => {
                         if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
                             if let Err(e) =
@@ -1540,19 +1679,58 @@ impl VaultUi {
                     }
                     _ => {}
                 }
+                if leaving {
+                    return self.to_menu();
+                }
+                self.redraw();
+                None
+            }
+            VaultMode::PhotoPreview => {
+                match k {
+                    // discard: the shot was never stored, so leaving is all that is needed
+                    '←' => {
+                        self.pending_photo = None;
+                        return self.to_menu();
+                    }
+                    '🔥' => {
+                        self.retake_photo();
+                        return None;
+                    }
+                    '→' => {
+                        if self.keep_pending_photo() {
+                            *self.mode.lock().unwrap() = VaultMode::PhotoList;
+                        } else {
+                            self.modals.show_notification("PHOTO STORE FULL", None).ok();
+                        }
+                    }
+                    _ => {}
+                }
+                self.redraw();
+                None
+            }
+            VaultMode::PhotoView => {
+                match k {
+                    '←' => {
+                        self.pending_photo = None;
+                        *self.mode.lock().unwrap() = VaultMode::PhotoList;
+                    }
+                    // browse without going back to the list
+                    '↑' | '↓' => {
+                        self.photo_cursor =
+                            step_cursor(self.photo_cursor, self.photo_cache.len(), k == '↑');
+                        self.show_selected_photo();
+                    }
+                    _ => {}
+                }
                 self.redraw();
                 None
             }
             VaultMode::SettingsBling => {
+                let mut leaving = false;
                 let count = BUILTIN_IMAGES.len() + self.photo_cache.len();
                 match k {
-                    '↑' => self.bling_cursor = self.bling_cursor.saturating_sub(1),
-                    '↓' => {
-                        if self.bling_cursor + 1 < count {
-                            self.bling_cursor += 1;
-                        }
-                    }
-                    '←' => *self.mode.lock().unwrap() = VaultMode::Idle,
+                    '↑' | '↓' => self.bling_cursor = step_cursor(self.bling_cursor, count, k == '↑'),
+                    '←' => leaving = true,
                     '→' => {
                         let choice = self.bling_cursor;
                         if let Err(e) =
@@ -1564,18 +1742,20 @@ impl VaultUi {
                     }
                     _ => {}
                 }
+                if leaving {
+                    return self.to_menu();
+                }
                 self.redraw();
                 None
             }
             VaultMode::SettingsBlinky => {
+                let mut leaving = false;
                 match k {
-                    '↑' => self.blinky_cursor = self.blinky_cursor.saturating_sub(1),
-                    '↓' => {
-                        if self.blinky_cursor + 1 < BLINKY_CHOICES.len() {
-                            self.blinky_cursor += 1;
-                        }
+                    '↑' | '↓' => {
+                        self.blinky_cursor =
+                            step_cursor(self.blinky_cursor, BLINKY_CHOICES.len(), k == '↑')
                     }
-                    '←' => *self.mode.lock().unwrap() = VaultMode::Idle,
+                    '←' => leaving = true,
                     '→' => {
                         // no carrier means no LED ring; do not pretend the choice took effect
                         let attached = self
@@ -1598,6 +1778,9 @@ impl VaultUi {
                         }
                     }
                     _ => {}
+                }
+                if leaving {
+                    return self.to_menu();
                 }
                 self.redraw();
                 None
@@ -1651,19 +1834,13 @@ impl VaultUi {
 
             VaultMode::BookmarkList => {
                 match k {
-                    '↑' => {
-                        if self.bookmark_cursor > 0 {
-                            self.bookmark_cursor -= 1;
-                        }
-                    }
-                    '↓' => {
-                        if self.bookmark_cursor + 1 < self.bookmark_cache.len() {
-                            self.bookmark_cursor += 1;
-                        }
+                    '↑' | '↓' => {
+                        self.bookmark_cursor =
+                            step_cursor(self.bookmark_cursor, self.bookmark_cache.len(), k == '↑')
                     }
                     '←' => {
-                        // back to idle
-                        *self.mode.lock().unwrap() = VaultMode::Idle;
+                        // back to the menu this was opened from, not past it to standby
+                        return self.to_menu();
                     }
                     '→' | '🔥' => {
                         // select highlighted bookmark → trigger QR render via ActionManager
@@ -1687,10 +1864,7 @@ impl VaultUi {
             }
             // Any key leaves About. Without this arm it fell through to the catch-all,
             // which returns the key without changing mode - the screen had no exit at all.
-            VaultMode::AboutQr { quantum: _ } => {
-                *self.mode.lock().unwrap() = VaultMode::Idle;
-                Some(k)
-            }
+            VaultMode::AboutQr { quantum: _ } => self.to_menu(),
             VaultMode::ShowBookmarkQr { quantum: _ } => {
                 // Any key clears the bookmark QR and returns to Idle
                 self.qr_override = None;
@@ -1698,62 +1872,46 @@ impl VaultUi {
                 Some(k)
             }
             VaultMode::ShowUrl => {
-                // '←' triggers the type-out confirmation modal.
-                // Any other key clears ShowUrl and returns to Idle.
+                // Three plain buttons rather than a radio modal stacked on top of this
+                // screen: the labels already say what each does, and the modal hid them.
                 match k {
                     '←' => {
-                        if let Some(ref url_str) = self.show_url.clone() {
-                            self.modals
-                                .add_list(vec!["Type to host", "Save as Bookmark", "Cancel"])
-                                .expect("ShowUrl modal list");
-                            let prompt = format!("URL options:\n{}", url_str);
-                            match self.modals.get_radiobutton(&prompt) {
-                                Ok(ref response) if response == "Type to host" => {
-                                    // Dispatch type-out to ActionManager (the ONLY HID call site).
-                                    let ipc = crate::IpcString { s: url_str.clone() };
-                                    let buf = xous_ipc::Buffer::into_buf(ipc)
-                                        .expect("IpcString buf");
-                                    // Blocking lend: returns after ActionManager finishes.
-                                    buf.lend(
-                                        self.actions_conn,
-                                        ActionOp::TypeOutUrl
-                                            .to_u32()
-                                            .unwrap(),
-                                    )
-                                    .ok();
-                                    // Type-out complete (success or USB error shown by ActionManager).
-                                    self.show_url = None;
-                                    *self.mode.lock().unwrap() = VaultMode::Idle;
-                                }
-                                Ok(ref response) if response == "Save as Bookmark" => {
-                                    // Dispatch bookmark save to ActionManager.
-                                    let ipc = crate::IpcString { s: url_str.clone() };
-                                    let buf = xous_ipc::Buffer::into_buf(ipc)
-                                        .expect("IpcString buf");
-                                    buf.lend(
-                                        self.actions_conn,
-                                        ActionOp::SaveBookmark
-                                            .to_u32()
-                                            .unwrap(),
-                                    )
-                                    .ok();
-                                    // Bookmark saved (success/error shown by ActionManager).
-                                    // Stay in ShowUrl so user can also type-out or dismiss.
-                                }
-                                _ => {
-                                    // Cancel or modal error: remain in ShowUrl.
-                                }
-                            }
-                        }
-                        None
+                        self.show_url = None;
+                        return self.to_menu();
                     }
-                    _ => {
-                        // Any other key exits ShowUrl.
+                    '🔥' => {
+                        // rescan; main.rs owns the camera because AcquireQr is blocking
                         self.show_url = None;
                         *self.mode.lock().unwrap() = VaultMode::Idle;
-                        Some(k)
+                        xous::send_message(
+                            self.main_cid,
+                            xous::Message::new_scalar(
+                                VaultOp::ScanUrl.to_usize().unwrap(),
+                                0,
+                                0,
+                                0,
+                                0,
+                            ),
+                        )
+                        .ok();
+                        return None;
                     }
+                    '→' => {
+                        if let Some(ref url_str) = self.show_url.clone() {
+                            let ipc = crate::IpcString { s: url_str.clone() };
+                            let buf = xous_ipc::Buffer::into_buf(ipc).expect("IpcString buf");
+                            // ActionManager reports success or failure itself
+                            buf.lend(self.actions_conn, ActionOp::SaveBookmark.to_u32().unwrap())
+                                .ok();
+                        }
+                        self.show_url = None;
+                        *self.mode.lock().unwrap() = VaultMode::BookmarkList;
+                        self.load_bookmarks();
+                    }
+                    _ => {}
                 }
+                self.redraw();
+                None
             }
             // catch-all for now
             _ => Some(k),

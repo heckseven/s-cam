@@ -260,9 +260,9 @@ impl GlobalConfig {
         if self.previous_mode != Some(current_mode) {
             let (enable, duration_sec) = match current_mode {
                 VaultMode::Passkeys | VaultMode::PhotoList
+                | VaultMode::PhotoPreview | VaultMode::PhotoView
                 | VaultMode::SettingsBling | VaultMode::SettingsBlinky => (true, MEDIUM_TIMEOUT),
                 VaultMode::AboutQr { .. } => (true, MEDIUM_TIMEOUT),
-                VaultMode::Idle => (true, SHORT_TIMEOUT),
                 VaultMode::Idle => (true, SHORT_TIMEOUT),
                 VaultMode::Password => (true, MEDIUM_TIMEOUT),
                 VaultMode::Totp => (true, MEDIUM_TIMEOUT),
