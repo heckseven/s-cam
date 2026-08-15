@@ -77,7 +77,7 @@ flash_one() {
   return 0
 }
 
-echo "=== session start: $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> "$LOG"
+echo "=== session $(date -u +%Y-%m-%dT%H:%M:%SZ)  queue=$(basename "$QUEUE")  builds=${#BUILDS[@]} ===" >> "$LOG"
 i=0
 for b in "${BUILDS[@]}"; do
   i=$((i+1))
@@ -94,7 +94,8 @@ for b in "${BUILDS[@]}"; do
   echo "  found $dev"; sleep 2
   if flash_one "$b" "$dev"; then
     echo "  FLASH OK - press any button on the badge to boot and observe."
-    echo "$name: flashed OK - $label" >> "$LOG"
+    echo "$name: WRITTEN (verdict pending) - $label" >> "$LOG"
+    echo "    ^ record the observed result with: flash-queue-verdict.sh \"$QUEUE\" \"$name\" pass|fail \"notes\"" >> "$LOG"
   else
     echo "  FLASH FAILED - stopping so you can investigate."
     echo "$name: FLASH FAILED" >> "$LOG"
