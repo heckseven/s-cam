@@ -33,6 +33,17 @@ for b in "${BUILDS[@]}"; do
   [ -f "$b/SHA256SUMS" ] && { ( cd "$b" && sha256sum -c SHA256SUMS >/dev/null 2>&1 ) \
       && echo "  $name: checksums OK" || { echo "  $name: CHECKSUM MISMATCH"; fail=1; }; }
 done
+# The last build in a queue must be the known-good rollback, so that no session
+# can end with the badge in an unknown state. Note we deliberately do NOT attempt
+# a post-write read-back: the BAOCHIP vdisk is virtual and reads back empty, so a
+# checksum after dd is satisfied by page cache and proves nothing.
+last=$(basename "${BUILDS[-1]}")
+if ! grep -qi 'rollback\|known-good' <<<"$last" && [ ! -f "${BUILDS[-1]}/ROLLBACK" ]; then
+  echo "  WARNING: last queue entry '$last' is not marked as a rollback."
+  echo "  End every queue with the known-good triple (name it *rollback* or add a ROLLBACK marker file)"
+  echo "  so a failed session never leaves the badge unbootable."
+  fail=1
+fi
 [ "$fail" -eq 0 ] || { echo "preflight failed - fix before starting a session" >&2; exit 1; }
 echo
 
