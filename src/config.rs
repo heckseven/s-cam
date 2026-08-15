@@ -367,6 +367,25 @@ impl GlobalConfig {
 
     pub fn gene(&self) -> Option<Diploid> { self.gene_cache }
 
+    /// Select a standalone LED ring pattern; 0 restores gene expression.
+    ///
+    /// The pattern set and the rendering both live in dc34-console, which owns the LED
+    /// hardware and is flash-resident. This side is only a scalar send, so the feature
+    /// costs the app's page budget essentially nothing.
+    pub fn set_led_pattern(&self, index: usize) {
+        xous::send_message(
+            self.led_server,
+            xous::Message::new_scalar(
+                LedManagerOp::SetPattern.to_usize().unwrap(),
+                index,
+                0,
+                0,
+                0,
+            ),
+        )
+        .ok();
+    }
+
     pub fn render_gene(&self) {
         if let Some(gene) = self.gene_cache {
             gene.send(self.led_server, LedManagerOp::SetGene.to_usize().unwrap());
