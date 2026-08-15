@@ -30,8 +30,8 @@ pub fn create_submenu(vault_conn: xous::CID, actions_conn: xous::CID, menu_mgr: 
     });
     menu_items.push(MenuItem {
         name: String::from("Scan URL"),
-        action_conn: Some(actions_conn),
-        action_opcode: ActionOp::AcquireQr.to_u32().unwrap(),
+        action_conn: Some(vault_conn),
+        action_opcode: VaultOp::ScanUrl.to_u32().unwrap(),
         action_payload: MenuPayload::Scalar([0, 0, 0, 0]),
         close_on_select: true,
     });

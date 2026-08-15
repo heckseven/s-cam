@@ -1117,6 +1117,30 @@ fn main() -> ! {
                 vault_ui.reset_factory_test();
                 vault_ui.redraw();
             }
+            Some(VaultOp::ScanUrl) => {
+                // Mirrors the 'fire' key path: the camera needs the accelerometer paused and
+                // the idle animation stopped, and AcquireQr must be a *blocking* scalar.
+                global_config.lock().unwrap().pause_accel(true);
+                tt.sleep_ms(200).ok();
+                vault_ui.camera_transition();
+                let prior_animate = animate.swap(false, Ordering::SeqCst);
+                skip_one_key = true;
+                xous::send_message(
+                    actions_conn,
+                    xous::Message::new_blocking_scalar(
+                        ActionOp::AcquireQr.to_usize().unwrap(),
+                        0,
+                        0,
+                        0,
+                        0,
+                    ),
+                )
+                .ok();
+                // wait a moment for the last frame to clear before redrawing the UI
+                tt.sleep_ms(100).ok();
+                animate.store(prior_animate, Ordering::SeqCst);
+                global_config.lock().unwrap().pause_accel(false);
+            }
             Some(VaultOp::ListBookmarks) => {
                 vault_ui.load_bookmarks();
                 *mode.lock().unwrap() = VaultMode::BookmarkList;
