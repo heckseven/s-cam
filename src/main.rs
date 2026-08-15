@@ -10,6 +10,7 @@ use itemcache::*;
 mod actions;
 mod storage;
 mod submenu;
+mod theme;
 mod totp;
 mod tourmenu;
 pub mod vault_api;

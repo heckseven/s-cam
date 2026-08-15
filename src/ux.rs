@@ -40,7 +40,7 @@ const LOWBATT_TIMEOUT_S: u64 = 90;
 #[cfg(feature = "uber")]
 const LOWBATT_TIMEOUT_S: u64 = 180;
 
-pub const DEFAULT_FONT: GlyphStyle = GlyphStyle::Regular;
+pub const DEFAULT_FONT: GlyphStyle = crate::theme::FONT;
 pub const FONT_LIST: [&'static str; 6] = ["regular", "tall", "mono", "bold", "large", "small"];
 pub fn name_to_style(name: &str) -> Option<GlyphStyle> {
     match name {
