@@ -44,6 +44,13 @@ console_elf="$console/target/$target/release/dc34-console"
 echo "===== Checking size ====="
 python3 "$vault/check-app-size.py" "$vault_elf"
 
+# Source-level guards. These are cheap and catch two classes of silently-dead code that have
+# each shipped to hardware before: a menu entry wired to a handler that cannot receive it, and
+# a camera call site that ignores what the camera reported.
+echo "===== Checking wiring ====="
+python3 "$here/check-menu-wiring.py"
+python3 "$here/check-camera-wiring.py"
+
 echo "===== Bundling ====="
 (
     cd "$core"

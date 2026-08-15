@@ -1325,10 +1325,11 @@ impl ActionManager {
                 return false;
             }
         };
-        // RIGHT ends the camera as a capture request. The camera server reports which key
-        // aborted the scan because this side is blocked for the whole acquisition and cannot
-        // watch the buttons itself. Report it upward rather than storing anything here.
-        if qr_data.abort_key == Some('→') {
+        // RIGHT takes the photo; any other key just leaves the camera. This briefly accepted
+        // any key, while the real fault was that the idle-screen camera path never called
+        // this at all - see handle_camera_outcome in main.rs. A decode sets abort_key to
+        // None, so this cannot swallow a successful QR scan.
+        if qr_data.abort_key == Some('→') && qr_data.content.is_none() {
             return true;
         }
         self.handle_qr(qr_data);

@@ -983,7 +983,7 @@ impl VaultUi {
                 if fresh {
                     crate::theme::button_labels(
                         &self.gfx, self.screen_size,
-                        Some("BACK"), Some("RETAKE"), Some("SAVE"),
+                        Some("BACK"), Some("REDO"), Some("SAVE"),
                     );
                 } else {
                     crate::theme::button_labels(
@@ -1027,7 +1027,7 @@ impl VaultUi {
                 crate::theme::button_labels(
                     &self.gfx, self.screen_size,
                     Some("BACK"), None,
-                    if attached { Some("PICK") } else { Some("NO LED") },
+                    if attached { Some("PICK") } else { Some("N/A") },
                 );
                 self.gfx.flush().ok();
             }
@@ -1497,6 +1497,7 @@ impl VaultUi {
         }
     }
 
+
     /// Store the held photo. Returns false when the store is full, so the screen can say so
     /// rather than silently dropping the shot.
     fn keep_pending_photo(&mut self) -> bool {
@@ -1515,7 +1516,10 @@ impl VaultUi {
 
     /// Reopen the camera. main.rs owns the camera path because AcquireQr is a blocking
     /// scalar, so ask it rather than trying to drive the camera from here.
-    fn retake_photo(&mut self) {
+    ///
+    /// Used by both RETAKE and SAVE: after keeping a shot you are still taking photos, so
+    /// handing back the live camera beats dropping you into a list.
+    fn reopen_camera(&mut self) {
         self.pending_photo = None;
         *self.mode.lock().unwrap() = VaultMode::Idle;
         xous::send_message(
@@ -1713,15 +1717,17 @@ impl VaultUi {
                         return self.to_menu();
                     }
                     '🔥' => {
-                        self.retake_photo();
+                        self.reopen_camera();
                         return None;
                     }
                     '→' => {
                         if self.keep_pending_photo() {
-                            *self.mode.lock().unwrap() = VaultMode::PhotoList;
-                        } else {
-                            self.modals.show_notification("PHOTO STORE FULL", None).ok();
+                            // straight back to the viewfinder - you are still taking photos
+                            self.reopen_camera();
+                            return None;
                         }
+                        self.pending_photo = None;
+                        self.modals.show_notification("PHOTO STORE FULL", None).ok();
                     }
                     _ => {}
                 }
@@ -1957,7 +1963,7 @@ impl VaultUi {
         // This splash is the only place the camera controls can be shown. Once the camera
         // starts it owns the panel outright and this side is blocked inside the acquire call,
         // so there is no later opportunity to label the buttons.
-        write!(tv, "STARTING CAMERA\n\nRIGHT = PHOTO\nANY OTHER = CANCEL").ok();
+        write!(tv, "STARTING CAMERA\n\nRIGHT = PHOTO\nANY OTHER = EXIT").ok();
         self.gfx.draw_textview(&mut tv).ok();
         self.redraw();
     }

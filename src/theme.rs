@@ -60,28 +60,35 @@ pub fn button_labels(
     middle: Option<&str>,
     right: Option<&str>,
 ) {
-    let mut tv = TextView::new(
-        Gid::dummy(),
-        TextBounds::BoundingBox(Rectangle::new(
-            Point::new(0, screen.y - LABEL_BAR_H),
-            Point::new(screen.x, screen.y),
-        )),
-    );
-    tv.style = FONT;
-    tv.draw_border = false;
-    tv.invert = true;
-    tv.margin = Point::new(1, 1);
     use core::fmt::Write;
-    // three fixed columns so a label never appears under the wrong button
-    write!(
-        tv,
-        "{:<6}{:^6}{:>6}",
-        left.unwrap_or(""),
-        middle.unwrap_or(""),
-        right.unwrap_or("")
-    )
-    .ok();
-    gfx.draw_textview(&mut tv).ok();
+    // One TextView per slot, not one row of padded columns.
+    //
+    // A single "{:<6}{:^6}{:>6}" row is 18 monospace cells = 126px on a 128px panel. That
+    // fits on paper, but with only 2px of slack the typesetter wrapped the trailing column
+    // onto a second line, and this bar is one line tall - so the RIGHT label silently
+    // vanished on most screens. Independent boxes cannot push each other off the edge, and
+    // a label that is too wide for its own slot now truncates visibly instead.
+    let third = screen.x / 3;
+    for (slot, label) in [left, middle, right].iter().enumerate() {
+        let Some(text) = label else { continue };
+        let x0 = slot as isize * third;
+        // the last slot absorbs the rounding remainder rather than clipping
+        let x1 = if slot == 2 { screen.x } else { x0 + third };
+        let mut tv = TextView::new(
+            Gid::dummy(),
+            TextBounds::CenteredTop(Rectangle::new(
+                Point::new(x0, screen.y - LABEL_BAR_H),
+                Point::new(x1, screen.y),
+            )),
+        );
+        tv.style = FONT;
+        tv.draw_border = false;
+        tv.invert = true;
+        tv.margin = Point::new(0, 1);
+        tv.ellipsis = true;
+        write!(tv, "{}", text).ok();
+        gfx.draw_textview(&mut tv).ok();
+    }
 }
 
 /// How a list presents its rows.

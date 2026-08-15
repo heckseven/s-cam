@@ -102,6 +102,43 @@ impl VaultMode {
     }
 }
 
+/// Run one camera session, start to finish.
+///
+/// Both entry points - the idle screen's centre key and the menu's scan item - must go
+/// through here. They used to be two copies of this sequence, and wiring photo capture into
+/// only one of them left the feature dead for anyone opening the camera the usual way while
+/// the code read as correct. The copies had already drifted too: the menu path never
+/// redrew afterwards, so it could leave a stale screen.
+///
+/// `tools/check-camera-wiring.py` fails the build if a new call site sends AcquireQr itself
+/// instead of calling this.
+fn run_camera_scan(
+    actions_conn: xous::CID,
+    vault_ui: &mut ux::VaultUi,
+    animate: &AtomicBool,
+    global_config: &Mutex<config::GlobalConfig>,
+    tt: &ticktimer_server::Ticktimer,
+) {
+    global_config.lock().unwrap().pause_accel(true);
+    tt.sleep_ms(200).ok();
+    vault_ui.camera_transition();
+    let prior_animate = animate.swap(false, Ordering::SeqCst);
+    let outcome = xous::send_message(
+        actions_conn,
+        xous::Message::new_blocking_scalar(ActionOp::AcquireQr.to_usize().unwrap(), 0, 0, 0, 0),
+    );
+    // The app is blocked here for the whole scan and cannot watch the buttons, so the return
+    // value is the only way it learns the camera was ended with the photo button.
+    if matches!(outcome, Ok(xous::Result::Scalar1(dc34_vault::CAPTURE_REQUESTED))) {
+        vault_ui.begin_photo_preview();
+    }
+    // wait a moment for the last frame to clear before redrawing the UI
+    tt.sleep_ms(100).ok();
+    animate.store(prior_animate, Ordering::SeqCst);
+    global_config.lock().unwrap().pause_accel(false);
+    vault_ui.redraw();
+}
+
 fn main() -> ! {
     log_server::init_wait().unwrap();
     log::set_max_level(log::LevelFilter::Info);
@@ -428,26 +465,14 @@ fn main() -> ! {
                             menu_active = true;
                         }
                         '🔥' => {
-                            global_config.lock().unwrap().pause_accel(true);
-                            tt.sleep_ms(200).ok();
-                            vault_ui.camera_transition();
-                            let prior_mode = animate.swap(false, Ordering::SeqCst);
                             skip_one_key = true;
-                            xous::send_message(
+                            run_camera_scan(
                                 actions_conn,
-                                xous::Message::new_blocking_scalar(
-                                    ActionOp::AcquireQr.to_usize().unwrap(),
-                                    0,
-                                    0,
-                                    0,
-                                    0,
-                                ),
-                            )
-                            .ok();
-                            // wait a moment for the last frame to clear before redrawing the UI
-                            tt.sleep_ms(100).ok();
-                            animate.store(prior_mode, Ordering::SeqCst);
-                            global_config.lock().unwrap().pause_accel(false);
+                                &mut vault_ui,
+                                &animate,
+                                &global_config,
+                                &tt,
+                            );
 
                             if mode_now == VaultMode::Totp || mode_now == VaultMode::Password {
                                 // reload DB to pickup the new data
@@ -1127,32 +1152,8 @@ fn main() -> ! {
                 vault_ui.redraw();
             }
             Some(VaultOp::ScanUrl) => {
-                // Mirrors the 'fire' key path: the camera needs the accelerometer paused and
-                // the idle animation stopped, and AcquireQr must be a *blocking* scalar.
-                global_config.lock().unwrap().pause_accel(true);
-                tt.sleep_ms(200).ok();
-                vault_ui.camera_transition();
-                let prior_animate = animate.swap(false, Ordering::SeqCst);
                 skip_one_key = true;
-                let outcome = xous::send_message(
-                    actions_conn,
-                    xous::Message::new_blocking_scalar(
-                        ActionOp::AcquireQr.to_usize().unwrap(),
-                        0,
-                        0,
-                        0,
-                        0,
-                    ),
-                );
-                // CAPTURE_REQUESTED means the camera was ended with the photo button. Grab the
-                // panel now, before the sleep and redraw below overwrite the last camera frame.
-                if matches!(outcome, Ok(xous::Result::Scalar1(dc34_vault::CAPTURE_REQUESTED))) {
-                    vault_ui.begin_photo_preview();
-                }
-                // wait a moment for the last frame to clear before redrawing the UI
-                tt.sleep_ms(100).ok();
-                animate.store(prior_animate, Ordering::SeqCst);
-                global_config.lock().unwrap().pause_accel(false);
+                run_camera_scan(actions_conn, &mut vault_ui, &animate, &global_config, &tt);
             }
             Some(VaultOp::ListPasswords) => {
                 // The menu widget closes on select, so the flag it set must drop here too.
