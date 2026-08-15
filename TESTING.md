@@ -8,6 +8,7 @@
 | `cargo build --features hosted-baosec` | **fails** — `error[E0080]: evaluation panicked` in the `utralib` build script |
 | compile-time assertions | **works** — used to pin cross-process opcode discriminants (`src/vault_api.rs`) |
 | host-side scripts against the ELF | **works** — `check-app-size.py` |
+| host-side scripts against the source | **works** — `tools/check-menu-wiring.py` |
 | on-hardware human checklist | **works** — the only way to verify behaviour |
 
 Why hosted fails: `Cargo.toml:41` pins `bao1x-hal` with `features = ["board-baosec",
@@ -18,6 +19,23 @@ that feature graph — a project in its own right, not a prerequisite for this o
 
 **Consequence:** anything whose success criterion says "verify in hosted mode" is really a
 human checklist. They are written below so nobody discovers this mid-implementation.
+
+## Source-level checks worth having
+
+`cargo test` cannot run here, so the checks that exist are host-side scripts run against the
+source or the ELF. Both are cheap and both have been verified to *fail* on the bug they
+describe — a check that has only ever passed is not evidence.
+
+- `python3 check-app-size.py <elf>` — page budget. Over the limit the badge hangs partway
+  through its boot progress bar with no error and must be reflashed.
+- `python3 tools/check-menu-wiring.py` — every idle-menu entry reaches a handler that can
+  actually receive it. Catches four ways an entry goes dead: an opcode `main.rs` does not
+  handle, two entries sharing one opcode, a `msg_blocking_scalar_unpack!` handler that can
+  never match the widget's non-blocking sends, and a handler that fails to clear
+  `menu_active` (which leaves every later key routed into the closed menu).
+- `tools/build.sh` — builds the apps *before* bundling. `cargo xtask` bundles whatever ELFs
+  it is pointed at and does not build them, so calling it directly packages a stale binary
+  and still prints a clean build.
 
 ## Checklists
 

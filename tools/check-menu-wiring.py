@@ -9,6 +9,11 @@ An entry can also be dead by pointing at an opcode `main.rs` does not handle at 
 two entries sharing one opcode (which is how "settings" swallowed the LED and screen-off
 routes: three settings, one destination).
 
+Finally, the widget closes on select but sets a `menu_active` flag that only `MenuDone`
+used to clear. A handler that does not clear it leaves every later key routed back into
+the closed menu, so the screen it just opened never receives one - which killed the BACK
+button on every submenu at once.
+
 Run from anywhere; exits non-zero on any dead entry.
 """
 
@@ -78,6 +83,11 @@ def main():
             problems.append(
                 f'"{label}" sends VaultOp::{opcode}, whose handler uses '
                 f"msg_blocking_scalar_unpack! - menu scalars are non-blocking and will never match"
+            )
+        elif "menu_active = false" not in body:
+            problems.append(
+                f'"{label}" sends VaultOp::{opcode}, whose handler never clears menu_active - '
+                f"keys will keep going to the closed menu and the screen it opens will be inert"
             )
 
     for p in problems:

@@ -906,6 +906,7 @@ impl VaultUi {
                 crate::theme::list(
                     &self.gfx, self.screen_size, self.item_height,
                     &rows, self.passkey_cursor, "NO PASSKEYS STORED",
+                    crate::theme::ListStyle::Ghost,
                 );
                 let has = !rows.is_empty();
                 crate::theme::button_labels(
@@ -922,6 +923,7 @@ impl VaultUi {
                 crate::theme::list(
                     &self.gfx, self.screen_size, self.item_height,
                     &self.photo_cache, self.photo_cursor, "NO PHOTOS YET",
+                    crate::theme::ListStyle::Numbered,
                 );
                 let has = !self.photo_cache.is_empty();
                 crate::theme::button_labels(
@@ -941,6 +943,7 @@ impl VaultUi {
                 crate::theme::list(
                     &self.gfx, self.screen_size, self.item_height,
                     &rows, self.bling_cursor, "NO IMAGES",
+                    crate::theme::ListStyle::Select { marked: Some(self.standby_choice) },
                 );
                 crate::theme::button_labels(
                     &self.gfx, self.screen_size, Some("BACK"), None, Some("PICK"),
@@ -955,6 +958,7 @@ impl VaultUi {
                 crate::theme::list(
                     &self.gfx, self.screen_size, self.item_height,
                     &rows, self.blinky_cursor, "NO PATTERNS",
+                    crate::theme::ListStyle::Select { marked: Some(self.led_pattern) },
                 );
                 // patterns need the carrier; say so rather than offering a dead control
                 let attached = self
@@ -976,7 +980,7 @@ impl VaultUi {
                 crate::theme::button_labels(&self.gfx, self.screen_size, Some("BACK"), None, None);
                 self.gfx.flush().ok();
             }
-            VaultMode::Idle | VaultMode::Idle | VaultMode::Idle => {
+            VaultMode::Idle => {
                 let now = self.tt.elapsed_ms();
                 if let Some(bitmap) = self.user_bitmap.as_ref() {
                     let edge = (now / 3000) % 2 == 0;
@@ -1307,66 +1311,35 @@ impl VaultUi {
             }// _ => unimplemented!(),
             VaultMode::BookmarkList => {
                 self.clear_area();
-                // Header row
-                let mut header = TextView::new(
-                    Gid::dummy(),
-                    TextBounds::CenteredTop(Rectangle::new(
-                        Point::new(0, 0),
-                        Point::new(127, 12),
-                    )),
-                );
-                header.style = GlyphStyle::Bold;
-                header.draw_border = false;
-                header.invert = true;
-                write!(header, "Bookmarks").ok();
-                self.gfx.draw_textview(&mut header).ok();
-
-                if self.bookmark_cache.is_empty() {
-                    let mut tv = TextView::new(
-                        Gid::dummy(),
-                        TextBounds::CenteredTop(Rectangle::new(
-                            Point::new(0, 14),
-                            Point::new(127, 127),
-                        )),
-                    );
-                    tv.style = GlyphStyle::Small;
-                    tv.draw_border = false;
-                    write!(tv, "No bookmarks.\nScan a URL QR to add one.").ok();
-                    self.gfx.draw_textview(&mut tv).ok();
-                } else {
-                    const VISIBLE: usize = 7;
-                    let n = self.bookmark_cache.len();
-                    let half = VISIBLE / 2;
-                    let start = if self.bookmark_cursor >= half {
-                        (self.bookmark_cursor - half).min(n.saturating_sub(VISIBLE))
-                    } else {
-                        0
-                    };
-                    let mut y = 14isize;
-                    for (i, (_, display, label)) in
-                        self.bookmark_cache.iter().enumerate().skip(start).take(VISIBLE)
-                    {
-                        let selected = i == self.bookmark_cursor;
-                        let mut tv = TextView::new(
-                            Gid::dummy(),
-                            TextBounds::BoundingBox(Rectangle::new(
-                                Point::new(0, y),
-                                Point::new(127, y + 15),
-                            )),
-                        );
-                        tv.style = GlyphStyle::Small;
-                        tv.draw_border = false;
-                        tv.ellipsis = true;
-                        tv.invert = selected;
+                crate::theme::heading(&self.gfx, self.screen_size, "BOOKMARKS");
+                // The default bookmark is what the idle screen's LEFT button shows, so the
+                // list has to say which one that is. It is a stored key, not a position.
+                let default_key = crate::storage::default_bookmark_key(&self.pddb.borrow());
+                let marked = default_key
+                    .and_then(|d| self.bookmark_cache.iter().position(|(k, _, _)| *k == d));
+                let rows: Vec<String> = self
+                    .bookmark_cache
+                    .iter()
+                    .map(|(_, display, label)| {
                         if label.is_empty() {
-                            write!(tv, "{}", display).ok();
+                            display.clone()
                         } else {
-                            write!(tv, "{}: {}", label, display).ok();
+                            format!("{}: {}", label, display)
                         }
-                        self.gfx.draw_textview(&mut tv).ok();
-                        y += 16;
-                    }
-                }
+                    })
+                    .collect();
+                crate::theme::list(
+                    &self.gfx, self.screen_size, self.item_height,
+                    &rows, self.bookmark_cursor, "NO BOOKMARKS YET",
+                    crate::theme::ListStyle::Select { marked },
+                );
+                let has = !rows.is_empty();
+                crate::theme::button_labels(
+                    &self.gfx, self.screen_size,
+                    Some("BACK"), None,
+                    if has { Some("SHOW") } else { None },
+                );
+                self.gfx.flush().ok();
             }
             VaultMode::ShowUrl => {
                 // Display the scanned URL with a header row and wrapped text
@@ -1389,6 +1362,7 @@ impl VaultUi {
                     );
                     tv.style = GlyphStyle::Small;
                     tv.draw_border = false;
+                    tv.invert = true; // white on black, like every other screen
                     tv.ellipsis = true; // truncation indicator if URL exceeds display capacity
                     write!(tv, "{}", url).ok();
                     self.gfx.draw_textview(&mut tv).ok();
@@ -1675,9 +1649,6 @@ impl VaultUi {
                 _ => Some(k),
             },
 
-            VaultMode::Idle => Some(k),
-            // this is the next state of the recipient after showing the key
-            // this is the state of the donor in response to query
             VaultMode::BookmarkList => {
                 match k {
                     '↑' => {
@@ -1712,6 +1683,12 @@ impl VaultUi {
                     }
                     _ => {}
                 }
+                Some(k)
+            }
+            // Any key leaves About. Without this arm it fell through to the catch-all,
+            // which returns the key without changing mode - the screen had no exit at all.
+            VaultMode::AboutQr { quantum: _ } => {
+                *self.mode.lock().unwrap() = VaultMode::Idle;
                 Some(k)
             }
             VaultMode::ShowBookmarkQr { quantum: _ } => {

@@ -24,9 +24,9 @@ pub fn create_submenu(vault_conn: xous::CID, actions_conn: xous::CID, menu_mgr: 
         ("led pattern",   VaultOp::SettingsBlinky.to_u32().unwrap(), vault_conn),
         ("screen off",    VaultOp::ScreenOff.to_u32().unwrap(),      vault_conn),
         ("about",         VaultOp::ShowAbout.to_u32().unwrap(),      vault_conn),
-        // EXIT closes the menu and returns to standby. It maps to MenuDone, not PowerOff -
-        // "screen off" is its own entry and two shutdown-sounding paths would confuse.
-        ("exit",          VaultOp::MenuDone.to_u32().unwrap(),       vault_conn),
+        // BACK closes the menu and returns to standby. It maps to MenuDone, not PowerOff -
+        // "screen off" is its own entry, and "exit" read as powering the badge down.
+        ("back",          VaultOp::MenuDone.to_u32().unwrap(),       vault_conn),
     ];
 
     for (name, opcode, conn) in entries {

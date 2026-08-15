@@ -84,6 +84,54 @@ pub fn button_labels(
     gfx.draw_textview(&mut tv).ok();
 }
 
+/// How a list presents its rows.
+///
+/// The four S-CAM list screens differ only in what the left gutter carries, so the shape is
+/// shared and the gutter is the variable.
+pub enum ListStyle {
+    /// No gutter. For lists where a row is just a name — passkeys, bookmarks.
+    Ghost,
+    /// Rows numbered from 1. For lists where position is how you refer to an item.
+    Numbered,
+    /// Rows carrying a persistent choice; the applied one gets a check mark.
+    ///
+    /// `marked` is the *applied* index, which is not the cursor: you scroll past options
+    /// without choosing them, and the screen has to keep showing which one is in effect.
+    Select { marked: Option<usize> },
+}
+
+/// Width of the left gutter, in pixels.
+///
+/// Every row reserves it, marked or not, so the text never shifts sideways when the mark
+/// moves — the row is marked in place rather than indented.
+const GUTTER_W: isize = 10;
+
+/// Draw a check mark inside `gutter`, as two strokes.
+///
+/// Departure Mono has no U+2713 — the OTF renders it as .notdef, so writing '✓' would put a
+/// missing-glyph box next to the applied item. Drawing it costs no font table and cannot
+/// regress if the font is regenerated with different coverage.
+fn check_mark(gfx: &ux_api::service::gfx::Gfx, gutter: Rectangle) {
+    let style = DrawStyle::new(PixelColor::Light, PixelColor::Light, 1);
+    let x = gutter.tl().x + 2;
+    let y = gutter.tl().y + gutter.height() as isize / 2;
+    let mut ol = ObjectList::new();
+    // short down-stroke into the elbow, then the long up-stroke
+    ol.push(ClipObjectType::Line(Line::new_with_style(
+        Point::new(x, y),
+        Point::new(x + 2, y + 2),
+        style,
+    )))
+    .unwrap();
+    ol.push(ClipObjectType::Line(Line::new_with_style(
+        Point::new(x + 2, y + 2),
+        Point::new(x + 6, y - 3),
+        style,
+    )))
+    .unwrap();
+    gfx.draw_object_list(ol).unwrap();
+}
+
 /// Draw a scrolling list with a cursor, between the heading and the button bar.
 ///
 /// Every S-CAM list screen — passkeys, photos, images, patterns — is this same shape, so
@@ -98,6 +146,7 @@ pub fn list(
     items: &[String],
     cursor: usize,
     empty_msg: &str,
+    style: ListStyle,
 ) {
     use core::fmt::Write;
     let top = LABEL_BAR_H;
@@ -114,28 +163,49 @@ pub fn list(
         );
         tv.style = FONT;
         tv.draw_border = false;
+        tv.invert = true;
         write!(tv, "{}", empty_msg).ok();
         gfx.draw_textview(&mut tv).ok();
         return;
     }
 
+    let gutter = match style {
+        ListStyle::Ghost => 0,
+        ListStyle::Numbered | ListStyle::Select { .. } => GUTTER_W,
+    };
+
     // scroll so the cursor stays on screen
     let first = if cursor >= rows { cursor + 1 - rows } else { 0 };
     for (n, item) in items.iter().skip(first).take(rows).enumerate() {
+        let index = first + n;
         let y = top + (n as isize) * row_h;
+        let row = Rectangle::new(Point::new(0, y), Point::new(screen.x, y + row_h));
+
         let mut tv = TextView::new(
             Gid::dummy(),
             TextBounds::BoundingBox(Rectangle::new(
-                Point::new(0, y),
+                Point::new(gutter, y),
                 Point::new(screen.x, y + row_h),
             )),
         );
         tv.style = FONT;
         tv.draw_border = false;
-        // the selected row is inverted rather than marked with a glyph, so the cursor is
-        // legible at a glance on a 128px panel
-        tv.invert = first + n == cursor;
-        write!(tv, "{}", item).ok();
+        // Every row is white-on-black. Focus is the brackets, not an inverted slab: the
+        // inverted row was the only black-on-white text on the panel and read as a blank bar.
+        tv.invert = true;
+        match style {
+            ListStyle::Numbered => write!(tv, "{}. {}", index + 1, item).ok(),
+            _ => write!(tv, "{}", item).ok(),
+        };
         gfx.draw_textview(&mut tv).ok();
+
+        if let ListStyle::Select { marked: Some(m) } = style {
+            if m == index {
+                check_mark(gfx, Rectangle::new(Point::new(0, y), Point::new(gutter, y + row_h)));
+            }
+        }
+        if index == cursor {
+            ux_api::widgets::scroll::draw_corner_brackets(gfx, row);
+        }
     }
 }

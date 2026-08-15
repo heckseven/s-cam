@@ -1093,6 +1093,7 @@ fn main() -> ! {
                 vault_ui.redraw();
             }
             Some(VaultOp::ScreenOff) => {
+                menu_active = false;
                 global_config.lock().unwrap().screen_off();
             }
             Some(VaultOp::ImageLoad) => xous::msg_scalar_unpack!(msg, load, _, _, _, {
@@ -1145,44 +1146,55 @@ fn main() -> ! {
                 global_config.lock().unwrap().pause_accel(false);
             }
             Some(VaultOp::ListPasswords) => {
+                // The menu widget closes on select, so the flag it set must drop here too.
+                // Leaving it set routes every later key back into the closed menu and the
+                // screen below never sees one - that is what made every BACK button dead.
+                menu_active = false;
                 *mode.lock().unwrap() = VaultMode::Password;
                 animate.store(VaultMode::Password.should_animate(), Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::List2faDigits) => {
+                menu_active = false;
                 *mode.lock().unwrap() = VaultMode::Totp;
                 animate.store(VaultMode::Totp.should_animate(), Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::ListPasskeys) => {
+                menu_active = false;
                 vault_ui.load_passkeys();
                 *mode.lock().unwrap() = VaultMode::Passkeys;
                 animate.store(false, Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::ListPhotos) => {
+                menu_active = false;
                 vault_ui.load_photos();
                 *mode.lock().unwrap() = VaultMode::PhotoList;
                 animate.store(false, Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::SettingsBling) => {
+                menu_active = false;
                 vault_ui.load_photos(); // photos are selectable as standby images
                 *mode.lock().unwrap() = VaultMode::SettingsBling;
                 animate.store(false, Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::SettingsBlinky) => {
+                menu_active = false;
                 *mode.lock().unwrap() = VaultMode::SettingsBlinky;
                 animate.store(false, Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::ShowAbout) => {
+                menu_active = false;
                 *mode.lock().unwrap() = VaultMode::AboutQr { quantum: 0 };
                 animate.store(true, Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::ListBookmarks) => {
+                menu_active = false;
                 vault_ui.load_bookmarks();
                 *mode.lock().unwrap() = VaultMode::BookmarkList;
                 animate.store(VaultMode::BookmarkList.should_animate(), Ordering::SeqCst);
