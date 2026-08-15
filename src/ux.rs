@@ -548,6 +548,8 @@ pub struct VaultUi {
     standby_choice: usize,
     /// a just-taken photo held for the preview screen, before the user keeps it
     pending_photo: Option<[u32; 512]>,
+    /// what the standby screen currently has painted, so it is only repainted on change
+    standby_drawn: Option<(usize, bool)>,
     /// BLINKY: 0 is gene expression, 1..=LED_PATTERN_COUNT are standalone patterns
     blinky_cursor: usize,
     // URL to display in ShowUrl mode (always validated by SanitizedUrl::new)
@@ -699,6 +701,7 @@ impl VaultUi {
             bling_cursor: 0,
             standby_choice: 0,
             pending_photo: None,
+            standby_drawn: None,
             blinky_cursor: 0,
             show_url: None,
             bookmark_cache: Vec::new(),
@@ -1037,18 +1040,35 @@ impl VaultUi {
             }
             VaultMode::Idle => {
                 let now = self.tt.elapsed_ms();
-                // Draw the chosen standby image, and only that one.
+                // Draw the chosen standby image, and only that one. It used to alternate the
+                // user's image with the S-CAM logo, and both built-in choices cleared
+                // user_bitmap, so picking DEFCON left nothing to alternate with and the logo
+                // was drawn unconditionally.
                 //
-                // This used to alternate the user's image with the S-CAM logo every three
-                // seconds, and both built-in choices cleared user_bitmap - so picking DEFCON
-                // left nothing to alternate with and the logo was drawn unconditionally. The
-                // selection is a setting, so the screen shows the selection.
-                if self.standby_choice == DEFCON_IMAGE {
-                    self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
-                } else if let Some(bitmap) = self.user_bitmap.as_ref() {
-                    self.gfx.bitmap(bitmap, None, None).ok();
-                } else {
-                    self.gfx.bitmap(&bitmaps::scam_logo::BITMAP, None, None).ok();
+                // Repaint ONLY on change. This screen animates, so redraw runs continuously;
+                // blitting the whole panel every time saturates the graphics server and the
+                // badge never finishes booting. The slow edge is kept as a self-heal so the
+                // image comes back if something else paints over it, at one blit per 3s
+                // rather than one per tick.
+                let standby_now = (self.standby_choice, self.user_bitmap.is_some());
+                let edge = (now / 3000) % 2 == 0;
+                if mode_at_entry != self.last_mode
+                    || self.standby_drawn != Some(standby_now)
+                    || self.edge != edge
+                {
+                    // bitmap_diffusion, not bitmap: the plain BaosecBitmap path is handled in
+                    // bao-video without the display timeout guard that the diffuse path has,
+                    // and swapping the stored-image draw onto it is what stopped the badge
+                    // booting. The diffuse call is the one this screen has always used.
+                    if self.standby_choice == DEFCON_IMAGE {
+                        self.gfx.bitmap_diffusion(&bitmaps::dc_logo::BITMAP, None, None).ok();
+                    } else if let Some(bitmap) = self.user_bitmap.as_ref() {
+                        self.gfx.bitmap_diffusion(bitmap, None, None).ok();
+                    } else {
+                        self.gfx.bitmap_diffusion(&bitmaps::scam_logo::BITMAP, None, None).ok();
+                    }
+                    self.edge = edge;
+                    self.standby_drawn = Some(standby_now);
                 }
 
                 // flag a badge mismatch, mostly for diagnostics at the factory & at the show
