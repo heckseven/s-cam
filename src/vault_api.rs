@@ -23,6 +23,39 @@ pub const VAULT_CONFIG_GENERATOR: &'static str = "vault.config/generator";
 /// bytes to reserve for a key entry. Making this slightly larger saves on some churn as stuff gets updated
 pub const VAULT_ALLOC_HINT: usize = 256;
 
+/// Connect to a well-known server name, retrying briefly if it is not registered yet.
+///
+/// `XousNames::request_connection_blocking` waits *forever*. On the boot thread these
+/// connects run before the watchdog-feed loop starts, so a service that never registers
+/// turns into a silent, undiagnosable hang (or a watchdog bootloop). Bound the wait so an
+/// absent server fails loudly, naming itself, instead of wedging the badge.
+pub(crate) fn connect_to_server(xns: &xous_names::XousNames, name: &str) -> xous::CID {
+    const RETRY_INTERVAL_MS: u64 = 20;
+    const RETRY_ATTEMPTS: usize = 250; // 250 * 20ms = 5s
+
+    for attempt in 0..RETRY_ATTEMPTS {
+        match xns.request_connection(name) {
+            Ok(cid) => return cid,
+            Err(e) => {
+                if attempt == 0 {
+                    log::warn!(
+                        "server '{}' not registered yet ({:?}); retrying for up to {}ms",
+                        name,
+                        e,
+                        RETRY_INTERVAL_MS * RETRY_ATTEMPTS as u64
+                    );
+                }
+                std::thread::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS));
+            }
+        }
+    }
+    panic!(
+        "timed out after {}ms waiting for server '{}' to register",
+        RETRY_INTERVAL_MS * RETRY_ATTEMPTS as u64,
+        name
+    );
+}
+
 /// Top level application events.
 #[derive(Debug, num_derive::FromPrimitive, num_derive::ToPrimitive)]
 pub(crate) enum VaultOp {
@@ -82,6 +115,24 @@ pub(crate) enum VaultOp {
     // monkey patch to indicate if BIO hacks are active
     BioActive = 1027,
 }
+
+// Compile-time guard on the VaultOp wire contract.
+//
+// These discriminants cross service boundaries and are invisible to the type system:
+//   * `KeyPress` is handed to the graphics service by value via `gfx.register_listener()`
+//     (see main.rs) -- the graphics service sends this number back on every key event.
+//   * `SkipKey` (1026) is written as a bare literal in dc34-console/src/power.rs.
+// Inserting a variant *above* any of these silently renumbers them: the code still
+// compiles, but key input or power handling breaks at runtime. Pin them here so that
+// mistake is a build failure instead of a field debugging session.
+const _: () = assert!(VaultOp::Redraw as isize == 0);
+const _: () = assert!(VaultOp::KeyPress as isize == 2);
+const _: () = assert!(VaultOp::ImageLoad as isize == 1024);
+const _: () = assert!(VaultOp::Jig as isize == 1025);
+const _: () = assert!(VaultOp::SkipKey as isize == 1026);
+const _: () = assert!(VaultOp::BioActive as isize == 1027);
+// The auto-numbered block must never grow into the hard-coded 1024+ range.
+const _: () = assert!((VaultOp::ListBookmarks as isize) < 1024);
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct IpcString {

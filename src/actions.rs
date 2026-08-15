@@ -112,9 +112,36 @@ impl ActionManager {
 
         let mc = (*mode.lock().unwrap()).clone();
         #[cfg(feature = "board-baosec")]
-        let rtc_conn =
-            xous::connect(xous::SID::from_bytes(bao1x_hal_service::api::TIME_SERVER_PUBLIC).unwrap())
-                .unwrap();
+        let rtc_conn = {
+            // The RTC server's well-known SID (TIME_SERVER_PUBLIC) may not be registered yet
+            // when ActionManager is constructed, so retry briefly instead of panicking on the
+            // first attempt. The wait is bounded: a server that never appears must fail loudly
+            // rather than spin forever and hang boot with no diagnostic.
+            const RTC_RETRY_INTERVAL_MS: u64 = 20;
+            const RTC_RETRY_ATTEMPTS: usize = 250; // 250 * 20ms = 5s
+            let target_sid =
+                xous::SID::from_bytes(bao1x_hal_service::api::TIME_SERVER_PUBLIC).unwrap();
+            let mut connected = None;
+            for attempt in 0..RTC_RETRY_ATTEMPTS {
+                match xous::connect(target_sid) {
+                    Ok(c) => {
+                        connected = Some(c);
+                        break;
+                    }
+                    Err(e) => {
+                        if attempt == 0 {
+                            log::warn!(
+                                "RTC server not available yet ({:?}); retrying for up to {}ms",
+                                e,
+                                RTC_RETRY_INTERVAL_MS * RTC_RETRY_ATTEMPTS as u64
+                            );
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(RTC_RETRY_INTERVAL_MS));
+                    }
+                }
+            }
+            connected.expect("timed out waiting for the RTC server (TIME_SERVER_PUBLIC) to register")
+        };
         ActionManager {
             modals: modals::Modals::new(&xns).unwrap(),
             storage: RefCell::new(storage_manager),

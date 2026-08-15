@@ -96,7 +96,7 @@ impl GlobalConfig {
         let skip_token_tour = skip_token_tour_buf[0] != 0;
         log::info!("skip_token_tour {:?},  {:x?}", skip_token_tour, skip_token_tour_buf);
 
-        let conn = xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
+        let conn = crate::vault_api::connect_to_server(&xns, dc34_api::LED_SERVER);
 
         let mut attach_state = AttachState::FactoryNew;
         let mut badge_code = [BadgeType::None as u8; 1];
@@ -194,7 +194,7 @@ impl GlobalConfig {
             }
         };
 
-        let power_server = xns.request_connection_blocking(dc34_api::POWER_MANAGER_SERVER).unwrap();
+        let power_server = crate::vault_api::connect_to_server(&xns, dc34_api::POWER_MANAGER_SERVER);
 
         (
             GlobalConfig {

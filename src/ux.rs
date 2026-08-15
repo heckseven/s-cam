@@ -1917,7 +1917,6 @@ impl VaultUi {
                     '←' => {
                         if let Some(ref url_str) = self.show_url.clone() {
                             self.modals
-                            self.modals
                                 .add_list(vec!["Type to host", "Save as Bookmark", "Cancel"])
                                 .expect("ShowUrl modal list");
                             let prompt = format!("URL options:\n{}", url_str);

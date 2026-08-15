@@ -117,7 +117,7 @@ dependencies = [
 
 [[package]]
 name = "bao1x-api"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "arbitrary-int",
  "bitbybit",
@@ -163,16 +163,12 @@ dependencies = [
  "bitfield",
  "bitflags 1.3.2",
  "bytemuck",
- "digest 0.10.7",
- "ed25519-dalek-bao1x",
  "either",
- "linked_list_allocator",
  "log",
  "num-derive",
  "num-traits",
  "rand_chacha",
  "rkyv",
- "sha2-bao1x",
  "usb-device 0.2.8",
  "utralib",
  "ux-api",
@@ -194,6 +190,7 @@ dependencies = [
  "bitbybit",
  "bitfield",
  "bytemuck",
+ "chrono",
  "flatipc 0.1.0",
  "flatipc-derive 0.1.2",
  "log",
@@ -283,8 +280,12 @@ dependencies = [
  "bao1x-hal",
  "bitbybit",
  "log",
+ "num-derive",
+ "num-traits",
  "utralib",
  "xous",
+ "xous-api-names",
+ "xous-api-susres",
  "xous-api-ticktimer",
 ]
 
@@ -799,12 +800,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e18997d4604542d0736fae2c5ad6de987f0a50530cbcc14a7ce5a685328a252d"
 
 [[package]]
-name = "ed25519-dalek-bao1x"
+name = "ed25519-dalek-compat"
 version = "2.2.0"
 dependencies = [
  "curve25519-dalek-bao1x",
  "ed25519",
- "sha2-bao1x",
+ "sha2",
  "signature 2.2.0",
  "subtle",
  "zeroize",
@@ -1367,6 +1368,7 @@ dependencies = [
  "byteorder",
  "cipher",
  "digest 0.10.7",
+ "ed25519-dalek-compat",
  "hex 0.4.3",
  "hkdf",
  "keystore-api",
@@ -1385,6 +1387,7 @@ dependencies = [
  "xous-api-names",
  "xous-api-ticktimer",
  "xous-ipc",
+ "xous-swapper",
  "zeroize",
 ]
 
@@ -2386,15 +2389,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest 0.10.7",
-]
-
-[[package]]
-name = "sha2-bao1x"
-version = "0.10.9"
-dependencies = [
- "bao1x-api",
- "digest 0.10.7",
- "utralib",
 ]
 
 [[package]]
