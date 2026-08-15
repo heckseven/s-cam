@@ -95,10 +95,8 @@ debug = false
 strip = false
 lto = "fat"
 incremental = true
-panic = "abort" # Remove panic output, which can reduce file size
-# Enabled deliberately: the unwind tables (.eh_frame/.gcc_except_table, ~175KiB) pushed the
-# packed app from 307 to 308 pages, which hangs the badge at the swap-encryption progress bar.
-opt-level = "s" # z,s: Optimize for size instead of performance; 1 for easier debugging; comment out for "best performance" (but in Rust 1.72 this causes regressions)
+#panic = "abort" # Remove panic output, which can reduce file size
+opt-level = "z" # z,s: Optimize for size instead of performance; 1 for easier debugging; comment out for "best performance" (but in Rust 1.72 this causes regressions)
 
 [dev-dependencies]
 enum-iterator = "0.6.0"
