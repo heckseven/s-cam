@@ -1346,13 +1346,8 @@ impl ActionManager {
             let mode_now = self.mode.lock().unwrap().clone();
             log::info!("got qr data: {}, mode: {:?}", qr_uri, mode_now);
             match mode_now {
-                VaultMode::GeneScan
-                | VaultMode::ResponseGene { quantum: _ }
-                | VaultMode::Idle
-                | VaultMode::IdleDevMode
-                | VaultMode::FactoryTest
-                | VaultMode::StandAloneTest
-                | VaultMode::ShowKey { quantum: _ } => {
+                VaultMode::Idle
+                | VaultMode::Idle => {
                     // pass a copy of the string on to the main loop for handling
                     let msg = IpcString { s: qr_uri.to_owned() };
                     let buf = Buffer::into_buf(msg).unwrap();

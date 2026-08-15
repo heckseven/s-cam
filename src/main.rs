@@ -57,21 +57,9 @@ use crate::config::{GlobalConfig, read_badgetype_pins};
 #[derive(Copy, Clone, PartialEq, Eq, Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum VaultMode {
     Idle,
-    IdleDevMode,
-    ShowKey { quantum: u32 },
-    ResponseGene { quantum: u32 },
     // state for confirming the current pattern
-    ConfirmGene,
-    GeneScan,
-    FactoryTest,
-    StandAloneTest,
-    Tour,
-    TokenTour,
-    DefconHelp,
-    About,
     Totp,
     Password,
-    TokenHelp,
     ShowUrl,
     /// User is browsing the saved bookmark list
     BookmarkList,
@@ -82,21 +70,10 @@ pub enum VaultMode {
 impl VaultMode {
     pub fn should_animate(&self) -> bool {
         match self {
-            VaultMode::About => true,
-            VaultMode::ConfirmGene => false,
-            VaultMode::FactoryTest => true,
-            VaultMode::StandAloneTest => true,
-            VaultMode::DefconHelp => true,
-            VaultMode::TokenHelp => true,
             VaultMode::Idle => true,
-            VaultMode::IdleDevMode => true,
+            VaultMode::Idle => true,
             VaultMode::Password => false,
             VaultMode::Totp => true,
-            VaultMode::GeneScan => true,
-            VaultMode::ResponseGene { quantum: _ } => true,
-            VaultMode::ShowKey { quantum: _ } => true,
-            VaultMode::TokenTour => false,
-            VaultMode::Tour => false,
             VaultMode::ShowUrl => false,
             VaultMode::BookmarkList => false,
             VaultMode::ShowBookmarkQr { quantum: _ } => true,
@@ -385,12 +362,12 @@ fn main() -> ! {
                     jig_ready_seen = true;
                 }
                 if menu_active {
-                    if matches!(mode_now, VaultMode::Tour) {
+                    if false {
                         tour_menu_mgr.key_press(k);
-                    } else if matches!(mode_now, VaultMode::ConfirmGene) {
+                    } else if false {
                         gene_menu_mgr.key_press(k);
                     } else if matches!(mode_now, VaultMode::Idle)
-                        || matches!(mode_now, VaultMode::IdleDevMode)
+                        || matches!(mode_now, VaultMode::Idle)
                     {
                         idle_menu_mgr.key_press(k);
                     } else {
@@ -404,12 +381,12 @@ fn main() -> ! {
                     match k.unwrap_or('\0') {
                         '∴' => {
                             animate.store(false, Ordering::SeqCst);
-                            if matches!(mode_now, VaultMode::Tour) {
+                            if false {
                                 tour_menu_mgr.redraw();
-                            } else if matches!(mode_now, VaultMode::ConfirmGene) {
+                            } else if false {
                                 gene_menu_mgr.redraw();
                             } else if matches!(mode_now, VaultMode::Idle)
-                                || matches!(mode_now, VaultMode::IdleDevMode)
+                                || matches!(mode_now, VaultMode::Idle)
                             {
                                 idle_menu_mgr.redraw();
                             } else {
@@ -676,9 +653,7 @@ fn main() -> ! {
                 skip_one_key = false;
 
                 match mode_now {
-                    VaultMode::GeneScan
-                    | VaultMode::ResponseGene { quantum: _ }
-                    | VaultMode::ShowKey { quantum: _ } => {
+                    VaultMode::Idle => {
                         // URL recognition BEFORE base45 (Task 3)
                         let s_lower_g = s.s.to_ascii_lowercase();
                         if s_lower_g.starts_with("http://") || s_lower_g.starts_with("https://") {
@@ -742,7 +717,7 @@ fn main() -> ! {
                                     );
                                     vault_ui.qr_override = Some(code);
                                     {
-                                        *mode.lock().unwrap() = VaultMode::ResponseGene { quantum: 0 };
+                                        *mode.lock().unwrap() = VaultMode::Idle;
                                     }
                                     animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                                 } else {
@@ -852,7 +827,7 @@ fn main() -> ! {
 
                                                 // raise the confirmation menu
                                                 {
-                                                    *mode.lock().unwrap() = VaultMode::ConfirmGene;
+                                                    *mode.lock().unwrap() = VaultMode::Idle;
                                                 }
                                                 // raise the menu for confirmation
                                                 std::thread::spawn(move || {
@@ -907,7 +882,7 @@ fn main() -> ! {
                                         }
                                         "factory" => {
                                             if data == crate::ux::FACTORY_STANDALONE_STRING {
-                                                *mode.lock().unwrap() = VaultMode::StandAloneTest;
+                                                *mode.lock().unwrap() = VaultMode::Idle;
                                             }
                                         }
                                         _ => {
@@ -963,7 +938,7 @@ fn main() -> ! {
                                 }
                                 "factory" => {
                                     if data == crate::ux::FACTORY_STANDALONE_STRING {
-                                        *mode.lock().unwrap() = VaultMode::StandAloneTest;
+                                        *mode.lock().unwrap() = VaultMode::Idle;
                                     }
                                 }
                                 _ => {
@@ -1045,12 +1020,12 @@ fn main() -> ! {
                 vault_ui.redraw();
             }
             Some(VaultOp::DefconHelp) => {
-                *mode.lock().unwrap() = VaultMode::DefconHelp;
+                *mode.lock().unwrap() = VaultMode::Idle;
                 vault_ui.reset_help_state();
                 vault_ui.redraw();
             }
             Some(VaultOp::MenuTokenHelp) => {
-                *mode.lock().unwrap() = VaultMode::TokenHelp;
+                *mode.lock().unwrap() = VaultMode::Idle;
                 vault_ui.reset_token_help_state();
                 vault_ui.redraw();
             }
@@ -1059,7 +1034,7 @@ fn main() -> ! {
                 vault_ui.redraw();
             }
             Some(VaultOp::About) => {
-                *mode.lock().unwrap() = VaultMode::About;
+                *mode.lock().unwrap() = VaultMode::Idle;
                 vault_ui.reset_about_state();
                 vault_ui.redraw();
             }
@@ -1113,7 +1088,7 @@ fn main() -> ! {
                 }
             }),
             Some(VaultOp::Jig) => {
-                *mode.lock().unwrap() = VaultMode::FactoryTest;
+                *mode.lock().unwrap() = VaultMode::Idle;
                 vault_ui.reset_factory_test();
                 vault_ui.redraw();
             }

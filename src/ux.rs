@@ -613,7 +613,7 @@ impl VaultUi {
             user_bitmap: None,
             phase: false,
             edge: false,
-            last_mode: VaultMode::FactoryTest,
+            last_mode: VaultMode::Idle,
             bio_loaded: false,
         }
     }
@@ -823,21 +823,15 @@ impl VaultUi {
 
         // this check is can run at the top of every loop because the underlying implementation
         // caches the setting and only sends a message to the manager thread if there's a state change.
-        if mode_at_entry == VaultMode::Idle || mode_at_entry == VaultMode::IdleDevMode {
+        if mode_at_entry == VaultMode::Idle {
             self.global_config.as_mut().unwrap().lock().unwrap().display_fading(true);
         } else {
             self.global_config.as_mut().unwrap().lock().unwrap().display_fading(false);
         }
-        if mode_at_entry == VaultMode::Idle
-            && self.global_config.as_ref().unwrap().lock().unwrap().is_developer()
-        {
-            // fixup any transitions that strayed to Idle instead of IdleDevMode when in developer mode
-            *self.mode.lock().unwrap() = VaultMode::IdleDevMode;
-        }
         log::debug!("redraw mode: {:?}", mode_at_entry);
 
         match mode_at_entry {
-            VaultMode::Idle | VaultMode::ConfirmGene | VaultMode::IdleDevMode => {
+            VaultMode::Idle | VaultMode::Idle | VaultMode::Idle => {
                 let now = self.tt.elapsed_ms();
                 if let Some(bitmap) = self.user_bitmap.as_ref() {
                     let edge = (now / 3000) % 2 == 0;
@@ -919,22 +913,6 @@ impl VaultUi {
                     self.batt_polled = false;
                 }
 
-                // indicate developer mode
-                if mode_at_entry == VaultMode::IdleDevMode {
-                    let mut tv = TextView::new(
-                        Gid::dummy(),
-                        TextBounds::CenteredTop(Rectangle::new(
-                            Point::new(0, 127 - 12),
-                            Point::new(128, 128),
-                        )),
-                    );
-                    tv.invert = true;
-                    tv.margin = Point::new(1, 1);
-                    tv.style = GlyphStyle::Bold;
-                    tv.draw_border = false;
-                    write!(tv, "DEV MODE").ok();
-                    self.gfx.draw_textview(&mut tv).ok();
-                }
                 // indicate BIO hacks
                 if self.bio_loaded && (now / 1000) % 2 == 0 {
                     let mut tv = TextView::new(
@@ -977,9 +955,7 @@ impl VaultUi {
                     _ => {}
                 }
             }
-            VaultMode::ShowKey { quantum }
-            | VaultMode::ResponseGene { quantum }
-            | VaultMode::ShowBookmarkQr { quantum } => {
+            VaultMode::ShowBookmarkQr { quantum } => {
                 if let Some(code) = &self.qr_override {
                     if quantum & 7 == 0 {
                         self.clear_area();
@@ -989,7 +965,7 @@ impl VaultUi {
                         self.gfx.render_qr(&modules, width, Point::new(0, 0)).ok();
                     }
                     if quantum & 7 == 6 {
-                        let width = if matches!(mode_at_entry, VaultMode::ShowKey { .. }) { 14 } else { 17 };
+                        let width = if matches!(mode_at_entry, VaultMode::Idle) { 14 } else { 17 };
                         let mut tv = TextView::new(
                             Gid::dummy(),
                             TextBounds::CenteredTop(Rectangle::new(
@@ -1001,7 +977,7 @@ impl VaultUi {
                         tv.margin = Point::new(3, -2);
                         tv.style = GlyphStyle::Bold;
                         tv.draw_border = false;
-                        if matches!(mode_at_entry, VaultMode::ShowKey { .. }) {
+                        if matches!(mode_at_entry, VaultMode::Idle) {
                             write!(tv, "NCE").ok();
                         } else if matches!(mode_at_entry, VaultMode::ShowBookmarkQr { .. }) {
                             write!(tv, "BKM").ok();
@@ -1010,10 +986,10 @@ impl VaultUi {
                         }
                         self.gfx.draw_textview(&mut tv).ok();
                     }
-                    if matches!(mode_at_entry, VaultMode::ShowKey { .. }) {
-                        *self.mode.lock().unwrap() = VaultMode::ShowKey { quantum: quantum + 1 }
-                    } else if matches!(mode_at_entry, VaultMode::ResponseGene { .. }) {
-                        *self.mode.lock().unwrap() = VaultMode::ResponseGene { quantum: quantum + 1 }
+                    if matches!(mode_at_entry, VaultMode::Idle) {
+                        *self.mode.lock().unwrap() = VaultMode::Idle
+                    } else if matches!(mode_at_entry, VaultMode::Idle) {
+                        *self.mode.lock().unwrap() = VaultMode::Idle
                     } else if matches!(mode_at_entry, VaultMode::ShowBookmarkQr { .. }) {
                         *self.mode.lock().unwrap() =
                             VaultMode::ShowBookmarkQr { quantum: quantum + 1 }
@@ -1022,9 +998,6 @@ impl VaultUi {
                     // if no code, go back to idle mode
                     *self.mode.lock().unwrap() = VaultMode::Idle;
                 }
-            }
-            VaultMode::GeneScan => {
-                // do nothing, should be handled by the qr acquisition code
             }
             VaultMode::Totp => {
                 self.clear_area();
@@ -1186,327 +1159,7 @@ impl VaultUi {
                     insert_at = self.item_height * 2;
                 };
                 self.display_list.draw(insert_at);
-            }
-            VaultMode::FactoryTest => {
-                self.clear_area();
-                match &self.factory_test {
-                    FactoryTestState::InitWait { start_time } => {
-                        self.animate.store(true, Ordering::SeqCst);
-                        self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
-                        // render the error message below the graphic
-                        let mut msg = TextView::new(
-                            Gid::dummy(),
-                            TextBounds::CenteredTop(Rectangle::new(Point::new(0, 64), Point::new(127, 127))),
-                        );
-                        write!(
-                            msg,
-                            "Waiting for jig...\n{}s/{}s",
-                            std::time::Instant::now().duration_since(*start_time).as_secs(),
-                            JIG_TIMEOUT
-                        )
-                        .ok();
-                        msg.draw_border = false;
-                        msg.clear_area = false;
-                        msg.ellipsis = true;
-                        msg.invert = true;
-                        self.gfx.draw_textview(&mut msg).unwrap();
-                    }
-                    FactoryTestState::JogPress { seen_press: _ } => {
-                        if self.start_time.is_none() {
-                            self.start_time = Some(Instant::now());
-                        }
-                        self.animate.store(true, Ordering::SeqCst);
-                        self.gfx.bitmap(&bitmaps::factory_jogpress::BITMAP, None, None).ok();
-                    }
-                    FactoryTestState::Up { seen_up: _ } => {
-                        self.gfx.bitmap(&bitmaps::factory_up::BITMAP, None, None).ok();
-                    }
-                    FactoryTestState::Down { seen_down: _ } => {
-                        self.gfx.bitmap(&bitmaps::factory_down::BITMAP, None, None).ok();
-                    }
-                    FactoryTestState::Left { seen_left: _ } => {
-                        self.gfx.bitmap(&bitmaps::factory_left::BITMAP, None, None).ok();
-                    }
-                    FactoryTestState::Right { seen_right: _ } => {
-                        self.gfx.bitmap(&bitmaps::factory_right::BITMAP, None, None).ok();
-                    }
-                    FactoryTestState::MiddleScan { seen_middle: _, got_scan: _ } => {
-                        self.gfx.bitmap(&bitmaps::factory_middlescan::BITMAP, None, None).ok();
-                    }
-                    FactoryTestState::Finish => {
-                        self.gfx.bitmap(&bitmaps::factory_pass::BITMAP, None, None).ok();
-                    }
-                    FactoryTestState::Error(e) => {
-                        self.gfx.bitmap(&bitmaps::factory_fail::BITMAP, None, None).ok();
-                        // render the error message below the graphic
-                        let mut msg = TextView::new(
-                            Gid::dummy(),
-                            TextBounds::CenteredTop(Rectangle::new(Point::new(0, 64), Point::new(127, 127))),
-                        );
-                        write!(msg, "{}", e).ok();
-                        msg.draw_border = false;
-                        msg.clear_area = false;
-                        msg.ellipsis = true;
-                        msg.invert = true;
-                        self.gfx.draw_textview(&mut msg).unwrap();
-                    }
-                }
-                let elapsed = Instant::now().duration_since(self.start_time.unwrap_or(Instant::now()));
-                if elapsed.as_secs() > FACTORY_TIMEOUT_S {
-                    self.factory_test = FactoryTestState::Error("Timeout!".to_string());
-                }
-                let mut timer = TextView::new(
-                    Gid::dummy(),
-                    TextBounds::CenteredBot(Rectangle::new(Point::new(32, 115), Point::new(96, 128))),
-                );
-                timer.style = GlyphStyle::Small;
-                write!(timer, "{:.1}s", elapsed.as_secs_f32()).ok();
-                timer.draw_border = false;
-                timer.clear_area = false;
-                timer.ellipsis = false;
-                timer.invert = true;
-                self.gfx.draw_textview(&mut timer).unwrap();
-            }
-            VaultMode::StandAloneTest => {
-                self.clear_area();
-                if self.orientation != DisplayOrientation::Normal {
-                    self.gfx.bitmap(&bitmaps::badge_flip::BITMAP, None, None).ok();
-                } else {
-                    match &self.standalone_test {
-                        StandAloneTestState::JogPress { seen_press: _ } => {
-                            if self.start_time.is_none() {
-                                self.start_time = Some(Instant::now());
-                            }
-                            self.animate.store(true, Ordering::SeqCst);
-                            self.gfx.bitmap(&bitmaps::factory_jogpress::BITMAP, None, None).ok();
-                        }
-                        StandAloneTestState::Up { seen_up: _ } => {
-                            self.gfx.bitmap(&bitmaps::factory_up::BITMAP, None, None).ok();
-                        }
-                        StandAloneTestState::Down { seen_down: _ } => {
-                            self.gfx.bitmap(&bitmaps::factory_down::BITMAP, None, None).ok();
-                        }
-                        StandAloneTestState::Left { seen_left: _ } => {
-                            self.gfx.bitmap(&bitmaps::factory_left::BITMAP, None, None).ok();
-                        }
-                        StandAloneTestState::Right { seen_right: _ } => {
-                            self.gfx.bitmap(&bitmaps::factory_right::BITMAP, None, None).ok();
-                        }
-                        StandAloneTestState::Flip { orientation_changed: _ } => {
-                            self.gfx.bitmap(&bitmaps::factory_flip::BITMAP, None, None).ok();
-                        }
-                        StandAloneTestState::Finish { seen_button: _ } => {
-                            self.gfx.bitmap(&bitmaps::factory_pass::BITMAP, None, None).ok();
-                        }
-                        StandAloneTestState::Exit => {
-                            self.gfx.bitmap(&bitmaps::factory_pass::BITMAP, None, None).ok();
-                        }
-                        StandAloneTestState::Error(e) => {
-                            self.gfx.bitmap(&bitmaps::factory_fail::BITMAP, None, None).ok();
-                            // render the error message below the graphic
-                            let mut msg = TextView::new(
-                                Gid::dummy(),
-                                TextBounds::CenteredTop(Rectangle::new(
-                                    Point::new(0, 64),
-                                    Point::new(127, 127),
-                                )),
-                            );
-                            write!(msg, "{}", e).ok();
-                            msg.draw_border = false;
-                            msg.clear_area = false;
-                            msg.ellipsis = true;
-                            msg.invert = true;
-                            self.gfx.draw_textview(&mut msg).unwrap();
-                        }
-                    }
-                }
-                let elapsed = Instant::now().duration_since(self.start_time.unwrap_or(Instant::now()));
-                if elapsed.as_secs() > FACTORY_TIMEOUT_S {
-                    self.factory_test = FactoryTestState::Error("Timeout!".to_string());
-                }
-                let mut timer = TextView::new(
-                    Gid::dummy(),
-                    TextBounds::CenteredBot(Rectangle::new(Point::new(32, 115), Point::new(96, 128))),
-                );
-                timer.style = GlyphStyle::Small;
-                write!(timer, "{:.1}s", elapsed.as_secs_f32()).ok();
-                timer.draw_border = false;
-                timer.clear_area = false;
-                timer.ellipsis = false;
-                timer.invert = true;
-                self.gfx.draw_textview(&mut timer).unwrap();
-            }
-            VaultMode::Tour => {
-                if self.orientation != DisplayOrientation::Normal {
-                    self.gfx.bitmap(&bitmaps::badge_flip::BITMAP, None, None).ok();
-                } else {
-                    match &self.tour_state {
-                        TourState::Welcome { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_welcome::BITMAP, None, None).ok();
-                        }
-                        // no diffusion so the menu transition is snappy
-                        TourState::LightGeneExplainer1 { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_light_gene_explainer1::BITMAP, None, None).ok();
-                        }
-                        TourState::LightGeneExplainer2 { seen_press: _ } => {
-                            self.gfx
-                                .bitmap_diffusion(&bitmaps::tour_light_gene_explainer2::BITMAP, None, None)
-                                .ok();
-                        }
-                        TourState::Breeding1 { seen_press: _ } => {
-                            self.gfx.bitmap_diffusion(&bitmaps::tour_breeding1::BITMAP, None, None).ok();
-                        }
-                        TourState::Breeding2 { seen_press: _ } => {
-                            self.gfx.bitmap_diffusion(&bitmaps::tour_breeding2::BITMAP, None, None).ok();
-                        }
-                        TourState::Breeding3 { seen_press: _ } => {
-                            self.gfx.bitmap_diffusion(&bitmaps::tour_breeding3::BITMAP, None, None).ok();
-                        }
-                        TourState::Breeding4 { seen_press: _ } => {
-                            self.gfx.bitmap_diffusion(&bitmaps::tour_breeding4::BITMAP, None, None).ok();
-                        }
-                        TourState::BadgeRecap { seen_press: _ } => {
-                            self.gfx.bitmap_diffusion(&bitmaps::tour_recap::BITMAP, None, None).ok();
-                        }
-                        TourState::TokenIntro1 { seen_press: _ } => {
-                            self.gfx.bitmap_diffusion(&bitmaps::tour_token_intro1::BITMAP, None, None).ok();
-                        }
-                        TourState::TokenIntro2 { seen_press: _ } => {
-                            self.gfx.bitmap_diffusion(&bitmaps::tour_token_intro2::BITMAP, None, None).ok();
-                        }
-                        TourState::TokenIntro3 { seen_press: _ } => {
-                            self.gfx.bitmap_diffusion(&bitmaps::tour_token_intro3::BITMAP, None, None).ok();
-                        }
-                        TourState::InfoScreen { seen_press: _ } => {
-                            self.gfx.bitmap_diffusion(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            VaultMode::DefconHelp => match &self.help_state {
-                HelpState::BadgeRecap { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_recap::BITMAP, None, None).ok();
-                }
-                HelpState::InfoScreen { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
-                }
-                _ => {}
-            },
-            VaultMode::TokenHelp => match &self.token_help_state {
-                TokenHelpState::TokenRecap { seen_press: _ } => {
-                    if self.orientation == DisplayOrientation::Normal {
-                        self.gfx.bitmap(&bitmaps::tour_token_recap::BITMAP, None, None).ok();
-                    } else {
-                        self.gfx.bitmap(&bitmaps::tour_token_recap_flipped::BITMAP, None, None).ok();
-                    }
-                }
-                TokenHelpState::Extension { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_browser_extension::BITMAP, None, None).ok();
-                }
-                TokenHelpState::InfoScreen { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
-                }
-                _ => {}
-            },
-            VaultMode::About => match &self.about_state {
-                AboutState::Bunnie { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::bunnie::BITMAP, None, None).ok();
-                }
-                AboutState::BaochipLogo { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::baochip_about::BITMAP, None, None).ok();
-                }
-                AboutState::Cheeso { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::cheeso::BITMAP, None, None).ok();
-                }
-                AboutState::Diagnostics { seen_press: _ } => {
-                    self.gfx.clear().ok();
-                    // print battery voltage here
-                    let mut msg = TextView::new(
-                        Gid::dummy(),
-                        TextBounds::CenteredTop(Rectangle::new(Point::new(0, 0), Point::new(128, 128))),
-                    );
-                    let voltage_code = self.adc.read_raw(
-                        bao1x_hal::udma::AdcSource::Ext(bao1x_hal::udma::AdcExtChannel::Adc3),
-                        Some(8),
-                    );
-                    let vbat_mv =
-                        ((bao1x_hal::udma::Adc::raw_to_voltage(voltage_code) * 1000.0f32) / 0.318f32) as u32;
-                    writeln!(msg, "~Meditations~").ok();
-                    // batt level
-                    writeln!(msg, "Batt: {} mV", vbat_mv).ok();
-                    // badge type
-                    writeln!(
-                        msg,
-                        "Badge: {:?}",
-                        self.global_config.as_ref().unwrap().lock().unwrap().badge_type()
-                    )
-                    .ok();
-                    // k0 check
-                    writeln!(msg, "k0: {}", self.global_config.as_ref().unwrap().lock().unwrap().k0_hash())
-                        .ok();
-                    writeln!(
-                        msg,
-                        "{}",
-                        if self.global_config.as_ref().unwrap().lock().unwrap().is_developer() {
-                            "Developer"
-                        } else {
-                            "Sealed"
-                        }
-                    )
-                    .ok();
-                    // USB presence
-                    writeln!(
-                        msg,
-                        "USB {}",
-                        if self.global_config.as_ref().unwrap().lock().unwrap().is_plugged_in() {
-                            "present"
-                        } else {
-                            "detached"
-                        }
-                    )
-                    .ok();
-                    // version
-                    writeln!(msg, "{}", self.tt.get_version()).ok();
-                    msg.draw_border = false;
-                    msg.clear_area = true;
-                    msg.ellipsis = false;
-                    msg.invert = true;
-                    msg.style = GlyphStyle::Small;
-                    self.gfx.draw_textview(&mut msg).unwrap();
-                }
-                AboutState::InfoScreen { seen_press: _ } => {
-                    self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
-                }
-                _ => {}
-            },
-            VaultMode::TokenTour => {
-                if self.orientation != DisplayOrientation::Normal {
-                    self.gfx.bitmap(&bitmaps::badge_flip::BITMAP, None, None).ok();
-                } else {
-                    match &self.token_tour_state {
-                        TokenTourState::TokenTour1 { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_token_tour1::BITMAP, None, None).ok();
-                        }
-                        TokenTourState::TokenTour2 { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_token_tour2::BITMAP, None, None).ok();
-                        }
-                        TokenTourState::TokenTour3 { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_token_tour3::BITMAP, None, None).ok();
-                        }
-                        TokenTourState::TokenRecap { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_token_recap::BITMAP, None, None).ok();
-                        }
-                        TokenTourState::BrowserExtension { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_browser_extension::BITMAP, None, None).ok();
-                        }
-                        TokenTourState::InfoScreen { seen_press: _ } => {
-                            self.gfx.bitmap(&bitmaps::tour_info_screen::BITMAP, None, None).ok();
-                        }
-                        _ => {}
-                    }
-                }
-            } // _ => unimplemented!(),
+            }// _ => unimplemented!(),
             VaultMode::BookmarkList => {
                 self.clear_area();
                 // Header row
@@ -1631,104 +1284,14 @@ impl VaultUi {
         if k == '🔼' {
             self.orientation = DisplayOrientation::Normal;
             self.redraw();
-            if mode_at_entry != VaultMode::StandAloneTest {
-                return Some(k);
-            }
+            return Some(k);
         } else if k == '🔽' {
             self.orientation = DisplayOrientation::UpsideDown;
             self.redraw();
-            if mode_at_entry != VaultMode::StandAloneTest {
-                return Some(k);
-            }
+            return Some(k);
         }
         log::debug!("handle_key: {:?}", mode_at_entry);
         let filtered_k = match mode_at_entry {
-            VaultMode::FactoryTest => {
-                let old = std::mem::replace(
-                    &mut self.factory_test,
-                    FactoryTestState::Error("Transitioning".to_string()),
-                );
-                self.factory_test = old.handle_input(Some(k), None, None, false);
-                // allow scanning in factory mode
-                if k == '🔥' { Some(k) } else { None }
-            }
-            VaultMode::StandAloneTest => {
-                let old = std::mem::replace(
-                    &mut self.standalone_test,
-                    StandAloneTestState::Error("Transitioning".to_string()),
-                );
-                self.standalone_test = old.handle_input(Some(k), None);
-                if self.standalone_test.is_terminal() {
-                    *self.mode.lock().unwrap() = VaultMode::Idle;
-                }
-                // don't allow other buttons in this state as it's confusing
-                None
-            }
-            VaultMode::Tour => {
-                let old =
-                    std::mem::replace(&mut self.tour_state, TourState::Error("transitioning".to_string()));
-                self.tour_state = old.handle_input(k);
-                if self.tour_state.is_terminal() {
-                    *self.mode.lock().unwrap() = VaultMode::Idle;
-                }
-                // don't allow scanning to start during the tour
-                if k != '🔥' { Some(k) } else { None }
-            }
-            VaultMode::TokenTour => {
-                let old = std::mem::replace(
-                    &mut self.token_tour_state,
-                    TokenTourState::Error("transitioning".to_string()),
-                );
-                self.token_tour_state = old.handle_input(k);
-                if self.token_tour_state.is_terminal() {
-                    *self.mode.lock().unwrap() = VaultMode::Password;
-                }
-                // don't allow scanning to start during the tour
-                if k != '🔥' { Some(k) } else { None }
-            }
-            VaultMode::DefconHelp => {
-                let old =
-                    std::mem::replace(&mut self.help_state, HelpState::Error("transitioning".to_string()));
-                self.help_state = old.handle_input(k);
-                if self.help_state.is_terminal() {
-                    *self.mode.lock().unwrap() = VaultMode::Idle;
-                }
-                // don't allow scanning to start during the tour
-                if k != '🔥' { Some(k) } else { None }
-            }
-            VaultMode::TokenHelp => {
-                let old = std::mem::replace(
-                    &mut self.token_help_state,
-                    TokenHelpState::Error("transitioning".to_string()),
-                );
-                self.token_help_state = old.handle_input(k);
-                if self.token_help_state.is_terminal() {
-                    match self.global_config.as_ref().unwrap().lock().unwrap().attachment_state() {
-                        AttachState::Unattached => *self.mode.lock().unwrap() = VaultMode::Password,
-                        _ => *self.mode.lock().unwrap() = VaultMode::Idle,
-                    }
-                }
-                // don't allow scanning to start during the tour
-                if k != '🔥' { Some(k) } else { None }
-            }
-            VaultMode::About => {
-                let old =
-                    std::mem::replace(&mut self.about_state, AboutState::Error("transitioning".to_string()));
-                self.about_state = old.handle_input(k);
-                if self.about_state.is_terminal() {
-                    *self.mode.lock().unwrap() = VaultMode::Idle;
-                }
-                if self.about_state.is_diagnostics() {
-                    if k == '↑' {
-                        let xns = xous_names::XousNames::new().unwrap();
-                        let keystore = keystore::Keystore::new(&xns);
-                        keystore.bootwait(Some(false)).unwrap();
-                        log::info!("Bootwait secret disable activated");
-                    }
-                }
-                // don't allow scanning to start during the tour
-                if k != '🔥' { Some(k) } else { None }
-            }
             VaultMode::Password => {
                 let increment = if self.manage_longpress() { PAGE_INCREMENT } else { 1 };
                 match k {
@@ -1830,44 +1393,20 @@ impl VaultUi {
 
                         self.qr_override = Some(code);
                         {
-                            *self.mode.lock().unwrap() = VaultMode::ShowKey { quantum: 0 };
+                            *self.mode.lock().unwrap() = VaultMode::Idle;
                         }
                     }
                     None
                 }
                 '🔥' => {
-                    *self.mode.lock().unwrap() = VaultMode::GeneScan;
+                    *self.mode.lock().unwrap() = VaultMode::Idle;
                     Some(k)
                 }
                 _ => Some(k),
             },
-            VaultMode::IdleDevMode => Some(k),
-            VaultMode::ShowKey { quantum: _ } => {
-                match k {
-                    '🔥' => {
-                        *self.mode.lock().unwrap() = VaultMode::GeneScan;
-                        // pass on the "fire" key to activate QR scanning
-                        Some('🔥')
-                    }
-                    _ => {
-                        // cancel out and return to idle screen
-                        *self.mode.lock().unwrap() = VaultMode::Idle;
-                        Some(k)
-                    }
-                }
-            }
+            VaultMode::Idle => Some(k),
             // this is the next state of the recipient after showing the key
-            VaultMode::ConfirmGene => Some(k),
             // this is the state of the donor in response to query
-            VaultMode::ResponseGene { quantum: _ } => {
-                self.global_config.as_mut().unwrap().lock().unwrap().clear_nonces();
-                // Clear qr_override so a subsequent gene exchange or bookmark QR renders fresh.
-                self.qr_override = None;
-                *self.mode.lock().unwrap() = VaultMode::Idle;
-                // eat the 'fire' button if it's pressed - we just want to go back to the idle
-                // screen in all button presses
-                if k != '🔥' { Some(k) } else { None }
-            }
             VaultMode::BookmarkList => {
                 match k {
                     '↑' => {

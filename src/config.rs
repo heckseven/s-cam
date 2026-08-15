@@ -172,24 +172,24 @@ impl GlobalConfig {
         let initial_mode = match attach_state {
             AttachState::FactoryNew => {
                 if !is_developer {
-                    VaultMode::FactoryTest
+                    VaultMode::Idle
                 } else {
-                    VaultMode::IdleDevMode
+                    VaultMode::Idle
                 }
             }
             AttachState::FirstMate | AttachState::TestedStandAlone => VaultMode::Idle,
             AttachState::Matched | AttachState::Mismatched => {
                 if skip_tour || !was_cold_boot {
-                    if is_developer { VaultMode::IdleDevMode } else { VaultMode::Idle }
+                    VaultMode::Idle
                 } else {
-                    VaultMode::Tour
+                    VaultMode::Idle
                 }
             }
             AttachState::Unattached => {
                 if skip_token_tour || !was_cold_boot {
                     VaultMode::Password
                 } else {
-                    VaultMode::TokenTour
+                    VaultMode::Idle
                 }
             }
         };
@@ -259,21 +259,10 @@ impl GlobalConfig {
         // handles None case, as well as Some(previous_mode) not the same as Some(current_mode)
         if self.previous_mode != Some(current_mode) {
             let (enable, duration_sec) = match current_mode {
-                VaultMode::About => (true, SHORT_TIMEOUT),
-                VaultMode::ConfirmGene => (true, MEDIUM_TIMEOUT),
-                VaultMode::FactoryTest => (false, 0),
-                VaultMode::StandAloneTest => (false, 0),
-                VaultMode::DefconHelp => (true, SHORT_TIMEOUT),
-                VaultMode::TokenHelp => (true, MEDIUM_TIMEOUT),
                 VaultMode::Idle => (true, SHORT_TIMEOUT),
-                VaultMode::IdleDevMode => (true, SHORT_TIMEOUT),
+                VaultMode::Idle => (true, SHORT_TIMEOUT),
                 VaultMode::Password => (true, MEDIUM_TIMEOUT),
                 VaultMode::Totp => (true, MEDIUM_TIMEOUT),
-                VaultMode::GeneScan => (true, LONG_TIMEOUT),
-                VaultMode::ResponseGene { quantum: _ } => (true, LONG_TIMEOUT),
-                VaultMode::ShowKey { quantum: _ } => (true, LONG_TIMEOUT),
-                VaultMode::TokenTour => (true, MEDIUM_TIMEOUT),
-                VaultMode::Tour => (true, MEDIUM_TIMEOUT),
                 VaultMode::ShowUrl => (true, MEDIUM_TIMEOUT),
                 VaultMode::BookmarkList => (true, SHORT_TIMEOUT),
                 VaultMode::ShowBookmarkQr { quantum: _ } => (true, MEDIUM_TIMEOUT),
@@ -294,7 +283,7 @@ impl GlobalConfig {
             key.write(&[0]).ok();
         }
         if self.attach_state.attached() {
-            if self.is_developer { VaultMode::IdleDevMode } else { VaultMode::Idle }
+            VaultMode::Idle
         } else {
             VaultMode::Password
         }
