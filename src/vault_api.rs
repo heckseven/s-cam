@@ -106,11 +106,6 @@ pub(crate) enum VaultOp {
     // open bookmark list screen: main loads bookmarks via vault_ui then sets VaultMode::BookmarkList
     ListBookmarks,
 
-    // menu-initiated QR scan. The menu widget can only send non-blocking scalars, so it
-    // cannot invoke ActionOp::AcquireQr (a blocking scalar) directly. Main does the camera
-    // setup and issues the blocking call on the menu's behalf.
-    ScanUrl,
-
     // monkey patch for last-minute custom image feature - discriminant is hard-coded into dc34-console
     ImageLoad = 1024,
     // monkey patch to force jig mode, for re-tested units in the factory
@@ -119,6 +114,14 @@ pub(crate) enum VaultOp {
     SkipKey = 1026,
     // monkey patch to indicate if BIO hacks are active
     BioActive = 1027,
+    // menu-initiated QR scan. The menu widget can only send non-blocking scalars, so it
+    // cannot invoke ActionOp::AcquireQr (a blocking scalar) directly. Main does the camera
+    // setup and issues the blocking call on the menu's behalf.
+    //
+    // Explicitly numbered, deliberately: taking the next free auto-discriminant would claim
+    // a low opcode that other components may already emit, silently turning a previously
+    // ignored message into a live camera-acquisition call.
+    ScanUrl = 1028,
 }
 
 // Compile-time guard on the VaultOp wire contract.
@@ -138,7 +141,7 @@ const _: () = assert!(VaultOp::SkipKey as isize == 1026);
 const _: () = assert!(VaultOp::BioActive as isize == 1027);
 // The auto-numbered block must never grow into the hard-coded 1024+ range.
 const _: () = assert!((VaultOp::ListBookmarks as isize) < 1024);
-const _: () = assert!((VaultOp::ScanUrl as isize) < 1024);
+const _: () = assert!(VaultOp::ScanUrl as isize == 1028);
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct IpcString {
