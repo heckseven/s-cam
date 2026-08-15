@@ -839,13 +839,13 @@ impl VaultUi {
                         if self.phase {
                             self.gfx.bitmap_diffusion(bitmap, None, None).ok();
                         } else {
-                            self.gfx.bitmap_diffusion(&bitmaps::dc_logo::BITMAP, None, None).ok();
+                            self.gfx.bitmap_diffusion(&bitmaps::scam_logo::BITMAP, None, None).ok();
                         }
                         self.phase = !self.phase;
                     }
                     self.edge = edge;
                 } else {
-                    self.gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
+                    self.gfx.bitmap(&bitmaps::scam_logo::BITMAP, None, None).ok();
                 }
 
                 // flag a badge mismatch, mostly for diagnostics at the factory & at the show

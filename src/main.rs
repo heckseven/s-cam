@@ -95,7 +95,7 @@ fn main() -> ! {
     let gfx = Gfx::new(&xns).unwrap();
     gfx.clear().ok();
     // show the DC logo
-    gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
+    gfx.bitmap(&bitmaps::scam_logo::BITMAP, None, None).ok();
     gfx.flush().ok();
     let tt = ticktimer_server::Ticktimer::new().unwrap();
 
@@ -230,7 +230,7 @@ fn main() -> ! {
     tour_menu_mgr.redraw();
     tour_menu_mgr.key_press('↑');
     // restore the logo so that the back buffer is in a consistent state
-    gfx.bitmap(&bitmaps::dc_logo::BITMAP, None, None).ok();
+    gfx.bitmap(&bitmaps::scam_logo::BITMAP, None, None).ok();
     // gfx.flush().ok(); // i don't think this is necessary
     gfx.dry_run(false).ok();
 
