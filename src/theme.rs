@@ -83,3 +83,59 @@ pub fn button_labels(
     .ok();
     gfx.draw_textview(&mut tv).ok();
 }
+
+/// Draw a scrolling list with a cursor, between the heading and the button bar.
+///
+/// Every S-CAM list screen — passkeys, photos, images, patterns — is this same shape, so
+/// they share one implementation rather than four near-copies that drift apart.
+///
+/// `cursor` is an index into `items`; the view scrolls to keep it visible. An empty list
+/// draws `empty_msg` instead, because a blank screen is indistinguishable from a hang.
+pub fn list(
+    gfx: &ux_api::service::gfx::Gfx,
+    screen: Point,
+    row_h: isize,
+    items: &[String],
+    cursor: usize,
+    empty_msg: &str,
+) {
+    use core::fmt::Write;
+    let top = LABEL_BAR_H;
+    let bottom = screen.y - LABEL_BAR_H;
+    let rows = ((bottom - top) / row_h).max(1) as usize;
+
+    if items.is_empty() {
+        let mut tv = TextView::new(
+            Gid::dummy(),
+            TextBounds::BoundingBox(Rectangle::new(
+                Point::new(0, top),
+                Point::new(screen.x, top + row_h),
+            )),
+        );
+        tv.style = FONT;
+        tv.draw_border = false;
+        write!(tv, "{}", empty_msg).ok();
+        gfx.draw_textview(&mut tv).ok();
+        return;
+    }
+
+    // scroll so the cursor stays on screen
+    let first = if cursor >= rows { cursor + 1 - rows } else { 0 };
+    for (n, item) in items.iter().skip(first).take(rows).enumerate() {
+        let y = top + (n as isize) * row_h;
+        let mut tv = TextView::new(
+            Gid::dummy(),
+            TextBounds::BoundingBox(Rectangle::new(
+                Point::new(0, y),
+                Point::new(screen.x, y + row_h),
+            )),
+        );
+        tv.style = FONT;
+        tv.draw_border = false;
+        // the selected row is inverted rather than marked with a glyph, so the cursor is
+        // legible at a glance on a 128px panel
+        tv.invert = first + n == cursor;
+        write!(tv, "{}", item).ok();
+        gfx.draw_textview(&mut tv).ok();
+    }
+}

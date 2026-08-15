@@ -532,6 +532,18 @@ pub struct VaultUi {
     pub qr_override: Option<QrCode>,
     /// index into the console's pattern set; 0 means gene expression
     led_pattern: usize,
+    /// PASSKEYS: FIDO2 registrations, loaded on entering the screen
+    passkey_cache: Vec<crate::storage::Passkey>,
+    passkey_cursor: usize,
+    /// PHOTOS: captured images, keyed in vault.photos
+    photo_cache: Vec<String>,
+    photo_cursor: usize,
+    /// BLING: standby image choices
+    bling_cursor: usize,
+    /// which standby image is in force; index into BUILTIN_IMAGES then photos
+    standby_choice: usize,
+    /// BLINKY: 0 is gene expression, 1..=LED_PATTERN_COUNT are standalone patterns
+    blinky_cursor: usize,
     // URL to display in ShowUrl mode (always validated by SanitizedUrl::new)
     pub show_url: Option<String>,
 
@@ -554,7 +566,78 @@ pub struct VaultUi {
     pub bio_loaded: bool,
 }
 
+/// Standby images that ship with the firmware. Captured photos are appended to this list
+/// at runtime, so "set a photo as the standby image" needs no separate mechanism.
+pub const BUILTIN_IMAGES: [&str; 2] = ["S-CAM", "DEFCON"];
+
+/// Blinky choices. Index 0 is gene expression - the badge's protected behaviour and the
+/// default - and the rest map onto dc34-console's pattern table.
+pub const BLINKY_CHOICES: [&str; 6] =
+    ["GENE (DEFAULT)", "RAINBOW", "CHASE", "BREATHE", "EMBER", "RIOT"];
+
 impl VaultUi {
+    /// Capture the panel as a photo and store it.
+    ///
+    /// Returns false when the cap is reached, so the caller can say so rather than
+    /// silently discarding the shot.
+    pub(crate) fn capture_photo(&mut self) -> bool {
+        match self.gfx.acquire_frame() {
+            Ok(capture) if capture.ok => {
+                // scope the borrow so load_photos() can take its own
+                let stored = crate::storage::photo_store(&self.pddb.borrow(), &capture.bits);
+                match stored {
+                    Some(key) => {
+                        log::info!("photo stored as {}", key);
+                        self.load_photos();
+                        true
+                    }
+                    None => false,
+                }
+            }
+            Ok(_) => {
+                log::warn!("frame capture reported failure");
+                false
+            }
+            Err(e) => {
+                log::warn!("frame capture failed: {:?}", e);
+                false
+            }
+        }
+    }
+
+    /// Apply a standby-image choice: 0 and 1 are the built-ins, higher indices are photos.
+    ///
+    /// A captured photo is already in the badge's bitmap format, so "use this photo as the
+    /// standby image" is a straight copy into user_bitmap with no conversion.
+    pub(crate) fn apply_standby_choice(&mut self, choice: usize) {
+        match choice {
+            0 => self.user_bitmap = None, // built-in S-CAM logo, drawn directly
+            1 => self.user_bitmap = None, // DEFCON logo; selected via the same path
+            n => {
+                let idx = n - BUILTIN_IMAGES.len();
+                if let Some(key) = self.photo_cache.get(idx).cloned() {
+                    match crate::storage::photo_get(&self.pddb.borrow(), &key) {
+                        Some(bits) => self.user_bitmap = Some(bits),
+                        None => log::warn!("standby image {} could not be read", key),
+                    }
+                }
+            }
+        }
+        self.standby_choice = choice;
+    }
+
+    /// Refresh the PASSKEYS list from PDDB.
+    pub(crate) fn load_passkeys(&mut self) {
+        self.passkey_cache = crate::storage::passkey_list(&self.pddb.borrow());
+        self.passkey_cursor = 0;
+    }
+
+    /// Refresh the PHOTOS list from PDDB.
+    pub(crate) fn load_photos(&mut self) {
+        self.photo_cache = crate::storage::photo_list(&self.pddb.borrow());
+        self.photo_cursor = 0;
+    }
+
     pub fn new(
         xns: &xous_names::XousNames,
         cid: xous::CID,
@@ -609,6 +692,13 @@ impl VaultUi {
             global_config: None,
             qr_override: None,
             led_pattern: 0,
+            passkey_cache: Vec::new(),
+            passkey_cursor: 0,
+            photo_cache: Vec::new(),
+            photo_cursor: 0,
+            bling_cursor: 0,
+            standby_choice: 0,
+            blinky_cursor: 0,
             show_url: None,
             bookmark_cache: Vec::new(),
             bookmark_cursor: 0,
@@ -837,21 +927,78 @@ impl VaultUi {
         log::debug!("redraw mode: {:?}", mode_at_entry);
 
         match mode_at_entry {
-            VaultMode::Passkeys
-            | VaultMode::PhotoList
-            | VaultMode::SettingsBling
-            | VaultMode::SettingsBlinky => {
-                let (title, left, mid, right) = match mode_at_entry {
-                    VaultMode::Passkeys => ("PASSKEYS", Some("BACK"), Some("DEL"), Some("VIEW")),
-                    VaultMode::PhotoList => ("PHOTOS", Some("BACK"), Some("DEL"), Some("VIEW")),
-                    VaultMode::SettingsBling => ("BLING", Some("BACK"), None, Some("PICK")),
-                    _ => ("BLINKY", Some("BACK"), None, Some("PICK")),
-                };
+            VaultMode::Passkeys => {
                 self.clear_area();
-                crate::theme::heading(&self.gfx, self.screen_size, title);
-                crate::theme::button_labels(&self.gfx, self.screen_size, left, mid, right);
+                crate::theme::heading(&self.gfx, self.screen_size, "PASSKEYS");
+                let rows: Vec<String> =
+                    self.passkey_cache.iter().map(|p| p.name.clone()).collect();
+                crate::theme::list(
+                    &self.gfx, self.screen_size, self.item_height,
+                    &rows, self.passkey_cursor, "NO PASSKEYS STORED",
+                );
+                let has = !rows.is_empty();
+                crate::theme::button_labels(
+                    &self.gfx, self.screen_size,
+                    Some("BACK"),
+                    if has { Some("DEL") } else { None },
+                    None,
+                );
                 self.gfx.flush().ok();
             }
+            VaultMode::PhotoList => {
+                self.clear_area();
+                crate::theme::heading(&self.gfx, self.screen_size, "PHOTOS");
+                crate::theme::list(
+                    &self.gfx, self.screen_size, self.item_height,
+                    &self.photo_cache, self.photo_cursor, "NO PHOTOS YET",
+                );
+                let has = !self.photo_cache.is_empty();
+                crate::theme::button_labels(
+                    &self.gfx, self.screen_size,
+                    Some("BACK"),
+                    if has { Some("DEL") } else { None },
+                    if has { Some("VIEW") } else { None },
+                );
+                self.gfx.flush().ok();
+            }
+            VaultMode::SettingsBling => {
+                self.clear_area();
+                crate::theme::heading(&self.gfx, self.screen_size, "BLING");
+                let mut rows: Vec<String> =
+                    BUILTIN_IMAGES.iter().map(|s| s.to_string()).collect();
+                rows.extend(self.photo_cache.iter().cloned());
+                crate::theme::list(
+                    &self.gfx, self.screen_size, self.item_height,
+                    &rows, self.bling_cursor, "NO IMAGES",
+                );
+                crate::theme::button_labels(
+                    &self.gfx, self.screen_size, Some("BACK"), None, Some("PICK"),
+                );
+                self.gfx.flush().ok();
+            }
+            VaultMode::SettingsBlinky => {
+                self.clear_area();
+                crate::theme::heading(&self.gfx, self.screen_size, "BLINKY");
+                let rows: Vec<String> =
+                    BLINKY_CHOICES.iter().map(|s| s.to_string()).collect();
+                crate::theme::list(
+                    &self.gfx, self.screen_size, self.item_height,
+                    &rows, self.blinky_cursor, "NO PATTERNS",
+                );
+                // patterns need the carrier; say so rather than offering a dead control
+                let attached = self
+                    .global_config
+                    .as_ref()
+                    .map(|c| c.lock().unwrap().is_badge_attached())
+                    .unwrap_or(false);
+                crate::theme::button_labels(
+                    &self.gfx, self.screen_size,
+                    Some("BACK"), None,
+                    if attached { Some("PICK") } else { Some("NO LED") },
+                );
+                self.gfx.flush().ok();
+            }
+
             VaultMode::AboutQr { quantum: _ } => {
                 self.clear_area();
                 crate::theme::heading(&self.gfx, self.screen_size, "ABOUT");
@@ -1401,6 +1548,114 @@ impl VaultUi {
                 }
                 self.totp_code = None;
                 Some(k)
+            }
+            VaultMode::Passkeys => {
+                match k {
+                    '↑' => self.passkey_cursor = self.passkey_cursor.saturating_sub(1),
+                    '↓' => {
+                        if self.passkey_cursor + 1 < self.passkey_cache.len() {
+                            self.passkey_cursor += 1;
+                        }
+                    }
+                    '←' => *self.mode.lock().unwrap() = VaultMode::Idle,
+                    '🔥' => {
+                        if let Some(p) = self.passkey_cache.get(self.passkey_cursor) {
+                            let key = p.key.clone();
+                            if let Err(e) =
+                                crate::storage::passkey_delete(&self.pddb.borrow(), &key)
+                            {
+                                log::warn!("could not delete passkey {}: {:?}", key, e);
+                            }
+                            self.load_passkeys();
+                        }
+                    }
+                    _ => {}
+                }
+                self.redraw();
+                None
+            }
+            VaultMode::PhotoList => {
+                match k {
+                    '↑' => self.photo_cursor = self.photo_cursor.saturating_sub(1),
+                    '↓' => {
+                        if self.photo_cursor + 1 < self.photo_cache.len() {
+                            self.photo_cursor += 1;
+                        }
+                    }
+                    '←' => *self.mode.lock().unwrap() = VaultMode::Idle,
+                    '🔥' => {
+                        if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
+                            if let Err(e) =
+                                crate::storage::photo_delete(&self.pddb.borrow(), &key)
+                            {
+                                log::warn!("could not delete photo {}: {:?}", key, e);
+                            }
+                            self.load_photos();
+                        }
+                    }
+                    _ => {}
+                }
+                self.redraw();
+                None
+            }
+            VaultMode::SettingsBling => {
+                let count = BUILTIN_IMAGES.len() + self.photo_cache.len();
+                match k {
+                    '↑' => self.bling_cursor = self.bling_cursor.saturating_sub(1),
+                    '↓' => {
+                        if self.bling_cursor + 1 < count {
+                            self.bling_cursor += 1;
+                        }
+                    }
+                    '←' => *self.mode.lock().unwrap() = VaultMode::Idle,
+                    '→' => {
+                        let choice = self.bling_cursor;
+                        if let Err(e) =
+                            crate::storage::set_standby_choice(&self.pddb.borrow(), choice)
+                        {
+                            log::warn!("could not persist standby image: {:?}", e);
+                        }
+                        self.apply_standby_choice(choice);
+                    }
+                    _ => {}
+                }
+                self.redraw();
+                None
+            }
+            VaultMode::SettingsBlinky => {
+                match k {
+                    '↑' => self.blinky_cursor = self.blinky_cursor.saturating_sub(1),
+                    '↓' => {
+                        if self.blinky_cursor + 1 < BLINKY_CHOICES.len() {
+                            self.blinky_cursor += 1;
+                        }
+                    }
+                    '←' => *self.mode.lock().unwrap() = VaultMode::Idle,
+                    '→' => {
+                        // no carrier means no LED ring; do not pretend the choice took effect
+                        let attached = self
+                            .global_config
+                            .as_ref()
+                            .map(|c| c.lock().unwrap().is_badge_attached())
+                            .unwrap_or(false);
+                        if attached {
+                            self.led_pattern = self.blinky_cursor;
+                            if let Some(config) = self.global_config.as_ref() {
+                                config.lock().unwrap().set_led_pattern(self.blinky_cursor);
+                            }
+                            if let Err(e) = crate::storage::set_blinky_choice(
+                                &self.pddb.borrow(), self.blinky_cursor,
+                            ) {
+                                log::warn!("could not persist LED pattern: {:?}", e);
+                            }
+                        } else {
+                            log::info!("no badge carrier attached; LED pattern not applied");
+                        }
+                    }
+                    _ => {}
+                }
+                self.redraw();
+                None
             }
             VaultMode::Idle => match k {
                 // LEFT - show the default bookmark as a QR, press again to dismiss.

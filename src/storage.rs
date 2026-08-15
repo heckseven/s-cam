@@ -1249,3 +1249,92 @@ fn read_passkey_name(pddb: &pddb::Pddb, key: &str) -> Option<String> {
 pub(crate) fn passkey_delete(pddb: &pddb::Pddb, key: &str) -> Result<(), std::io::Error> {
     pddb.delete_key(crate::vault_api::U2F_APP_DICT, key, None)
 }
+
+// ---- PHOTOS and standby images ----
+//
+// A captured photo is the 128x128 thresholded framebuffer, 2048 bytes, bit-identical to the
+// badge's compiled-in bitmaps. That means a photo can be rendered through the existing bitmap
+// path and can be chosen as the standby image without any conversion.
+
+pub(crate) const VAULT_PHOTOS_DICT: &str = "vault.photos";
+pub(crate) const SETTING_STANDBY: &str = "standby_image";
+pub(crate) const SETTING_BLINKY: &str = "blinky_pattern";
+/// Cap chosen to bound the browsing UI, not storage: 27 photos is ~1.3% of the 4 MiB PDDB.
+pub(crate) const PHOTO_CAP: usize = 27;
+pub(crate) const PHOTO_BYTES: usize = 2048;
+
+pub(crate) fn photo_list(pddb: &pddb::Pddb) -> Vec<String> {
+    let mut keys = pddb.list_keys(VAULT_PHOTOS_DICT, None).unwrap_or_default();
+    keys.sort();
+    keys
+}
+
+/// Store a capture. Returns None when the cap is reached, so the caller can tell the user
+/// rather than silently discarding the shot.
+pub(crate) fn photo_store(pddb: &pddb::Pddb, data: &[u32; 512]) -> Option<String> {
+    let existing = photo_list(pddb);
+    if existing.len() >= PHOTO_CAP {
+        log::info!("photo cap of {} reached", PHOTO_CAP);
+        return None;
+    }
+    // monotonic key so ordering is stable and a delete cannot cause a collision
+    let next = existing
+        .iter()
+        .filter_map(|k| k.strip_prefix("photo_").and_then(|n| n.parse::<u32>().ok()))
+        .max()
+        .map(|n| n + 1)
+        .unwrap_or(0);
+    let key = format!("photo_{:04}", next);
+    let bytes: &[u8] = bytemuck::cast_slice(data);
+    let mut k = pddb
+        .get(VAULT_PHOTOS_DICT, &key, None, true, true, Some(PHOTO_BYTES), None::<fn()>)
+        .ok()?;
+    use std::io::Write;
+    k.write_all(bytes).ok()?;
+    Some(key)
+}
+
+pub(crate) fn photo_get(pddb: &pddb::Pddb, key: &str) -> Option<[u32; 512]> {
+    let mut buf = [0u8; PHOTO_BYTES];
+    let mut k = pddb
+        .get(VAULT_PHOTOS_DICT, key, None, false, false, Some(PHOTO_BYTES), None::<fn()>)
+        .ok()?;
+    use std::io::Read;
+    if k.read(&mut buf).ok()? != PHOTO_BYTES {
+        return None;
+    }
+    let words: &[u32] = bytemuck::cast_slice(&buf);
+    words.try_into().ok()
+}
+
+pub(crate) fn photo_delete(pddb: &pddb::Pddb, key: &str) -> Result<(), std::io::Error> {
+    pddb.delete_key(VAULT_PHOTOS_DICT, key, None)
+}
+
+fn set_usize(pddb: &pddb::Pddb, key: &str, v: usize) -> Result<(), std::io::Error> {
+    let mut k = pddb.get(VAULT_SETTINGS_DICT, key, None, true, true, Some(8), None::<fn()>)?;
+    use std::io::Write;
+    k.write_all(&(v as u32).to_le_bytes())?;
+    Ok(())
+}
+
+fn get_usize(pddb: &pddb::Pddb, key: &str) -> Option<usize> {
+    let mut buf = [0u8; 4];
+    let mut k = pddb.get(VAULT_SETTINGS_DICT, key, None, false, false, Some(8), None::<fn()>).ok()?;
+    use std::io::Read;
+    if k.read(&mut buf).ok()? != 4 { return None; }
+    Some(u32::from_le_bytes(buf) as usize)
+}
+
+pub(crate) fn set_standby_choice(pddb: &pddb::Pddb, v: usize) -> Result<(), std::io::Error> {
+    set_usize(pddb, SETTING_STANDBY, v)
+}
+pub(crate) fn standby_choice(pddb: &pddb::Pddb) -> usize {
+    get_usize(pddb, SETTING_STANDBY).unwrap_or(0)
+}
+pub(crate) fn set_blinky_choice(pddb: &pddb::Pddb, v: usize) -> Result<(), std::io::Error> {
+    set_usize(pddb, SETTING_BLINKY, v)
+}
+pub(crate) fn blinky_choice(pddb: &pddb::Pddb) -> usize {
+    get_usize(pddb, SETTING_BLINKY).unwrap_or(0)
+}

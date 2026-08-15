@@ -205,6 +205,18 @@ fn main() -> ! {
 
     log::info!("initial mode: {:?}", *mode.lock().unwrap());
 
+    // restore persisted S-CAM settings before the first draw, so the badge comes up looking
+    // the way the user left it rather than snapping to it a moment later
+    {
+        let p = pddb::Pddb::new();
+        vault_ui.load_photos();
+        let choice = crate::storage::standby_choice(&p);
+        vault_ui.apply_standby_choice(choice);
+        let blinky = crate::storage::blinky_choice(&p);
+        if blinky != 0 {
+            global_config.lock().unwrap().set_led_pattern(blinky);
+        }
+    }
     let mut image_buf = [0u8; 2048];
     let mut key = pddb
         .get(DC34_DICT, DC34_IMAGE, None, true, true, Some(2048), None::<fn()>)
@@ -1143,16 +1155,19 @@ fn main() -> ! {
                 vault_ui.redraw();
             }
             Some(VaultOp::ListPasskeys) => {
+                vault_ui.load_passkeys();
                 *mode.lock().unwrap() = VaultMode::Passkeys;
                 animate.store(false, Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::ListPhotos) => {
+                vault_ui.load_photos();
                 *mode.lock().unwrap() = VaultMode::PhotoList;
                 animate.store(false, Ordering::SeqCst);
                 vault_ui.redraw();
             }
             Some(VaultOp::SettingsBling) => {
+                vault_ui.load_photos(); // photos are selectable as standby images
                 *mode.lock().unwrap() = VaultMode::SettingsBling;
                 animate.store(false, Ordering::SeqCst);
                 vault_ui.redraw();
