@@ -37,12 +37,17 @@ done
 # can end with the badge in an unknown state. Note we deliberately do NOT attempt
 # a post-write read-back: the BAOCHIP vdisk is virtual and reads back empty, so a
 # checksum after dd is satisfied by page cache and proves nothing.
+# A queue ending in the rollback is right for a bisection ladder - you never end a session
+# with a dead badge. It is WRONG for deploying a single build, because it guarantees the
+# rollback lands last and overwrites what you just flashed. That mistake has been made.
+#
+# So: the rollback is flashed only if the queue reaches it, and a queue of one build never
+# does. Warn rather than require, and never advance to a rollback without asking.
 last=$(basename "${BUILDS[-1]}")
 if ! grep -qi 'rollback\|known-good' <<<"$last" && [ ! -f "${BUILDS[-1]}/ROLLBACK" ]; then
-  echo "  WARNING: last queue entry '$last' is not marked as a rollback."
-  echo "  End every queue with the known-good triple (name it *rollback* or add a ROLLBACK marker file)"
-  echo "  so a failed session never leaves the badge unbootable."
-  fail=1
+  echo "  NOTE: this queue does not end with a rollback. That is correct for deploying a"
+  echo "        single build. For a bisection ladder, add the known-good triple last."
+  echo
 fi
 [ "$fail" -eq 0 ] || { echo "preflight failed - fix before starting a session" >&2; exit 1; }
 echo
@@ -89,6 +94,15 @@ for b in "${BUILDS[@]}"; do
   echo "  $label"
   [ -f "$b/EXPECT" ] && { echo "  expect:"; sed 's/^/    /' "$b/EXPECT"; }
   echo
+  if grep -qi 'rollback\|known-good' <<<"$name" || [ -f "$b/ROLLBACK" ]; then
+    if [ "${FLASH_ROLLBACK:-0}" != "1" ]; then
+      echo "  This entry is the ROLLBACK. Not flashing it: the previous build would be"
+      echo "  overwritten and you would lose what you just tested."
+      echo "  If you actually want to roll back, re-run with FLASH_ROLLBACK=1."
+      echo "$name: SKIPPED (rollback withheld)" >> "$LOG"
+      break
+    fi
+  fi
   echo "  >>> hold any button and plug the badge in (waiting up to 30 min)..."
   dev=$(wait_for_badge) || { echo "  badge never appeared - stopping"; echo "$name: ABORTED (no badge)" >> "$LOG"; exit 1; }
   echo "  found $dev"; sleep 2
