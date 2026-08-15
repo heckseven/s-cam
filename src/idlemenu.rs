@@ -12,16 +12,16 @@ pub fn create_submenu(vault_conn: xous::CID, actions_conn: xous::CID, menu_mgr: 
 
     // (label, opcode, connection)
     let entries: [(&str, u32, xous::CID); 8] = [
-        ("PASSWORDS",  VaultOp::ListPasswords.to_u32().unwrap(),   vault_conn),
-        ("2FA DIGITS", VaultOp::List2faDigits.to_u32().unwrap(),   vault_conn),
-        ("PASSKEYS",   VaultOp::ListPasskeys.to_u32().unwrap(),    vault_conn),
-        ("BOOKMARKS",  VaultOp::ListBookmarks.to_u32().unwrap(),   vault_conn),
-        ("PHOTOS",     VaultOp::ListPhotos.to_u32().unwrap(),      vault_conn),
-        ("SETTINGS",   VaultOp::SettingsBling.to_u32().unwrap(),   vault_conn),
-        ("ABOUT",      VaultOp::ShowAbout.to_u32().unwrap(),       vault_conn),
+        ("passwords",  VaultOp::ListPasswords.to_u32().unwrap(),   vault_conn),
+        ("2fa digits", VaultOp::List2faDigits.to_u32().unwrap(),   vault_conn),
+        ("passkeys",   VaultOp::ListPasskeys.to_u32().unwrap(),    vault_conn),
+        ("bookmarks",  VaultOp::ListBookmarks.to_u32().unwrap(),   vault_conn),
+        ("photos",     VaultOp::ListPhotos.to_u32().unwrap(),      vault_conn),
+        ("settings",   VaultOp::SettingsBling.to_u32().unwrap(),   vault_conn),
+        ("about",      VaultOp::ShowAbout.to_u32().unwrap(),       vault_conn),
         // EXIT closes the menu and returns to standby. It maps to MenuDone, not PowerOff -
         // "screen off" lives under settings and two shutdown-sounding paths would confuse.
-        ("EXIT",       VaultOp::MenuDone.to_u32().unwrap(),        vault_conn),
+        ("exit",       VaultOp::MenuDone.to_u32().unwrap(),        vault_conn),
     ];
 
     for (name, opcode, conn) in entries {
