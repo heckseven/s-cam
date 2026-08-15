@@ -1198,3 +1198,54 @@ pub(crate) fn default_bookmark_url(pddb: &pddb::Pddb) -> Option<String> {
     // stored form is label\nurl; fall back to the whole record if there is no newline
     Some(raw.split('\n').last().unwrap_or(raw).trim().to_string())
 }
+
+// ---- PASSKEYS: FIDO2 / U2F credential listing ----
+//
+// These credentials were stored but had no screen: the badge acted as a security key without
+// ever showing what it held. That invisible third credential type is what made the old menu
+// confusing, since passwords and TOTP each had a screen and this did not.
+//
+// Records live in `fido.u2fapps`, keyed by hex app id, with a serialised AppInfo body.
+
+
+/// One entry for the PASSKEYS screen.
+pub(crate) struct Passkey {
+    /// PDDB key - the hex app id. Needed to delete the record.
+    pub key: String,
+    /// Human-readable site name, falling back to a short form of the id.
+    pub name: String,
+}
+
+pub(crate) fn passkey_list(pddb: &pddb::Pddb) -> Vec<Passkey> {
+    let keys = match pddb.list_keys(crate::vault_api::U2F_APP_DICT, None) {
+        Ok(k) => k,
+        Err(e) => {
+            log::warn!("passkey_list: list_keys failed: {:?}", e);
+            return Vec::new();
+        }
+    };
+    let mut out = Vec::new();
+    for key in keys {
+        let name = read_passkey_name(pddb, &key)
+            // an unnamed credential still deserves a stable label rather than a blank row
+            .unwrap_or_else(|| format!("({}…)", &key[..key.len().min(8)]));
+        out.push(Passkey { key, name });
+    }
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out
+}
+
+fn read_passkey_name(pddb: &pddb::Pddb, key: &str) -> Option<String> {
+    let mut k = pddb
+        .get(crate::vault_api::U2F_APP_DICT, key, None, false, false, None, None::<fn()>)
+        .ok()?;
+    let mut buf = Vec::<u8>::new();
+    use std::io::Read;
+    k.read_to_end(&mut buf).ok()?;
+    let info = crate::vault_api::deserialize_app_info(buf)?;
+    if info.name.trim().is_empty() { None } else { Some(info.name) }
+}
+
+pub(crate) fn passkey_delete(pddb: &pddb::Pddb, key: &str) -> Result<(), std::io::Error> {
+    pddb.delete_key(crate::vault_api::U2F_APP_DICT, key, None)
+}

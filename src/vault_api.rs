@@ -14,6 +14,10 @@ pub const COMMAND_RESET_SESSION: u8 = 0x74;
 pub const VAULT_PASSWORD_DICT: &'static str = "vault.passwords";
 pub const VAULT_TOTP_DICT: &'static str = "vault.totp";
 pub const VAULT_BOOKMARKS_DICT: &'static str = "vault.bookmarks";
+/// FIDO2 / U2F registrations, surfaced to the user as PASSKEYS.
+/// Declared here because this module is pulled into both the lib and bin scopes, which is
+/// the only place `env::xous` and `storage` can share a definition.
+pub const U2F_APP_DICT: &'static str = "fido.u2fapps";
 pub const VAULT_BOOKMARKS_COUNTER_KEY: &'static str = "__counter__";
 /// contains the list of usernames
 pub const VAULT_CONFIG_USERNAMES: &'static str = "vault.config/usernames";

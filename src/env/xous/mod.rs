@@ -26,7 +26,7 @@ use crate::env::xous::storage::XousUpgradeStorage;
 use crate::{AppInfo, basis_change, deserialize_app_info, serialize_app_info};
 use crate::{KEEPALIVE_DELAY_MS, VaultOp};
 
-pub const U2F_APP_DICT: &'static str = "fido.u2fapps";
+pub use crate::vault_api::U2F_APP_DICT;
 const KEEPALIVE_DELAY: Duration = Duration::from_millis(KEEPALIVE_DELAY_MS);
 mod storage;
 
