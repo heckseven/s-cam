@@ -60,6 +60,52 @@ duplication was plausible. It did not happen.
 The bitmap line alone is close to twice the usable headroom, which is why cutting tour and
 factory is the leading option and FIDO2 stays untouched.
 
+## MEASURED: legacy cut (task 1.4)
+
+Removed `VaultMode::{Tour, TokenTour, FactoryTest, StandAloneTest, DefconHelp, TokenHelp,
+About}`, their `ux.rs` arms, their `config.rs` boot routing, and the 27 `tour_*`/`factory_*`
+bitmaps. Built and measured on branch `measure/legacy-cut`. **Gene exchange was left in.**
+
+```
+baseline    0x129b54 = 298 pages,  9 pages headroom
+legacy cut  0x113144 = 276 pages, 31 pages headroom
+reclaimed   92,686 bytes = 22.6 pages
+```
+
+| section | base | cut | delta |
+|---|---:|---:|---:|
+| `.text` | 736,072 | 714,594 | −21,478 |
+| `.rodata` | 179,912 | 112,052 | **−67,860** |
+| `.gcc_except_table` | 109,160 | 107,564 | −1,596 |
+| `.eh_frame` | 95,768 | 94,360 | −1,408 |
+| `.eh_frame_hdr` | 23,356 | 23,012 | −344 |
+| **total** | 1,145,613 | 1,052,927 | **−92,686** |
+
+`.rodata` gives up more than the 55,296 bytes of bitmaps alone — the balance is string
+literals and tables belonging to the removed screens.
+
+**Usable headroom goes from 7 pages to 29.** That is the number that decides Gate A, and it
+strongly suggests neither of the two damaging levers is needed: FIDO2 can stay, and unwind
+metadata can stay.
+
+### LED mutation survives — verified, not assumed
+
+The one way this cut could silently break the sole protected feature was if local light-gene
+storage depended on the cipher. It does not:
+
+- `cipher()` has exactly two call sites, `main.rs:708` and `main.rs:762`, both gene
+  *exchange* encrypt/decrypt.
+- `save_light_gene()` / `get_light_gene()` (`dc34-api/src/lib.rs:424,445`), `mutate()`
+  (`:537`) and `render_gene()` (`config.rs:374`) never touch `cipher()` or `k0`. The local
+  gene is stored in plaintext.
+
+### Caveat
+
+This measurement routes the removed boot states to `Idle` so it compiles. That is **not** a
+design — `config.rs:136-142` still derives `AttachState::FactoryNew` from `k0`, and cutting
+`FactoryTest` leaves the production arm without a target. The real routing is a state-machine
+decision, not an asset removal.
+
 ## Method
 
 ```
