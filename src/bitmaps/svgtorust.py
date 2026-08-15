@@ -5,6 +5,16 @@ s-cam.svg is 92x92 with every path coordinate on a 4px grid, i.e. pixel art at 2
 makes rasterising unnecessary and undesirable: sampling the grid directly reproduces the
 artwork exactly, where a rasteriser would antialias edges that must stay hard on a 1bpp panel.
 
+The panel is an EastRising ER-OLED1.12-1W: a 1.12" 128x128 white OLED on an SH1107
+controller, per ux.kicad_sch in bunnie/dc34-core-hw. 128x128 is the full active area, not a
+window onto something larger - verified on hardware by drawing a 1px border on the outermost
+framebuffer pixels and confirming four clean edges. The dark surround is the module's glass,
+which is not addressable, and the active area is not centred within it. So an image centred
+in pixels can still look slightly off-centre in the module, and no software change fixes that.
+
+At 4x the 23x23 art lands as 92x92 with exact 18px margins. 5x gives 115x115 with 6/7
+margins - larger, but one pixel off, since 13 leftover pixels cannot split evenly.
+
 Output matches pngtorust.py byte for byte in convention:
   - the image is flipped left-right
   - bits are inverted: 1 means black, 0 means white
