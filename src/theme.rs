@@ -152,6 +152,21 @@ fn pad(inner: Rectangle, limit: Rectangle) -> Rectangle {
     )
 }
 
+/// Cut `text` to `cols` monospace cells, ending with an ellipsis when it does not fit.
+///
+/// The typesetter word-wraps, and a URL is one long unbreakable word: it cannot fit on the
+/// line, so it moves to a second line that a one-row box clips, leaving the row showing its
+/// number and nothing else. Cutting to the column count here means there is never a wrap to
+/// clip. Counts chars, not bytes, so a multi-byte character cannot split.
+fn fit(text: &str, cols: usize) -> String {
+    if text.chars().count() <= cols {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(cols.saturating_sub(1)).collect();
+    out.push('\u{2026}');
+    out
+}
+
 /// Draw a scrolling list with a cursor, between the heading and the button bar.
 ///
 /// Every S-CAM list screen — passkeys, photos, images, patterns — is this same shape, so
@@ -222,9 +237,15 @@ pub fn list(
         // Every row is white-on-black. Focus is the brackets, not an inverted slab: the
         // inverted row was the only black-on-white text on the panel and read as a blank bar.
         tv.invert = true;
+        // one 7px cell per character, less the margin either side
+        let cols = ((screen.x - gutter - tv.margin.x * 2) / 7).max(1) as usize;
         match style {
-            ListStyle::Numbered => write!(tv, "{}. {}", index + 1, item).ok(),
-            _ => write!(tv, "{}", item).ok(),
+            ListStyle::Numbered => {
+                let prefix = format!("{}. ", index + 1);
+                let room = cols.saturating_sub(prefix.chars().count());
+                write!(tv, "{}{}", prefix, fit(item, room)).ok()
+            }
+            _ => write!(tv, "{}", fit(item, cols)).ok(),
         };
         gfx.draw_textview(&mut tv).ok();
 

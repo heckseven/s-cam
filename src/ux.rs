@@ -988,20 +988,23 @@ impl VaultUi {
                 self.gfx.flush().ok();
             }
             VaultMode::PhotoList => {
-                self.clear_area();
-                crate::theme::heading(&self.gfx, self.screen_size, "PHOTOS");
-                crate::theme::list(
-                    &self.gfx, self.screen_size, self.item_height,
-                    &self.photo_cache, self.photo_cursor, "NO PHOTOS YET",
-                    crate::theme::ListStyle::Numbered,
-                );
-                let has = !self.photo_cache.is_empty();
-                crate::theme::button_labels(
-                    &self.gfx, self.screen_size,
-                    Some("back"),
-                    if has { Some("del") } else { None },
-                    if has { Some("view") } else { None },
-                );
+                if self.photo_cache.is_empty() {
+                    self.clear_area();
+                    crate::theme::heading(&self.gfx, self.screen_size, "PHOTOS");
+                    crate::theme::list(
+                        &self.gfx, self.screen_size, self.item_height,
+                        &self.photo_cache, self.photo_cursor, "NO PHOTOS YET",
+                        crate::theme::ListStyle::Numbered,
+                    );
+                    crate::theme::button_labels(
+                        &self.gfx, self.screen_size, Some("back"), None, None,
+                    );
+                } else {
+                    self.draw_photo_grid();
+                    crate::theme::button_labels(
+                        &self.gfx, self.screen_size, Some("back"), Some("set"), Some("view"),
+                    );
+                }
                 self.gfx.flush().ok();
             }
             VaultMode::PhotoPreview | VaultMode::PhotoView => {
@@ -1024,7 +1027,7 @@ impl VaultUi {
                     );
                 } else {
                     crate::theme::button_labels(
-                        &self.gfx, self.screen_size, Some("back"), None, None,
+                        &self.gfx, self.screen_size, Some("back"), Some("set"), Some("del"),
                     );
                 }
                 self.gfx.flush().ok();
@@ -1032,9 +1035,10 @@ impl VaultUi {
             VaultMode::SettingsBling => {
                 self.clear_area();
                 crate::theme::heading(&self.gfx, self.screen_size, "BLING");
-                let mut rows: Vec<String> =
+                // Built-ins only. A photo is set from the photos screen, where you can see
+                // the picture you are choosing rather than a filename.
+                let rows: Vec<String> =
                     BUILTIN_IMAGES.iter().map(|s| s.to_string()).collect();
-                rows.extend(self.photo_cache.iter().cloned());
                 crate::theme::list(
                     &self.gfx, self.screen_size, self.item_height,
                     &rows, self.bling_cursor, "NO IMAGES",
@@ -1570,6 +1574,72 @@ impl VaultUi {
         }
     }
 
+    /// Draw the photos as a 2x2 grid of 56px thumbnails.
+    ///
+    /// Composed into one 128x128 frame and sent as a single blit rather than four: the panel
+    /// takes whole frames, and four separate sends would each redraw the display.
+    ///
+    /// No heading on this screen. Two rows of 56 plus the button bar is 126 of the 128 rows
+    /// available; a heading would cost a whole row of thumbnails.
+    fn draw_photo_grid(&mut self) {
+        const CELL: usize = 56;
+        const COLS: usize = 2;
+        const ROWS: usize = 2;
+        const X0: usize = (128 - CELL * COLS) / 2;
+
+        let page = self.photo_cursor / (COLS * ROWS);
+        let first = page * COLS * ROWS;
+
+        let mut frame = [0u32; 512];
+        for slot in 0..COLS * ROWS {
+            let Some(key) = self.photo_cache.get(first + slot) else { break };
+            let Some(src) = crate::storage::photo_get(&self.pddb.borrow(), key) else { continue };
+            let ox = X0 + (slot % COLS) * CELL;
+            let oy = (slot / COLS) * CELL;
+            // nearest-neighbour: one source pixel per destination pixel, no averaging, which
+            // suits an image that is already 1bpp - there is nothing to average.
+            for dy in 0..CELL {
+                let sy = dy * 128 / CELL;
+                for dx in 0..CELL {
+                    let sx = dx * 128 / CELL;
+                    let si = sx + sy * 128;
+                    if (src[si >> 5] >> (si & 31)) & 1 != 0 {
+                        let di = (ox + dx) + (oy + dy) * 128;
+                        frame[di >> 5] |= 1 << (di & 31);
+                    }
+                }
+            }
+        }
+        self.gfx.bitmap_diffusion(&frame, None, None).ok();
+
+        // bracket the focused cell, same focus mark as every list
+        let slot = self.photo_cursor - first;
+        let cx = (X0 + (slot % COLS) * CELL) as isize;
+        let cy = ((slot / COLS) * CELL) as isize;
+        ux_api::widgets::scroll::draw_corner_brackets(
+            &self.gfx,
+            Rectangle::new(
+                Point::new(cx, cy),
+                Point::new(cx + CELL as isize - 1, cy + CELL as isize - 1),
+            ),
+        );
+    }
+
+    /// Make the photo under the cursor the standby image.
+    ///
+    /// Standby choices are indexed past the built-ins, so photo N is BUILTIN_IMAGES.len() + N.
+    fn set_photo_as_bling(&mut self) {
+        if self.photo_cache.get(self.photo_cursor).is_none() {
+            return;
+        }
+        let choice = BUILTIN_IMAGES.len() + self.photo_cursor;
+        if let Err(e) = crate::storage::set_standby_choice(&self.pddb.borrow(), choice) {
+            log::warn!("could not persist standby image: {:?}", e);
+        }
+        self.apply_standby_choice(choice);
+        self.modals.show_notification("SET AS BLING", None).ok();
+    }
+
     /// Load the photo under the photos-list cursor for full-screen viewing.
     fn show_selected_photo(&mut self) {
         if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
@@ -1732,16 +1802,7 @@ impl VaultUi {
                         self.show_selected_photo();
                         return None;
                     }
-                    '🔥' => {
-                        if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
-                            if let Err(e) =
-                                crate::storage::photo_delete(&self.pddb.borrow(), &key)
-                            {
-                                log::warn!("could not delete photo {}: {:?}", key, e);
-                            }
-                            self.load_photos();
-                        }
-                    }
+                    '🔥' => self.set_photo_as_bling(),
                     _ => {}
                 }
                 if leaving {
@@ -1789,6 +1850,18 @@ impl VaultUi {
                             step_cursor(self.photo_cursor, self.photo_cache.len(), k == '↑');
                         self.show_selected_photo();
                     }
+                    '🔥' => self.set_photo_as_bling(),
+                    '→' => {
+                        if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
+                            if let Err(e) = crate::storage::photo_delete(&self.pddb.borrow(), &key)
+                            {
+                                log::warn!("could not delete photo {}: {:?}", key, e);
+                            }
+                            self.load_photos();
+                            self.pending_photo = None;
+                            *self.mode.lock().unwrap() = VaultMode::PhotoList;
+                        }
+                    }
                     _ => {}
                 }
                 self.redraw();
@@ -1796,7 +1869,7 @@ impl VaultUi {
             }
             VaultMode::SettingsBling => {
                 let mut leaving = false;
-                let count = BUILTIN_IMAGES.len() + self.photo_cache.len();
+                let count = BUILTIN_IMAGES.len();
                 match k {
                     '↑' | '↓' => self.bling_cursor = step_cursor(self.bling_cursor, count, k == '↑'),
                     '←' => leaving = true,
@@ -1854,7 +1927,10 @@ impl VaultUi {
                 // LEFT opens the menu. It used to show the "default" bookmark as a QR, but
                 // nothing in the UI ever set a default, so it was a button that did nothing on
                 // most badges. The QR collection reaches every saved code.
-                '←' => Some('∴'),
+                // LEFT opens the menu at the top. Returned as itself rather than the menu
+                // key because a screen's BACK returns that, and BACK has to keep its
+                // place in the list while opening from standby starts at the first item.
+                '←' => Some(k),
                 // MIDDLE - open the camera. Routed through the main loop because
                 // ActionOp::AcquireQr is a blocking scalar and the key path cannot send one.
                 '🔥' => Some(k),

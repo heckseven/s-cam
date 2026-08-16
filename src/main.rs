@@ -523,6 +523,16 @@ fn main() -> ! {
                                 _ => idle_menu_mgr.redraw(),
                             }
                         }
+                        // LEFT on the standby screen opens the menu at the first item.
+                        '←' => {
+                            animate.store(false, Ordering::SeqCst);
+                            active_menu = ActiveMenu::Root;
+                            menu_origin = ActiveMenu::Root;
+                            idle_menu_mgr.set_index(0);
+                            login_menu_mgr.set_index(0);
+                            settings_menu_mgr.set_index(0);
+                            idle_menu_mgr.redraw();
+                        }
                         '🔥' => {
                             skip_one_key = true;
                             run_camera_scan(
