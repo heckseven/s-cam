@@ -988,24 +988,23 @@ impl VaultUi {
                 self.gfx.flush().ok();
             }
             VaultMode::PhotoList => {
-                // A text list, not a thumbnail grid. The grid had to compose a whole frame and
-                // blit it, and the only blit path that is safe here animates the full screen -
-                // so every page turn wiped the button labels and flashed. Full screen on select
-                // shows the picture properly anyway.
-                self.clear_area();
-                crate::theme::heading(&self.gfx, self.screen_size, "PHOTOS");
-                crate::theme::list(
-                    &self.gfx, self.screen_size, self.item_height,
-                    &self.photo_cache, self.photo_cursor, "NO PHOTOS YET",
-                    crate::theme::ListStyle::Numbered,
-                );
-                let has = !self.photo_cache.is_empty();
-                crate::theme::button_labels(
-                    &self.gfx, self.screen_size,
-                    Some("back"),
-                    if has { Some("set") } else { None },
-                    if has { Some("view") } else { None },
-                );
+                if self.photo_cache.is_empty() {
+                    self.clear_area();
+                    crate::theme::heading(&self.gfx, self.screen_size, "PHOTOS");
+                    crate::theme::list(
+                        &self.gfx, self.screen_size, self.item_height,
+                        &self.photo_cache, self.photo_cursor, "NO PHOTOS YET",
+                        crate::theme::ListStyle::Numbered,
+                    );
+                    crate::theme::button_labels(
+                        &self.gfx, self.screen_size, Some("back"), None, None,
+                    );
+                } else {
+                    self.draw_photo_grid();
+                    crate::theme::button_labels(
+                        &self.gfx, self.screen_size, Some("back"), Some("set"), Some("view"),
+                    );
+                }
                 self.gfx.flush().ok();
             }
             VaultMode::PhotoPreview | VaultMode::PhotoView => {
@@ -1573,6 +1572,66 @@ impl VaultUi {
                     .ok();
             }
         }
+    }
+
+    /// Draw the photos as a 2x2 grid of 56px thumbnails.
+    ///
+    /// Composed into one frame and sent with `bitmap`, not `bitmap_diffusion`. Diffusion
+    /// drives the panel itself over about ten animation steps, so it took over the whole
+    /// display - button labels included - and flashed on every focus change. `bitmap` writes
+    /// the back buffer and the panel updates once, on the flush at the end of the redraw,
+    /// like every other screen.
+    ///
+    /// The frame starts filled with ones: a zero-filled frame renders WHITE on this panel, so
+    /// zeroing it put every thumbnail on a white background. Source bits are copied verbatim,
+    /// set and cleared, rather than only ever set.
+    ///
+    /// No heading here. Two rows of 56 plus the button bar is 126 of the 128 rows available,
+    /// so a heading would cost a whole row of thumbnails.
+    fn draw_photo_grid(&mut self) {
+        const CELL: usize = 56;
+        const COLS: usize = 2;
+        const ROWS: usize = 2;
+        const X0: usize = (128 - CELL * COLS) / 2;
+
+        let page = self.photo_cursor / (COLS * ROWS);
+        let first = page * COLS * ROWS;
+
+        let mut frame = [u32::MAX; 512];
+        for slot in 0..COLS * ROWS {
+            let Some(key) = self.photo_cache.get(first + slot) else { break };
+            let Some(src) = crate::storage::photo_get(&self.pddb.borrow(), key) else { continue };
+            let ox = X0 + (slot % COLS) * CELL;
+            let oy = (slot / COLS) * CELL;
+            // nearest neighbour: one source pixel per destination pixel. There is nothing to
+            // average in a 1bpp image.
+            for dy in 0..CELL {
+                let sy = dy * 128 / CELL;
+                for dx in 0..CELL {
+                    let sx = dx * 128 / CELL;
+                    let si = sx + sy * 128;
+                    let di = (ox + dx) + (oy + dy) * 128;
+                    if (src[si >> 5] >> (si & 31)) & 1 != 0 {
+                        frame[di >> 5] |= 1 << (di & 31);
+                    } else {
+                        frame[di >> 5] &= !(1 << (di & 31));
+                    }
+                }
+            }
+        }
+        self.gfx.bitmap(&frame, None, None).ok();
+
+        // same focus mark as every list
+        let slot = self.photo_cursor - first;
+        let cx = (X0 + (slot % COLS) * CELL) as isize;
+        let cy = ((slot / COLS) * CELL) as isize;
+        ux_api::widgets::scroll::draw_corner_brackets(
+            &self.gfx,
+            Rectangle::new(
+                Point::new(cx, cy),
+                Point::new(cx + CELL as isize - 1, cy + CELL as isize - 1),
+            ),
+        );
     }
 
     /// Make the photo under the cursor the standby image.
