@@ -97,10 +97,31 @@ def from_art(text):
     return rows
 
 
+def strip_logs(text):
+    """Drop the badge's log lines.
+
+    The export shares the CDC port with the log stream, so a capture normally has
+    "INFO:module: ..." lines mixed in. They are not part of the picture and would
+    otherwise be read as corruption.
+    """
+    keep, dropped = [], 0
+    for line in text.splitlines():
+        if line.startswith(("INFO:", "WARN:", "ERR:", "ERROR:", "DEBUG:", "TRACE:")):
+            dropped += 1
+            continue
+        keep.append(line)
+    if dropped:
+        print(f"  ignored {dropped} log line(s) sharing the port")
+    return "\n".join(keep)
+
+
 def main():
     text = open(sys.argv[1]).read() if len(sys.argv) > 1 else sys.stdin.read()
     if not text.strip():
         sys.exit("nothing to read")
+    text = strip_logs(text)
+    if not text.strip():
+        sys.exit("only log lines were captured - the export itself did not arrive")
 
     # Decide by shape, not by how clean the characters are: a corrupted base64 export is full
     # of characters base64 cannot contain, and judging by that alone sent it down the art path
