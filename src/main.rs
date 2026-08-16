@@ -483,8 +483,20 @@ fn main() -> ! {
                             animate.store(false, Ordering::SeqCst);
                             // Reopen whichever menu this screen was reached from. A screen
                             // under "login deets" belongs to that submenu, not the top level.
-                            active_menu = if matches!(mode_now, VaultMode::Idle) {
-                                menu_origin
+                            //
+                            // Read the mode NOW, not from mode_now: leaving a screen sets it
+                            // to Idle and then asks for the menu, all inside the handle_key()
+                            // above, so mode_now still holds the screen we just left. Using it
+                            // sent every back-out to the legacy Token Menu, and because screen
+                            // handlers record where they were opened from, that then stuck.
+                            let mode_after = *mode.lock().unwrap();
+                            active_menu = if matches!(mode_after, VaultMode::Idle) {
+                                // never carry Vault forward as an origin
+                                match menu_origin {
+                                    ActiveMenu::Login => ActiveMenu::Login,
+                                    ActiveMenu::Settings => ActiveMenu::Settings,
+                                    _ => ActiveMenu::Root,
+                                }
                             } else {
                                 ActiveMenu::Vault
                             };
