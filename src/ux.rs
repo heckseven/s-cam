@@ -1710,6 +1710,35 @@ impl VaultUi {
         out
     }
 
+    /// Render the shown photo as ASCII art.
+    ///
+    /// One character per 1x2 block of pixels, so 128 columns by 64 rows. Terminal cells are
+    /// about twice as tall as they are wide, so that comes out roughly square; one character
+    /// per pixel would be twice as tall as it should be and twice as long to type.
+    ///
+    /// The four characters mark where the ink is within the cell: a high mark for the top
+    /// pixel, a low one for the bottom, a solid one for both.
+    fn ascii_art(bits: &[u32; 512]) -> String {
+        const W: usize = 128;
+        let mut out = String::with_capacity(W * 64 + 64);
+        for row in 0..64 {
+            for x in 0..W {
+                let top = x + (row * 2) * W;
+                let bot = x + (row * 2 + 1) * W;
+                let t = (bits[top >> 5] >> (top & 31)) & 1;
+                let b = (bits[bot >> 5] >> (bot & 31)) & 1;
+                out.push(match (t, b) {
+                    (0, 0) => ' ',
+                    (1, 0) => '"',
+                    (0, 1) => '.',
+                    _ => '#',
+                });
+            }
+            out.push('\n');
+        }
+        out
+    }
+
     /// Type the shown photo to the host as a data URI.
     ///
     /// The badge has no way to hand over a file: mass storage is the boot ROM's, not the
@@ -1718,7 +1747,7 @@ impl VaultUi {
     ///
     /// About 2800 characters, so it takes a while and goes wherever the host's focus is -
     /// hence the confirm, and the reminder to put the cursor somewhere first.
-    fn export_photo(&mut self) {
+    fn export_photo(&mut self, as_art: bool) {
         let Some(bits) = self.pending_photo else {
             self.modals.show_notification("NOTHING TO EXPORT", None).ok();
             return;
@@ -1726,7 +1755,11 @@ impl VaultUi {
         if !self.confirm("TYPE PHOTO TO HOST? FOCUS A TEXT FIELD FIRST") {
             return;
         }
-        let text = format!("data:image/bmp;base64,{}", Self::base64(&Self::photo_to_bmp(&bits)));
+        let text = if as_art {
+            Self::ascii_art(&bits)
+        } else {
+            format!("data:image/bmp;base64,{}", Self::base64(&Self::photo_to_bmp(&bits)))
+        };
         // Send in chunks: one call for 2800 characters would hold the USB server for the whole
         // transfer, and a partial failure would be invisible.
         for chunk in text.as_bytes().chunks(64) {
@@ -1748,7 +1781,8 @@ impl VaultUi {
         if from_grid {
             items.push("view");
         }
-        items.push("export");
+        items.push("export b64");
+        items.push("export ascii");
         items.push("delete");
         items.push("cancel");
         if self.modals.add_list(items).is_err() {
@@ -1760,12 +1794,12 @@ impl VaultUi {
         };
         match choice.as_str() {
             "view" => self.show_selected_photo(),
-            "export" => {
+            "export b64" | "export ascii" => {
                 // the grid has no photo loaded yet; the export needs the full-size bits
                 if from_grid {
                     self.show_selected_photo();
                 }
-                self.export_photo();
+                self.export_photo(choice == "export ascii");
             }
             "delete" => {
                 if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
