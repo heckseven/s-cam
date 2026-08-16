@@ -185,27 +185,31 @@ pub enum Repaint {
     FocusedRow,
 }
 
-/// Ticks a row stays still after it gains focus before the marquee starts. The redraw pump
-/// runs at 250ms, so this is about a second.
-pub const MARQUEE_DELAY: u32 = 4;
+/// How long a row stays still after it gains focus, before it starts scrolling.
+pub const MARQUEE_HOLD_MS: u64 = 1000;
 
-/// Return the slice of `text` to show this tick, scrolling if it does not fit.
+/// How long each character step takes once it is scrolling.
+const MARQUEE_STEP_MS: u64 = 250;
+
+/// Return the slice of `text` to show right now, scrolling if it does not fit.
 ///
-/// Text longer than `visible` cells is scrolled one character every two ticks, with a gap so
-/// the end and the beginning stay distinguishable when it wraps. `delay_ticks` holds the head
-/// still first, so a row can be read before it starts moving; the pump ticks every 250ms, so
-/// four is about a second. Text that already fits is returned unchanged rather than scrolled
-/// pointlessly.
-pub fn marquee(text: &str, quantum: u32, visible: usize, delay_ticks: u32) -> String {
+/// Driven by how long the row has actually held focus, not by a count of redraws. A redraw
+/// count made "a second" mean "however long four repaints happen to take", which drifts with
+/// whatever else the loop is doing; measuring the wall clock makes the hold exactly the hold.
+///
+/// Text longer than `visible` cells scrolls a character at a time, with a gap so the end and
+/// the beginning stay distinguishable when it wraps. Text that already fits is returned
+/// unchanged rather than scrolled pointlessly.
+pub fn marquee(text: &str, held_ms: u64, visible: usize, hold_ms: u64) -> String {
     let count = text.chars().count();
     if count <= visible {
         return text.to_string();
     }
-    if quantum < delay_ticks {
+    if held_ms < hold_ms {
         return text.chars().take(visible).collect();
     }
     let padded: Vec<char> = text.chars().chain("   ".chars()).collect();
-    let offset = ((quantum - delay_ticks) as usize / 2) % padded.len();
+    let offset = ((held_ms - hold_ms) / MARQUEE_STEP_MS) as usize % padded.len();
     padded.iter().cycle().skip(offset).take(visible).collect()
 }
 
@@ -224,7 +228,7 @@ pub fn list(
     cursor: usize,
     empty_msg: &str,
     style: ListStyle,
-    scroll: Option<u32>,
+    scroll: Option<u64>,
     repaint: Repaint,
 ) {
     use core::fmt::Write;
@@ -281,14 +285,23 @@ pub fn list(
         // same left margin as heading(), so a row's first character sits directly under the
         // heading's first character
         tv.margin = Point::new(1, 0);
-        // Truncate an over-long row rather than dropping it. Without this the typesetter
-        // aborts on overflow and the row renders as its number and nothing else.
-        tv.ellipsis = true;
+        // A scrolling list draws no ellipsis at all: the row is cut cleanly and the rest
+        // arrives by resting on it. The mark has to be turned off here as well as avoided in
+        // the text - the typesetter adds its own when the string overruns the box, which is
+        // where the remaining ellipsis was coming from after the truncation stopped adding
+        // one. Everywhere else keeps it, because there the cut really is the end of the road:
+        // without it the typesetter aborts on overflow and the row renders as its number and
+        // nothing else.
+        tv.ellipsis = scroll.is_none();
         // Every row is white-on-black. Focus is the brackets, not an inverted slab: the
         // inverted row was the only black-on-white text on the panel and read as a blank bar.
         tv.invert = true;
-        // one 7px cell per character, less the margin either side
-        let cols = ((screen.x - gutter - tv.margin.x * 2) / 7).max(1) as usize;
+        // Every glyph in this font is exactly 7px wide, so columns are just division. Hold
+        // back one column when nothing will mark an overrun: the box is measured by the
+        // graphics server, which counts the margins slightly differently, and a string that
+        // overruns with the ellipsis disabled is dropped entirely rather than clipped.
+        let usable = screen.x - gutter - tv.margin.x * 2;
+        let cols = ((usable / 7).max(1) as usize).saturating_sub(if tv.ellipsis { 0 } else { 1 }).max(1);
         match style {
             ListStyle::Numbered => {
                 let prefix = format!("{}. ", index + 1);
@@ -297,33 +310,17 @@ pub fn list(
                 // ellipsis - on a saved URL the distinguishing part is usually the tail.
                 let body = match scroll {
                     // The focused row shows what fits, then scrolls the whole thing.
-                    Some(q) if index == cursor => marquee(item, q, room, MARQUEE_DELAY),
+                    Some(held) if index == cursor => marquee(item, held, room, MARQUEE_HOLD_MS),
                     // Other rows in a scrolling list are cut without an ellipsis - the
                     // text is reachable by focusing the row, so the mark buys nothing.
                     Some(_) => clip(item, room),
                     None => fit(item, room),
                 };
-                if scroll.is_some() && index == cursor {
-                    log::info!(
-                        "DIAG row {}: screen.x={} cols={} room={} itemlen={} body={:?}",
-                        index, screen.x, cols, room, item.chars().count(), body
-                    );
-                }
                 write!(tv, "{}{}", prefix, body).ok()
             }
             _ => write!(tv, "{}", fit(item, cols)).ok(),
         };
         gfx.draw_textview(&mut tv).ok();
-        if scroll.is_some() && index == cursor {
-            // Requested width vs what the server actually laid out. If the laid-out box is
-            // narrower than the text asked for, the typesetter is doing the cutting and the
-            // 7px-per-column estimate above is too generous.
-            log::info!(
-                "DIAG laid out row {}: bounds={:?} (box was {}..{})",
-                index, tv.bounds_computed, gutter, screen.x
-            );
-        }
-
         if let ListStyle::Select { marked: Some(m) } = style {
             if m == index {
                 check_mark(gfx, Rectangle::new(Point::new(0, y), Point::new(gutter, y + row_h)));

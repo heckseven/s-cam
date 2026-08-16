@@ -569,8 +569,11 @@ pub struct VaultUi {
     bookmark_cache: Vec<(String, String, String)>,
     // Index of the currently highlighted bookmark in bookmark_cache
     bookmark_cursor: usize,
-    // Redraw ticks since the list cursor last moved, driving the focused row's marquee.
+    // Zero on the frame after the cursor or screen changed, which forces a full repaint.
     list_quantum: u32,
+    // When the focused row last changed. The marquee is timed from this rather than counted
+    // in redraws, so "held for a second" means a second.
+    list_focus_ms: u64,
 
     // adc for reading battery level
     adc: Adc,
@@ -730,6 +733,7 @@ impl VaultUi {
             bookmark_cache: Vec::new(),
             bookmark_cursor: 0,
             list_quantum: 0,
+            list_focus_ms: 0,
             modals: modals::Modals::new(xns).unwrap(),
             adc: Adc::new(),
             batt_polled: false,
@@ -748,6 +752,7 @@ impl VaultUi {
         self.bookmark_cache.clear();
         self.bookmark_cursor = 0;
         self.list_quantum = 0;
+        self.list_focus_ms = self.tt.elapsed_ms();
         let pddb = self.pddb.borrow();
         let keys = match pddb.list_keys(VAULT_BOOKMARKS_DICT, None) {
             Ok(k) => k,
@@ -1275,7 +1280,7 @@ impl VaultUi {
                             tv.margin = Point::new(0, 1);
                             tv.style = crate::theme::FONT;
                             tv.draw_border = false;
-                            write!(tv, "{}", crate::theme::marquee(&url, quantum, 18, 0)).ok();
+                            write!(tv, "{}", crate::theme::marquee(&url, quantum as u64 * 125, 18, 0)).ok();
                             self.gfx.draw_textview(&mut tv).ok();
                         }
                     }
@@ -1467,30 +1472,20 @@ impl VaultUi {
                 // photo grid unusable - so the furniture is drawn when the screen or the
                 // cursor changes, and after that only the moving row repaints itself.
                 let full = self.list_quantum == 0;
-                log::info!(
-                    "DIAG booklist: q={} cursor={} full={} rows={}",
-                    self.list_quantum, self.bookmark_cursor, full, self.bookmark_cache.len()
-                );
                 if full {
                     self.clear_area();
                     crate::theme::heading(&self.gfx, self.screen_size, "QR COLLECTION");
                 }
-                let rows: Vec<String> = self
-                    .bookmark_cache
-                    .iter()
-                    .map(|(_, display, label)| {
-                        if label.is_empty() {
-                            display.clone()
-                        } else {
-                            format!("{}: {}", label, display)
-                        }
-                    })
-                    .collect();
+                // Just the URL. A bookmark is only ever created by scanning a QR code, and
+                // save_bookmark stores an empty label every time - there is no path that sets
+                // one, so the "label: url" form this used to build never once ran.
+                let rows: Vec<String> =
+                    self.bookmark_cache.iter().map(|(_, url, _)| url.clone()).collect();
                 crate::theme::list(
                     &self.gfx, self.screen_size, self.item_height,
                     &rows, self.bookmark_cursor, "NO BOOKMARKS YET",
                     crate::theme::ListStyle::Numbered,
-                    Some(self.list_quantum),
+                    Some(self.tt.elapsed_ms().saturating_sub(self.list_focus_ms)),
                     if full { crate::theme::Repaint::All } else { crate::theme::Repaint::FocusedRow },
                 );
                 // drives the focused row's marquee; reset whenever the cursor or screen changes
@@ -2205,6 +2200,7 @@ impl VaultUi {
                             step_cursor(self.bookmark_cursor, self.bookmark_cache.len(), k == '↑');
                         // a newly focused row holds still before it starts scrolling
                         self.list_quantum = 0;
+                        self.list_focus_ms = self.tt.elapsed_ms();
                     }
                     '←' => {
                         // back to the menu this was opened from, not past it to standby
@@ -2247,6 +2243,7 @@ impl VaultUi {
                         *self.mode.lock().unwrap() = VaultMode::BookmarkList;
                         // coming back from another screen: repaint all of it, not one row
                         self.list_quantum = 0;
+                        self.list_focus_ms = self.tt.elapsed_ms();
                         self.redraw();
                     }
                     _ => {}
@@ -2290,6 +2287,7 @@ impl VaultUi {
                         *self.mode.lock().unwrap() = VaultMode::BookmarkList;
                         // coming back from another screen: repaint all of it, not one row
                         self.list_quantum = 0;
+                        self.list_focus_ms = self.tt.elapsed_ms();
                         self.load_bookmarks();
                     }
                     _ => {}

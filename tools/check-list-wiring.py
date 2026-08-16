@@ -68,12 +68,14 @@ def main():
                 f"belongs to the theme::list() call above it"
             )
 
-    # 3. a row-only repaint only makes sense alongside the tick that drives it
+    # 3. a row-only repaint only makes sense alongside the clock that drives it
     for line, text in lists:
-        if "Repaint::FocusedRow" in text and "list_quantum" not in text:
+        if "Repaint::FocusedRow" in text and not any(
+            k in text for k in ("list_quantum", "list_focus_ms", "elapsed_ms")
+        ):
             problems.append(
                 f"{UX}:{line}: theme::list() repaints only the focused row but passes no "
-                f"list_quantum, so nothing advances the marquee"
+                f"scroll clock, so nothing advances the marquee"
             )
 
     # 4. every route into the bookmark list must force a full repaint
