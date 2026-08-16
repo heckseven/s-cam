@@ -1761,13 +1761,11 @@ impl VaultUi {
         } else {
             format!("data:image/bmp;base64,{}", Self::base64(&Self::photo_to_bmp(&bits)))
         };
-        // 12ms, not 4. The server sleeps this long with the key held and again with it
-        // released, so 4ms means a key present for only 4ms - at or below a typical HID poll
-        // interval, which is how keystrokes get missed entirely. 12ms still more than halves
-        // the 30ms default. Restored afterwards so password autotype is unaffected.
-        const EXPORT_DELAY_MS: usize = 12;
-        const NORMAL_DELAY_MS: usize = 30;
-        self.usb_dev.set_autotype_delay_ms(EXPORT_DELAY_MS);
+        // No delay override. At 12ms only 14% of the characters arrived: when the endpoint is
+        // not ready the report write fails and the queued keystroke is discarded rather than
+        // retried, so typing faster than the host polls simply loses keys. 30ms is the shipped
+        // default that password autotype relies on, so correctness first; this can be tuned
+        // down once an export is known to arrive intact.
 
         // Send in chunks: one call for 2800 characters would hold the USB server for the whole
         // transfer, and a partial failure would be invisible.
@@ -1779,25 +1777,21 @@ impl VaultUi {
             match self.usb_dev.send_str(part) {
                 Ok(sent) if sent == part.chars().count() => {}
                 Ok(0) => {
-                    self.usb_dev.set_autotype_delay_ms(NORMAL_DELAY_MS);
                     self.modals.show_notification("NO USB HOST - NOTHING SENT", None).ok();
                     return;
                 }
                 Ok(sent) => {
-                    self.usb_dev.set_autotype_delay_ms(NORMAL_DELAY_MS);
                     log::warn!("export truncated: {} of {}", sent, part.chars().count());
                     self.modals.show_notification("EXPORT TRUNCATED", None).ok();
                     return;
                 }
                 Err(e) => {
-                    self.usb_dev.set_autotype_delay_ms(NORMAL_DELAY_MS);
                     log::warn!("export failed: {:?}", e);
                     self.modals.show_notification("EXPORT FAILED", None).ok();
                     return;
                 }
             }
         }
-        self.usb_dev.set_autotype_delay_ms(NORMAL_DELAY_MS);
         self.modals.show_notification("EXPORT DONE", None).ok();
     }
 
