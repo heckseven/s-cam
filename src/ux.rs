@@ -1848,22 +1848,13 @@ impl VaultUi {
                 // MIDDLE - open the camera. Routed through the main loop because
                 // ActionOp::AcquireQr is a blocking scalar and the key path cannot send one.
                 '🔥' => Some(k),
-                // RIGHT - context dependent. The LED ring is on the badge carrier, so
-                // cycling patterns is meaningless while detached; cycle the standby image
-                // instead rather than leaving a dead control.
+                // RIGHT cycles the LED pattern. Not gated on an attachment probe: a wrong or
+                // stale probe silently swallowed the press, which is indistinguishable from a
+                // pattern that did not render. With no carrier the write goes nowhere.
                 '→' => {
-                    let attached = self
-                        .global_config
-                        .as_ref()
-                        .map(|c| c.lock().unwrap().is_badge_attached())
-                        .unwrap_or(false);
-                    if attached {
-                        self.led_pattern = (self.led_pattern + 1) % (LED_PATTERN_COUNT + 1);
-                        if let Some(config) = self.global_config.as_ref() {
-                            config.lock().unwrap().set_led_pattern(self.led_pattern);
-                        }
-                    } else {
-                        log::info!("detached: right button cycles the standby image");
+                    self.led_pattern = (self.led_pattern + 1) % (LED_PATTERN_COUNT + 1);
+                    if let Some(config) = self.global_config.as_ref() {
+                        config.lock().unwrap().set_led_pattern(self.led_pattern);
                     }
                     None
                 }
