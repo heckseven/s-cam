@@ -1796,7 +1796,14 @@ impl VaultUi {
                     self.modals.show_notification("NO USB HOST - NOTHING SENT", None).ok();
                     return;
                 }
-                Ok(n) => sent += n,
+                Ok(n) => {
+                    sent += n;
+                    // Push each chunk out rather than leaving it in the CDC transmit buffer.
+                    // serial_send only writes into that buffer; without a flush the bytes sit
+                    // there until some unrelated USB traffic happens to move them, which is
+                    // why the port existed and nothing ever arrived.
+                    self.usb_dev.serial_flush().ok();
+                }
                 Err(e) => {
                     log::warn!("serial export failed after {} bytes: {:?}", sent, e);
                     self.modals.show_notification("EXPORT FAILED", None).ok();
@@ -1804,6 +1811,7 @@ impl VaultUi {
                 }
             }
         }
+        self.usb_dev.serial_flush().ok();
         self.modals.show_notification("EXPORT DONE", None).ok();
     }
 
