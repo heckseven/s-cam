@@ -167,6 +167,41 @@ fn fit(text: &str, cols: usize) -> String {
     out
 }
 
+/// Width of one character cell, measured once from the graphics server.
+///
+/// The font's own tables say every glyph is 7px, and dividing the panel by 7 said 18
+/// characters fit. The server disagreed: it truncated well before that, which is where the
+/// ellipsis nobody asked for kept coming from, and switching the mark off just turned the
+/// overrun into a dropped row. The tables are not the authority on what fits - the server
+/// that lays the text out is - so this asks it and caches the answer.
+fn cell_width(gfx: &ux_api::service::gfx::Gfx) -> isize {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    use core::fmt::Write;
+    static MEASURED: AtomicUsize = AtomicUsize::new(0);
+
+    let cached = MEASURED.load(Ordering::Relaxed);
+    if cached != 0 {
+        return cached as isize;
+    }
+    const PROBE: isize = 8;
+    let mut tv = TextView::new(Gid::dummy(), TextBounds::GrowableFromTl(Point::new(0, 0), 512));
+    tv.style = FONT;
+    tv.draw_border = false;
+    tv.margin = Point::new(0, 0);
+    let _ = write!(tv, "MMMMMMMM");
+    let measured = if gfx.bounds_compute_textview(&mut tv).is_ok() {
+        tv.bounds_computed.map(|b| b.br.x - b.tl.x).unwrap_or(0)
+    } else {
+        0
+    };
+    // Round up: a cell that is really 7.5px wide has to be budgeted as 8, or the last
+    // character on every row falls off the end.
+    let cell = if measured > 0 { (measured + PROBE - 1) / PROBE } else { 7 };
+    log::info!("list: measured cell width {}px ({}px for {} chars)", cell, measured, PROBE);
+    MEASURED.store(cell as usize, Ordering::Relaxed);
+    cell
+}
+
 /// Take at most `cols` characters, without marking the cut.
 ///
 /// A scrolling list does not want an ellipsis: focus the row and the rest of the text
@@ -285,23 +320,19 @@ pub fn list(
         // same left margin as heading(), so a row's first character sits directly under the
         // heading's first character
         tv.margin = Point::new(1, 0);
-        // A scrolling list draws no ellipsis at all: the row is cut cleanly and the rest
-        // arrives by resting on it. The mark has to be turned off here as well as avoided in
-        // the text - the typesetter adds its own when the string overruns the box, which is
-        // where the remaining ellipsis was coming from after the truncation stopped adding
-        // one. Everywhere else keeps it, because there the cut really is the end of the road:
-        // without it the typesetter aborts on overflow and the row renders as its number and
-        // nothing else.
-        tv.ellipsis = scroll.is_none();
+        // Left on everywhere, including scrolling lists that do not want to show one. With
+        // the width measured rather than guessed the string should always fit and the mark
+        // should never appear - but if the measurement is ever wrong, a marked row is a row
+        // you can still read, and a row that overruns with the mark off is dropped to its
+        // number and nothing else. Degrade to the ugly option, not the useless one.
+        tv.ellipsis = true;
         // Every row is white-on-black. Focus is the brackets, not an inverted slab: the
         // inverted row was the only black-on-white text on the panel and read as a blank bar.
         tv.invert = true;
-        // Every glyph in this font is exactly 7px wide, so columns are just division. Hold
-        // back one column when nothing will mark an overrun: the box is measured by the
-        // graphics server, which counts the margins slightly differently, and a string that
-        // overruns with the ellipsis disabled is dropped entirely rather than clipped.
+        // Hold back one cell: the server insets by its own margins as well as ours, and one
+        // spare column costs a character while an overrun costs the whole row.
         let usable = screen.x - gutter - tv.margin.x * 2;
-        let cols = ((usable / 7).max(1) as usize).saturating_sub(if tv.ellipsis { 0 } else { 1 }).max(1);
+        let cols = ((usable / cell_width(gfx)).max(1) as usize).saturating_sub(1).max(1);
         match style {
             ListStyle::Numbered => {
                 let prefix = format!("{}. ", index + 1);
