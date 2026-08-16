@@ -1586,13 +1586,23 @@ impl VaultUi {
     /// zeroing it put every thumbnail on a white background. Source bits are copied verbatim,
     /// set and cleared, rather than only ever set.
     ///
-    /// No heading here. Two rows of 56 plus the button bar is 126 of the 128 rows available,
-    /// so a heading would cost a whole row of thumbnails.
+    /// No heading here. Two rows plus the button bar already fill the panel, so a heading
+    /// would cost a whole row of thumbnails.
+    ///
+    /// 54px cells are the largest that fit: two of them, plus a 4px gap and a pixel of
+    /// bracket clearance top and bottom, comes to exactly the 114 rows above the button bar.
     fn draw_photo_grid(&mut self) {
-        const CELL: usize = 56;
+        const CELL: usize = 54;
         const COLS: usize = 2;
         const ROWS: usize = 2;
-        const X0: usize = (128 - CELL * COLS) / 2;
+        /// gap between thumbnails
+        const GAP: usize = 4;
+        /// clearance between a thumbnail and its focus brackets
+        const PAD: usize = 1;
+        const PITCH: usize = CELL + GAP;
+        const X0: usize = (128 - (CELL * COLS + GAP)) / 2;
+        /// first row starts one pixel down so the brackets above it are not clipped
+        const Y0: usize = PAD;
 
         let page = self.photo_cursor / (COLS * ROWS);
         let first = page * COLS * ROWS;
@@ -1601,8 +1611,8 @@ impl VaultUi {
         for slot in 0..COLS * ROWS {
             let Some(key) = self.photo_cache.get(first + slot) else { break };
             let Some(src) = crate::storage::photo_get(&self.pddb.borrow(), key) else { continue };
-            let ox = X0 + (slot % COLS) * CELL;
-            let oy = (slot / COLS) * CELL;
+            let ox = X0 + (slot % COLS) * PITCH;
+            let oy = Y0 + (slot / COLS) * PITCH;
             // nearest neighbour: one source pixel per destination pixel. There is nothing to
             // average in a 1bpp image.
             for dy in 0..CELL {
@@ -1621,15 +1631,17 @@ impl VaultUi {
         }
         self.gfx.bitmap(&frame, None, None).ok();
 
-        // same focus mark as every list
+        // Same focus mark as every list, sitting PAD outside the thumbnail so there is a
+        // visible gap rather than brackets drawn over the picture.
         let slot = self.photo_cursor - first;
-        let cx = (X0 + (slot % COLS) * CELL) as isize;
-        let cy = ((slot / COLS) * CELL) as isize;
+        let cx = (X0 + (slot % COLS) * PITCH) as isize;
+        let cy = (Y0 + (slot / COLS) * PITCH) as isize;
+        let pad = PAD as isize;
         ux_api::widgets::scroll::draw_corner_brackets(
             &self.gfx,
             Rectangle::new(
-                Point::new(cx, cy),
-                Point::new(cx + CELL as isize - 1, cy + CELL as isize - 1),
+                Point::new(cx - pad, cy - pad),
+                Point::new(cx + CELL as isize - 1 + pad, cy + CELL as isize - 1 + pad),
             ),
         );
     }
