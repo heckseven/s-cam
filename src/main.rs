@@ -181,8 +181,11 @@ fn main() -> ! {
     log::info!("logo");
     let gfx = Gfx::new(&xns).unwrap();
     gfx.clear().ok();
-    // show the DC logo
-    gfx.bitmap(&bitmaps::scam_logo::BITMAP, None, None).ok();
+    // The splash, held until the standby screen takes over. This spot already drew a logo -
+    // the standby artwork, under a comment claiming it was the DC one - so the badge showed
+    // the idle image, then the splash, then the idle image again. There is one startup logo
+    // and this is it.
+    gfx.bitmap(&bitmaps::scam_splash::BITMAP, None, None).ok();
     gfx.flush().ok();
     let tt = ticktimer_server::Ticktimer::new().unwrap();
 
@@ -204,9 +207,6 @@ fn main() -> ! {
     log::info!("handlers");
     let mut vault_ui =
         VaultUi::new(&xns, conn.clone(), item_lists.clone(), mode.clone(), animate.clone(), actions_conn);
-
-    // Something on screen before the slow part of startup, not after it.
-    vault_ui.splash();
 
     action_handler::action_handler(
         conn.clone(),

@@ -943,20 +943,6 @@ impl VaultUi {
     /// Clear the entire screen.
     pub fn clear_area(&self) { self.gfx.clear().ok(); }
 
-    /// Paint the splash while the rest of the app is still starting.
-    ///
-    /// Building the menus costs five servers and their threads, which takes long enough to
-    /// watch. Until now the panel just kept whatever the loader left on it for that whole
-    /// stretch, so the badge looked like it had stopped rather than like it was working.
-    ///
-    /// Drawn with `bitmap_diffusion`, the call the standby screen uses for a stored image.
-    /// The plain `bitmap` path is for frames composed at runtime; pointing it at a stored
-    /// image is what stopped the badge booting once before.
-    pub fn splash(&self) {
-        self.gfx.bitmap_diffusion(&bitmaps::scam_splash::BITMAP, None, None).ok();
-        self.gfx.flush().ok();
-    }
-
     /// Show a notification: confirm that an action finished, then put the screen back.
     ///
     /// This is its own UI pattern, distinct from a modal. A modal asks a question and waits
