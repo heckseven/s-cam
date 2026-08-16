@@ -1467,6 +1467,10 @@ impl VaultUi {
                 // photo grid unusable - so the furniture is drawn when the screen or the
                 // cursor changes, and after that only the moving row repaints itself.
                 let full = self.list_quantum == 0;
+                log::info!(
+                    "DIAG booklist: q={} cursor={} full={} rows={}",
+                    self.list_quantum, self.bookmark_cursor, full, self.bookmark_cache.len()
+                );
                 if full {
                     self.clear_area();
                     crate::theme::heading(&self.gfx, self.screen_size, "QR COLLECTION");

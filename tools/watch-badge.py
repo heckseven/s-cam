@@ -63,6 +63,28 @@ def main():
             # pick up ports as they appear, and after a reboot re-enumerates them
             if time.time() - last_scan > 1.0:
                 last_scan = time.time()
+
+                # Drop fds whose device node has been replaced underneath us. A badge that
+                # reboots re-enumerates: the old fd stays open and valid-looking but is
+                # attached to a device that no longer exists, and select() never reports it
+                # readable - so without this check the read path never notices, the path
+                # still counts as open, and the capture goes silently deaf. That is exactly
+                # what it happened to do while waiting for a panic.
+                for fd, path in list(fds.items()):
+                    try:
+                        fresh = os.stat(path)
+                        stale = os.fstat(fd).st_ino != fresh.st_ino
+                    except OSError:
+                        stale = True
+                    if stale:
+                        fds.pop(fd, None)
+                        partial.pop(fd, None)
+                        try:
+                            os.close(fd)
+                        except OSError:
+                            pass
+                        print(f"--- {path} was replaced (badge re-enumerated); reopening ---")
+
                 for path in sorted(glob.glob("/dev/ttyACM*")):
                     if path not in fds.values():
                         try:

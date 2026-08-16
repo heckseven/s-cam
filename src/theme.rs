@@ -167,6 +167,13 @@ fn fit(text: &str, cols: usize) -> String {
     out
 }
 
+/// Take at most `cols` characters, without marking the cut.
+///
+/// A scrolling list does not want an ellipsis: focus the row and the rest of the text
+/// arrives on its own, so the mark would promise nothing new while eating a column that
+/// could have shown another character.
+fn clip(text: &str, cols: usize) -> String { text.chars().take(cols).collect() }
+
 /// Which rows a `list()` call should paint.
 ///
 /// A marquee advances several times a second. Repainting every row, the heading and the
@@ -289,14 +296,33 @@ pub fn list(
                 // The focused row scrolls its full text rather than losing the tail to an
                 // ellipsis - on a saved URL the distinguishing part is usually the tail.
                 let body = match scroll {
+                    // The focused row shows what fits, then scrolls the whole thing.
                     Some(q) if index == cursor => marquee(item, q, room, MARQUEE_DELAY),
-                    _ => fit(item, room),
+                    // Other rows in a scrolling list are cut without an ellipsis - the
+                    // text is reachable by focusing the row, so the mark buys nothing.
+                    Some(_) => clip(item, room),
+                    None => fit(item, room),
                 };
+                if scroll.is_some() && index == cursor {
+                    log::info!(
+                        "DIAG row {}: screen.x={} cols={} room={} itemlen={} body={:?}",
+                        index, screen.x, cols, room, item.chars().count(), body
+                    );
+                }
                 write!(tv, "{}{}", prefix, body).ok()
             }
             _ => write!(tv, "{}", fit(item, cols)).ok(),
         };
         gfx.draw_textview(&mut tv).ok();
+        if scroll.is_some() && index == cursor {
+            // Requested width vs what the server actually laid out. If the laid-out box is
+            // narrower than the text asked for, the typesetter is doing the cutting and the
+            // 7px-per-column estimate above is too generous.
+            log::info!(
+                "DIAG laid out row {}: bounds={:?} (box was {}..{})",
+                index, tv.bounds_computed, gutter, screen.x
+            );
+        }
 
         if let ListStyle::Select { marked: Some(m) } = style {
             if m == index {
