@@ -25,6 +25,8 @@ Usage: svgtorust.py <in.svg> <out.rs> [scale]
 """
 import re
 import sys
+from functools import reduce
+from math import gcd
 
 FB = 128  # framebuffer is 128x128
 
@@ -74,14 +76,25 @@ def main():
     m = re.search(r'viewBox="0 0 (\d+) (\d+)"', svg)
     vw, vh = (int(m.group(1)), int(m.group(2))) if m else (92, 92)
 
-    # every coordinate is on a 4px grid, so the art is vw/4 cells across
-    cell = 4
-    gw, gh = vw // cell, vh // cell
+    # Work out the artwork's own resolution rather than assuming it. s-cam.svg is drawn on
+    # a 4px grid, so sampling every 4th pixel reproduces it exactly and cheaply; a file drawn
+    # at full resolution has a pitch of 1 and must be sampled at every pixel. Assuming 4 threw
+    # away three quarters of a 1px-pitch drawing and silently produced a blurred-looking
+    # fraction of the art, which is not something the output makes obvious.
     polys = paths(svg)
+    coords = {int(v) for p in polys for pt in p for v in pt if float(v).is_integer()}
+    cell = reduce(gcd, sorted(coords - {0})) if len(coords - {0}) > 1 else 1
+    while (vw % cell) or (vh % cell):
+        cell -= 1
+    gw, gh = vw // cell, vh // cell
 
     # sample each cell centre - exact for grid-aligned art, no antialiasing
     art = [[any(inside(gx * cell + cell / 2, gy * cell + cell / 2, p) for p in polys)
             for gx in range(gw)] for gy in range(gh)]
+
+    if "--preview" in sys.argv:
+        for row in art:
+            print("".join("#" if c else "." for c in row))
 
     sw, sh = gw * scale, gh * scale
     if sw > FB or sh > FB:

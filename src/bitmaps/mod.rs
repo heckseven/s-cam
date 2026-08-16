@@ -1,5 +1,6 @@
 pub mod dc_logo;
 pub mod scam_logo;
+pub mod scam_splash;
 
 
 

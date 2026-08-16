@@ -205,6 +205,9 @@ fn main() -> ! {
     let mut vault_ui =
         VaultUi::new(&xns, conn.clone(), item_lists.clone(), mode.clone(), animate.clone(), actions_conn);
 
+    // Something on screen before the slow part of startup, not after it.
+    vault_ui.splash();
+
     action_handler::action_handler(
         conn.clone(),
         actions_sid,
