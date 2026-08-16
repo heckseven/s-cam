@@ -569,6 +569,8 @@ pub struct VaultUi {
     bookmark_cache: Vec<(String, String, String)>,
     // Index of the currently highlighted bookmark in bookmark_cache
     bookmark_cursor: usize,
+    // Redraw ticks since the list cursor last moved, driving the focused row's marquee.
+    list_quantum: u32,
 
     // adc for reading battery level
     adc: Adc,
@@ -582,24 +584,6 @@ pub struct VaultUi {
     edge: bool,
     last_mode: VaultMode,
     pub bio_loaded: bool,
-}
-
-/// Standby images that ship with the firmware. Captured photos are appended to this list
-/// at runtime, so "set a photo as the standby image" needs no separate mechanism.
-/// Return the slice of `text` to show this tick, scrolling if it does not fit.
-///
-/// The panel fits 18 monospace cells. Anything longer is scrolled one character every four
-/// ticks, with a gap so the end and the beginning are distinguishable when it wraps. Short
-/// text is returned unchanged rather than scrolled pointlessly.
-fn marquee(text: &str, quantum: u32) -> String {
-    const VISIBLE: usize = 18;
-    let count = text.chars().count();
-    if count <= VISIBLE {
-        return text.to_string();
-    }
-    let padded: Vec<char> = text.chars().chain("   ".chars()).collect();
-    let offset = (quantum as usize / 2) % padded.len();
-    padded.iter().cycle().skip(offset).take(VISIBLE).collect()
 }
 
 /// Move a list cursor one step, wrapping at both ends.
@@ -620,6 +604,8 @@ fn step_cursor(cursor: usize, len: usize, up: bool) -> usize {
     }
 }
 
+/// Standby images that ship with the firmware. Captured photos are appended to this list
+/// at runtime, so "set a photo as the standby image" needs no separate mechanism.
 pub const BUILTIN_IMAGES: [&str; 2] = ["S-CAM", "DEFCON"];
 
 /// Index into BUILTIN_IMAGES for the DEFCON logo. Named because the idle draw has to tell
@@ -743,6 +729,7 @@ impl VaultUi {
             show_url: None,
             bookmark_cache: Vec::new(),
             bookmark_cursor: 0,
+            list_quantum: 0,
             modals: modals::Modals::new(xns).unwrap(),
             adc: Adc::new(),
             batt_polled: false,
@@ -760,6 +747,7 @@ impl VaultUi {
         use std::io::Read as StdRead;
         self.bookmark_cache.clear();
         self.bookmark_cursor = 0;
+        self.list_quantum = 0;
         let pddb = self.pddb.borrow();
         let keys = match pddb.list_keys(VAULT_BOOKMARKS_DICT, None) {
             Ok(k) => k,
@@ -785,13 +773,10 @@ impl VaultUi {
                         let mut parts = body.splitn(3, '\n');
                         let url = parts.next().unwrap_or("").to_string();
                         let label = parts.next().unwrap_or("").to_string();
-                        // Truncate URL for display to fit the small-font 21-column screen
-                        let display = if url.len() > 30 {
-                            format!("{}\u{2026}", &url[..29])
-                        } else {
-                            url
-                        };
-                        entries.push((key.clone(), display, label));
+                        // Keep the whole URL. The list marquees the focused row, so
+                        // truncating here only threw away the tail - which on a URL is
+                        // usually the part that tells two entries apart.
+                        entries.push((key.clone(), url, label));
                     }
                 }
             }
@@ -953,6 +938,46 @@ impl VaultUi {
     /// Clear the entire screen.
     pub fn clear_area(&self) { self.gfx.clear().ok(); }
 
+    /// Show a notification: confirm that an action finished, then put the screen back.
+    ///
+    /// This is its own UI pattern, distinct from a modal. A modal asks a question and waits
+    /// for an answer; a notification states a fact that is already true - the photo saved,
+    /// the export finished - so there is nothing to answer. Making the user press a key to
+    /// acknowledge it adds a step to every save without telling them anything they did not
+    /// already know. It paints centred over the current screen, holds long enough to read,
+    /// then redraws whatever was underneath: a menu, a list or an image.
+    pub(crate) fn notify(&mut self, text: &str) {
+        const HOLD_MS: usize = 1200;
+        let msg = text.to_lowercase();
+
+        // Size the band to the wrapped text before placing it: a TextView whose bounds are
+        // too small aborts typesetting rather than clipping, which would show nothing at all.
+        let cols = ((self.screen_size.x - 4) / 7).max(1) as usize;
+        let lines = (msg.chars().count().max(1) + cols - 1) / cols;
+        let band = self.item_height * lines as isize;
+
+        self.clear_area();
+        let mut tv = TextView::new(
+            Gid::dummy(),
+            TextBounds::CenteredTop(Rectangle::new(
+                Point::new(0, (self.screen_size.y - band) / 2),
+                Point::new(self.screen_size.x, (self.screen_size.y + band) / 2),
+            )),
+        );
+        tv.style = crate::theme::FONT;
+        tv.draw_border = false;
+        tv.invert = true;
+        tv.margin = Point::new(2, 0);
+        write!(tv, "{}", msg).ok();
+        self.gfx.draw_textview(&mut tv).ok();
+        self.gfx.flush().ok();
+
+        self.tt.sleep_ms(HOLD_MS).ok();
+        // the standby screen only repaints when it changes, so force it to repaint here
+        self.standby_drawn = None;
+        self.redraw();
+    }
+
     /// Redraw the text view onto the screen.
     pub fn redraw(&mut self) {
         // to reduce locking thrash, we cache a copy of the current mode at the top of redraw.
@@ -977,6 +1002,8 @@ impl VaultUi {
                     &self.gfx, self.screen_size, self.item_height,
                     &rows, self.passkey_cursor, "NO PASSKEYS STORED",
                     crate::theme::ListStyle::Ghost,
+                    None,
+                    crate::theme::Repaint::All,
                 );
                 let has = !rows.is_empty();
                 crate::theme::button_labels(
@@ -995,6 +1022,8 @@ impl VaultUi {
                         &self.gfx, self.screen_size, self.item_height,
                         &self.photo_cache, self.photo_cursor, "NO PHOTOS YET",
                         crate::theme::ListStyle::Numbered,
+                        None,
+                        crate::theme::Repaint::All,
                     );
                     crate::theme::button_labels(
                         &self.gfx, self.screen_size, Some("back"), None, None,
@@ -1043,6 +1072,8 @@ impl VaultUi {
                     &self.gfx, self.screen_size, self.item_height,
                     &rows, self.bling_cursor, "NO IMAGES",
                     crate::theme::ListStyle::Select { marked: Some(self.standby_choice) },
+                    None,
+                    crate::theme::Repaint::All,
                 );
                 crate::theme::button_labels(
                     &self.gfx, self.screen_size, Some("back"), None, Some("pick"),
@@ -1058,6 +1089,8 @@ impl VaultUi {
                     &self.gfx, self.screen_size, self.item_height,
                     &rows, self.blinky_cursor, "NO PATTERNS",
                     crate::theme::ListStyle::Select { marked: Some(self.led_pattern) },
+                    None,
+                    crate::theme::Repaint::All,
                 );
                 // patterns need the carrier; say so rather than offering a dead control
                 crate::theme::button_labels(
@@ -1242,7 +1275,7 @@ impl VaultUi {
                             tv.margin = Point::new(0, 1);
                             tv.style = crate::theme::FONT;
                             tv.draw_border = false;
-                            write!(tv, "{}", marquee(&url, quantum)).ok();
+                            write!(tv, "{}", crate::theme::marquee(&url, quantum, 18, 0)).ok();
                             self.gfx.draw_textview(&mut tv).ok();
                         }
                     }
@@ -1429,8 +1462,15 @@ impl VaultUi {
                 self.gfx.flush().ok();
             }// _ => unimplemented!(),
             VaultMode::BookmarkList => {
-                self.clear_area();
-                crate::theme::heading(&self.gfx, self.screen_size, "QR COLLECTION");
+                // A marquee tick moves one row. Clearing and repainting the whole screen
+                // several times a second to animate it flashes - the fault that made the
+                // photo grid unusable - so the furniture is drawn when the screen or the
+                // cursor changes, and after that only the moving row repaints itself.
+                let full = self.list_quantum == 0;
+                if full {
+                    self.clear_area();
+                    crate::theme::heading(&self.gfx, self.screen_size, "QR COLLECTION");
+                }
                 let rows: Vec<String> = self
                     .bookmark_cache
                     .iter()
@@ -1446,13 +1486,19 @@ impl VaultUi {
                     &self.gfx, self.screen_size, self.item_height,
                     &rows, self.bookmark_cursor, "NO BOOKMARKS YET",
                     crate::theme::ListStyle::Numbered,
+                    Some(self.list_quantum),
+                    if full { crate::theme::Repaint::All } else { crate::theme::Repaint::FocusedRow },
                 );
-                let has = !rows.is_empty();
-                crate::theme::button_labels(
-                    &self.gfx, self.screen_size,
-                    Some("back"), None,
-                    if has { Some("show") } else { None },
-                );
+                // drives the focused row's marquee; reset whenever the cursor or screen changes
+                self.list_quantum = self.list_quantum.wrapping_add(1);
+                if full {
+                    let has = !rows.is_empty();
+                    crate::theme::button_labels(
+                        &self.gfx, self.screen_size,
+                        Some("back"), None,
+                        if has { Some("show") } else { None },
+                    );
+                }
                 self.gfx.flush().ok();
             }
             VaultMode::ShowUrl => {
@@ -1715,20 +1761,6 @@ impl VaultUi {
     /// Lower case then upper case: the upper case half exercises the shift modifier, which is
     /// sent in the same report as the letter, and is the part most likely to break when the
     /// pacing is too tight.
-    pub(crate) fn type_test(&mut self, delay_ms: usize) {
-        const ALPHABET: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        self.usb_dev.set_autotype_delay_ms(delay_ms);
-        let result = self.usb_dev.send_str(ALPHABET);
-        self.usb_dev.set_autotype_delay_ms(30);
-        let note = match result {
-            Ok(n) if n == ALPHABET.len() => "SENT 52",
-            Ok(0) => "NO USB HOST",
-            Ok(_) => "SENT SHORT",
-            Err(_) => "SEND FAILED",
-        };
-        self.modals.show_notification(note, None).ok();
-    }
-
     /// Render the shown photo as ASCII art.
     ///
     /// One character per 1x2 block of pixels, so 128 columns by 64 rows. Terminal cells are
@@ -1769,7 +1801,7 @@ impl VaultUi {
     /// hence the confirm, and the reminder to put the cursor somewhere first.
     pub(crate) fn export_photo(&mut self, as_art: bool) {
         let Some(bits) = self.pending_photo else {
-            self.modals.show_notification("NOTHING TO EXPORT", None).ok();
+            self.notify("NOTHING TO EXPORT");
             return;
         };
         let text = if as_art {
@@ -1793,7 +1825,7 @@ impl VaultUi {
         while sent < data.len() {
             match self.usb_dev.serial_send(&data[sent..]) {
                 Ok(0) => {
-                    self.modals.show_notification("NO USB HOST - NOTHING SENT", None).ok();
+                    self.notify("NO USB HOST - NOTHING SENT");
                     return;
                 }
                 Ok(n) => {
@@ -1806,13 +1838,13 @@ impl VaultUi {
                 }
                 Err(e) => {
                     log::warn!("serial export failed after {} bytes: {:?}", sent, e);
-                    self.modals.show_notification("EXPORT FAILED", None).ok();
+                    self.notify("EXPORT FAILED");
                     return;
                 }
             }
         }
         self.usb_dev.serial_flush().ok();
-        self.modals.show_notification("EXPORT DONE", None).ok();
+        self.notify("EXPORT DONE");
     }
 
     /// Ask main to open the photo actions menu. Menus are owned by the main loop, so this
@@ -1864,7 +1896,7 @@ impl VaultUi {
             log::warn!("could not persist standby image: {:?}", e);
         }
         self.apply_standby_choice(choice);
-        self.modals.show_notification("SET AS BLING", None).ok();
+        self.notify("SET AS BLING");
     }
 
     /// Load the photo under the photos-list cursor for full-screen viewing.
@@ -2055,7 +2087,7 @@ impl VaultUi {
                             return None;
                         }
                         self.pending_photo = None;
-                        self.modals.show_notification("PHOTO STORE FULL", None).ok();
+                        self.notify("PHOTO STORE FULL");
                     }
                     _ => {}
                 }
@@ -2166,7 +2198,9 @@ impl VaultUi {
                 match k {
                     '↑' | '↓' => {
                         self.bookmark_cursor =
-                            step_cursor(self.bookmark_cursor, self.bookmark_cache.len(), k == '↑')
+                            step_cursor(self.bookmark_cursor, self.bookmark_cache.len(), k == '↑');
+                        // a newly focused row holds still before it starts scrolling
+                        self.list_quantum = 0;
                     }
                     '←' => {
                         // back to the menu this was opened from, not past it to standby
@@ -2207,6 +2241,8 @@ impl VaultUi {
                         self.qr_override = None;
                         self.qr_caption = None;
                         *self.mode.lock().unwrap() = VaultMode::BookmarkList;
+                        // coming back from another screen: repaint all of it, not one row
+                        self.list_quantum = 0;
                         self.redraw();
                     }
                     _ => {}
@@ -2248,6 +2284,8 @@ impl VaultUi {
                         }
                         self.show_url = None;
                         *self.mode.lock().unwrap() = VaultMode::BookmarkList;
+                        // coming back from another screen: repaint all of it, not one row
+                        self.list_quantum = 0;
                         self.load_bookmarks();
                     }
                     _ => {}

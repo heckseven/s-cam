@@ -48,7 +48,6 @@ pub fn create_root(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
             ("qr collection", VaultOp::ListBookmarks),
             ("photos", VaultOp::ListPhotos),
             ("settings", VaultOp::MenuSettings),
-            ("type test", VaultOp::MenuTypeTest),
             ("about", VaultOp::ShowAbout),
             ("back", VaultOp::MenuDone),
         ],
@@ -139,18 +138,6 @@ pub const PHOTO_ACTIONS: [(&str, VaultOp, u32); 5] = [
 /// "no" first, so the default selection is the harmless one.
 pub const CONFIRM: [(&str, VaultOp, u32); 2] =
     [("no", VaultOp::ConfirmNo, 0), ("yes", VaultOp::ConfirmYes, 0)];
-
-/// The delay rides in the payload, so one opcode serves every speed.
-pub const TYPE_TEST: [(&str, VaultOp, u32); 8] = [
-    ("2 ms - too fast", VaultOp::TypeTest, 2),
-    ("4 ms", VaultOp::TypeTest, 4),
-    ("8 ms", VaultOp::TypeTest, 8),
-    ("12 ms", VaultOp::TypeTest, 12),
-    ("20 ms", VaultOp::TypeTest, 20),
-    ("30 ms - default", VaultOp::TypeTest, 30),
-    ("50 ms - slow", VaultOp::TypeTest, 50),
-    ("back", VaultOp::MenuRoot, 0),
-];
 
 /// The reusable menu. Created empty; `fill` gives it a title and entries before each use.
 pub fn create_scratch(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {

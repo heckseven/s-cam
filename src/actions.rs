@@ -1625,6 +1625,21 @@ impl ActionManager {
 
     /// Retrieves a bookmark by key from PDDB, validates its URL via SanitizedUrl, then sends the
     /// validated URL to main as `VaultOp::BookmarkQrReady`. Main constructs the QrCode.
+    /// Report something that just happened, briefly, over whatever is on screen.
+    ///
+    /// Only the main loop owns the display, so this hands the text over rather than raising
+    /// a modal here. Sent rather than lent: the main loop holds the message on screen for
+    /// about a second, and there is no reason to stall this thread while it does.
+    fn notify(&self, text: &str) {
+        let msg = crate::IpcString { s: text.to_owned() };
+        match xous_ipc::Buffer::into_buf(msg) {
+            Ok(buf) => {
+                buf.send(self.main_conn, crate::VaultOp::Notify.to_u32().unwrap()).ok();
+            }
+            Err(e) => log::error!("notify: IPC buffer error: {:?}", e),
+        }
+    }
+
     pub(crate) fn bookmark_selected(&mut self, key: &str) {
         // Step 1: retrieve bookmark record from PDDB
         let bookmark = match self.storage.borrow_mut().bookmark_get(key) {
@@ -1924,18 +1939,18 @@ impl ActionManager {
             Ok(sanitized) => {
                 match send_str_sanitized(&self.usb_dev, &sanitized) {
                     Ok(_) => {
-                        self.modals.show_notification("URL typed to host", None).ok();
+                        self.notify("URL typed to host");
                     }
                     Err(e) => {
                         log::error!("USB HID type-out error: {:?}", e);
-                        self.modals.show_notification("USB not connected", None).ok();
+                        self.notify("USB not connected");
                     }
                 }
             }
             Err(_) => {
                 // Should be unreachable: show_url invariant guarantees the URL is valid.
                 log::error!("type_out_url: re-validation failed (should be unreachable)");
-                self.modals.show_notification("Internal error: URL invalid", None).ok();
+                self.notify("Internal error: URL invalid");
             }
         }
     }
@@ -1949,7 +1964,7 @@ impl ActionManager {
                 match self.storage.borrow_mut().bookmark_store(sanitized.as_str(), "") {
                     Ok(key) => {
                         log::info!("Bookmark saved: key={}", key);
-                        self.modals.show_notification("Bookmark saved", None).ok();
+                        self.notify("Bookmark saved");
                     }
                     Err(e) => {
                         log::error!("bookmark_store failed: {:?}", e);

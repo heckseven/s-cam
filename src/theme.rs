@@ -167,6 +167,41 @@ fn fit(text: &str, cols: usize) -> String {
     out
 }
 
+/// Which rows a `list()` call should paint.
+///
+/// A marquee advances several times a second. Repainting every row, the heading and the
+/// button bar at that rate visibly flashes - the same fault that made the photo grid
+/// unusable - so an animation tick repaints only the row that is actually moving.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Repaint {
+    All,
+    FocusedRow,
+}
+
+/// Ticks a row stays still after it gains focus before the marquee starts. The redraw pump
+/// runs at 250ms, so this is about a second.
+pub const MARQUEE_DELAY: u32 = 4;
+
+/// Return the slice of `text` to show this tick, scrolling if it does not fit.
+///
+/// Text longer than `visible` cells is scrolled one character every two ticks, with a gap so
+/// the end and the beginning stay distinguishable when it wraps. `delay_ticks` holds the head
+/// still first, so a row can be read before it starts moving; the pump ticks every 250ms, so
+/// four is about a second. Text that already fits is returned unchanged rather than scrolled
+/// pointlessly.
+pub fn marquee(text: &str, quantum: u32, visible: usize, delay_ticks: u32) -> String {
+    let count = text.chars().count();
+    if count <= visible {
+        return text.to_string();
+    }
+    if quantum < delay_ticks {
+        return text.chars().take(visible).collect();
+    }
+    let padded: Vec<char> = text.chars().chain("   ".chars()).collect();
+    let offset = ((quantum - delay_ticks) as usize / 2) % padded.len();
+    padded.iter().cycle().skip(offset).take(visible).collect()
+}
+
 /// Draw a scrolling list with a cursor, between the heading and the button bar.
 ///
 /// Every S-CAM list screen — passkeys, photos, images, patterns — is this same shape, so
@@ -182,6 +217,8 @@ pub fn list(
     cursor: usize,
     empty_msg: &str,
     style: ListStyle,
+    scroll: Option<u32>,
+    repaint: Repaint,
 ) {
     use core::fmt::Write;
     let top = LABEL_BAR_H;
@@ -189,6 +226,9 @@ pub fn list(
     let rows = ((bottom - top) / row_h).max(1) as usize;
 
     if items.is_empty() {
+        if repaint == Repaint::FocusedRow {
+            return;
+        }
         let mut tv = TextView::new(
             Gid::dummy(),
             TextBounds::BoundingBox(Rectangle::new(
@@ -216,6 +256,9 @@ pub fn list(
     let first = if cursor >= rows { cursor + 1 - rows } else { 0 };
     for (n, item) in items.iter().skip(first).take(rows).enumerate() {
         let index = first + n;
+        if repaint == Repaint::FocusedRow && index != cursor {
+            continue;
+        }
         let y = top + (n as isize) * row_h;
         let row = Rectangle::new(Point::new(0, y), Point::new(screen.x, y + row_h));
 
@@ -243,7 +286,13 @@ pub fn list(
             ListStyle::Numbered => {
                 let prefix = format!("{}. ", index + 1);
                 let room = cols.saturating_sub(prefix.chars().count());
-                write!(tv, "{}{}", prefix, fit(item, room)).ok()
+                // The focused row scrolls its full text rather than losing the tail to an
+                // ellipsis - on a saved URL the distinguishing part is usually the tail.
+                let body = match scroll {
+                    Some(q) if index == cursor => marquee(item, q, room, MARQUEE_DELAY),
+                    _ => fit(item, room),
+                };
+                write!(tv, "{}{}", prefix, body).ok()
             }
             _ => write!(tv, "{}", fit(item, cols)).ok(),
         };

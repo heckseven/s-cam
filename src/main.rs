@@ -92,7 +92,8 @@ impl VaultMode {
             VaultMode::Password => false,
             VaultMode::Totp => true,
             VaultMode::ShowUrl => false,
-            VaultMode::BookmarkList => false,
+            // the focused row marquees its URL, so this needs the redraw pump
+            VaultMode::BookmarkList => true,
             VaultMode::ShowBookmarkQr { quantum: _ } => true,
         }
     }
@@ -152,8 +153,6 @@ enum ActiveMenu {
     PhotoActions,
     /// a yes/no question
     Confirm,
-    /// typing speed test
-    TypeTest,
 }
 
 /// What a "yes" on the confirm menu should carry out.
@@ -481,21 +480,6 @@ fn main() -> ! {
                 );
                 scratch_menu_mgr.redraw();
             }
-            Some(VaultOp::MenuTypeTest) => {
-                active_menu = ActiveMenu::TypeTest;
-                menu_just_opened = true;
-                animate.store(false, Ordering::SeqCst);
-                scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "TYPE TEST", &idlemenu::TYPE_TEST, conn,
-                );
-                scratch_menu_mgr.redraw();
-            }
-            // The delay rides in the menu entry's payload, so one opcode serves every speed.
-            Some(VaultOp::TypeTest) => xous::msg_scalar_unpack!(msg, delay, _, _, _, {
-                active_menu = ActiveMenu::None;
-                vault_ui.type_test(delay);
-                vault_ui.redraw();
-            }),
             Some(VaultOp::ConfirmNo) => {
                 pending = Pending::None;
                 active_menu = ActiveMenu::None;
@@ -593,9 +577,9 @@ fn main() -> ! {
                         ActiveMenu::Login => login_menu_mgr.key_press(k),
                         ActiveMenu::Settings => settings_menu_mgr.key_press(k),
                         ActiveMenu::Vault => menu_mgr.key_press(k),
-                        ActiveMenu::PhotoActions
-                        | ActiveMenu::Confirm
-                        | ActiveMenu::TypeTest => scratch_menu_mgr.key_press(k),
+                        ActiveMenu::PhotoActions | ActiveMenu::Confirm => {
+                            scratch_menu_mgr.key_press(k)
+                        }
                         _ => idle_menu_mgr.key_press(k),
                     }
                 } else {
@@ -629,9 +613,9 @@ fn main() -> ! {
                                 ActiveMenu::Login => login_menu_mgr.redraw(),
                                 ActiveMenu::Settings => settings_menu_mgr.redraw(),
                                 ActiveMenu::Vault => menu_mgr.redraw(),
-                                ActiveMenu::PhotoActions
-                                | ActiveMenu::Confirm
-                                | ActiveMenu::TypeTest => scratch_menu_mgr.redraw(),
+                                ActiveMenu::PhotoActions | ActiveMenu::Confirm => {
+                                    scratch_menu_mgr.redraw()
+                                }
                                 _ => idle_menu_mgr.redraw(),
                             }
                         }
@@ -695,7 +679,7 @@ fn main() -> ! {
                     buf.lend(actions_conn, ActionOp::MenuEditStage2.to_u32().unwrap())
                         .expect("messaging error");
                 } else {
-                    modals.show_notification(t!("vault.error.nothing_selected", locales::LANG), None).ok();
+                    vault_ui.notify(t!("vault.error.nothing_selected", locales::LANG));
                 }
                 animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
             }
@@ -706,7 +690,7 @@ Some(VaultOp::MenuDeleteStage1) => {
                     buf.lend(actions_conn, ActionOp::MenuDeleteStage2.to_u32().unwrap())
                         .expect("messaging error");
                 } else {
-                    modals.show_notification(t!("vault.error.nothing_selected", locales::LANG), None).ok();
+                    vault_ui.notify(t!("vault.error.nothing_selected", locales::LANG));
                 }
                 xous::send_message(
                     actions_conn,
@@ -816,6 +800,12 @@ Some(VaultOp::MenuDeleteStage1) => {
                 global_config.lock().unwrap().set_mutation_rate(MutationRate::Baseline);
                 mutation_param = 0;
             }
+            Some(VaultOp::Notify) => {
+                let buffer =
+                    unsafe { Buffer::from_memory_message(msg.body.memory_message().unwrap()) };
+                let s: IpcString = buffer.to_original::<IpcString, _>().unwrap();
+                vault_ui.notify(&s.s);
+            }
             Some(VaultOp::BookmarkQrReady) => {
                 let buffer =
                     unsafe { Buffer::from_memory_message(msg.body.memory_message().unwrap()) };
@@ -850,7 +840,7 @@ Some(VaultOp::MenuDeleteStage1) => {
                                     e
                                 );
                                 animate.store(false, Ordering::SeqCst);
-                                modals.show_notification("URL too long to render as QR", None).ok();
+                                vault_ui.notify("URL too long to render as QR");
                                 animate
                                     .store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                                 *mode.lock().unwrap() = VaultMode::Idle;
@@ -863,7 +853,7 @@ Some(VaultOp::MenuDeleteStage1) => {
                             e
                         );
                         animate.store(false, Ordering::SeqCst);
-                        modals.show_notification("Bookmark URL invalid", None).ok();
+                        vault_ui.notify("Bookmark URL invalid");
                         animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                         *mode.lock().unwrap() = VaultMode::Idle;
                     }
@@ -893,7 +883,7 @@ Some(VaultOp::MenuDeleteStage1) => {
                                 }
                                 Err(_) => {
                                     animate.store(false, Ordering::SeqCst);
-                                    modals.show_notification("URL invalid or too long", None).ok();
+                                    vault_ui.notify("URL invalid or too long");
                                     animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                                 }
                             }
@@ -904,7 +894,7 @@ Some(VaultOp::MenuDeleteStage1) => {
                             // that still linked a whole AEAD and base45 into the image - and the
                             // app is close enough to the loader's ceiling that it mattered.
                             animate.store(false, Ordering::SeqCst);
-                            modals.show_notification("QR CODE NOT RECOGNISED", None).ok();
+                            vault_ui.notify("QR CODE NOT RECOGNISED");
                             animate.store(
                                 mode.lock().unwrap().should_animate(),
                                 Ordering::SeqCst,
@@ -924,7 +914,7 @@ Some(VaultOp::MenuDeleteStage1) => {
                                 }
                                 Err(_) => {
                                     animate.store(false, Ordering::SeqCst);
-                                    modals.show_notification("URL invalid or too long", None).ok();
+                                    vault_ui.notify("URL invalid or too long");
                                     animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                                 }
                             }

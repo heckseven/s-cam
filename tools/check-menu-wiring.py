@@ -96,14 +96,12 @@ def main():
         "PhotoExportB64",
         "PhotoExportAscii",
         "PhotoDelete",
-        "MenuTypeTest",
     }
 
     seen = {}
     for menu, label, opcode in entries:
-        # A table of the same action at different settings repeats an opcode on purpose.
         key = (menu, opcode)
-        if key in seen and menu != "TYPE_TEST":
+        if key in seen:
             problems.append(
                 f'{menu}: "{label}" and "{seen[key]}" both send VaultOp::{opcode}, '
                 f"so one of them is unreachable"
