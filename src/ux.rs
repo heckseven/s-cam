@@ -1720,23 +1720,24 @@ impl VaultUi {
     /// pixel, a low one for the bottom, a solid one for both.
     fn ascii_art(bits: &[u32; 512]) -> String {
         const W: usize = 128;
-        let mut out = String::with_capacity(W * 64 + 64);
-        for row in 0..64 {
+        // Byte table rather than a match on a tuple, and bytes rather than chars: the output
+        // is ASCII by construction, and the leaner shape keeps this function small. Adding it
+        // as originally written stopped the badge booting even though nothing calls it at
+        // startup - this app sits close enough to the edge that code layout matters.
+        const MARKS: [u8; 4] = [b' ', b'"', b'.', b'#'];
+        let mut out = vec![0u8; 0];
+        out.reserve(W * 64 + 64);
+        for row in 0..64usize {
             for x in 0..W {
                 let top = x + (row * 2) * W;
-                let bot = x + (row * 2 + 1) * W;
+                let bot = top + W;
                 let t = (bits[top >> 5] >> (top & 31)) & 1;
                 let b = (bits[bot >> 5] >> (bot & 31)) & 1;
-                out.push(match (t, b) {
-                    (0, 0) => ' ',
-                    (1, 0) => '"',
-                    (0, 1) => '.',
-                    _ => '#',
-                });
+                out.push(MARKS[(t | (b << 1)) as usize]);
             }
-            out.push('\n');
+            out.push(b'\n');
         }
-        out
+        String::from_utf8(out).unwrap_or_default()
     }
 
     /// Type the shown photo to the host as a data URI.

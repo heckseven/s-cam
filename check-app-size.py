@@ -29,12 +29,14 @@ import sys
 
 PAGE_SIZE = 0x1000
 # Highest page count observed to boot on hardware. 308 pages hangs the loader.
-# The ceiling is NOT a fixed property of the app: the loader region is shared with the kernel,
-# so growing the kernel shrinks what the app may occupy. 307 was measured when the kernel was
-# smaller and is no longer safe - a 283-page app failed to boot with the kernel as it stands,
-# while 282 booted. Re-measure after any change that grows the kernel, and treat this number as
-# the last count confirmed to boot rather than a hard architectural limit.
-MAX_PAGES = 282
+# 307 is the measured ceiling. A 283-page build once failed to boot and 282 booted, which
+# looked like the ceiling had moved - but padding the booting build to 283 with inert bytes
+# booted fine, so size was not the cause. Do not lower this on the strength of a correlation
+# without running that control: pad the last good build to the failing count and flash it.
+#
+# Size is only one way to stall the loader. Code layout is another - see DECISIONS.md on
+# panic="abort", which failed to boot at a much SMALLER size purely by changing section order.
+MAX_PAGES = 307
 
 
 def top_vaddr(path):
