@@ -1002,7 +1002,7 @@ impl VaultUi {
                 } else {
                     self.draw_photo_grid();
                     crate::theme::button_labels(
-                        &self.gfx, self.screen_size, Some("back"), Some("set"), Some("more"),
+                        &self.gfx, self.screen_size, Some("back"), Some("more"), Some("view"),
                     );
                 }
                 self.gfx.flush().ok();
@@ -1027,7 +1027,7 @@ impl VaultUi {
                     );
                 } else {
                     crate::theme::button_labels(
-                        &self.gfx, self.screen_size, Some("back"), Some("set"), Some("more"),
+                        &self.gfx, self.screen_size, Some("back"), Some("more"), None,
                     );
                 }
                 self.gfx.flush().ok();
@@ -1748,7 +1748,7 @@ impl VaultUi {
     ///
     /// About 2800 characters, so it takes a while and goes wherever the host's focus is -
     /// hence the confirm, and the reminder to put the cursor somewhere first.
-    fn export_photo(&mut self, as_art: bool) {
+    pub(crate) fn export_photo(&mut self, as_art: bool) {
         let Some(bits) = self.pending_photo else {
             self.modals.show_notification("NOTHING TO EXPORT", None).ok();
             return;
@@ -1761,61 +1761,35 @@ impl VaultUi {
         } else {
             format!("data:image/bmp;base64,{}", Self::base64(&Self::photo_to_bmp(&bits)))
         };
+        // The default 30ms between keystrokes suits typing a password; at this length it means
+        // minutes. 4ms is roughly seven times quicker while still pacing the host. Restored
+        // afterwards so password autotype is unaffected.
+        const EXPORT_DELAY_MS: usize = 4;
+        const NORMAL_DELAY_MS: usize = 30;
+        self.usb_dev.set_autotype_delay_ms(EXPORT_DELAY_MS);
+
         // Send in chunks: one call for 2800 characters would hold the USB server for the whole
         // transfer, and a partial failure would be invisible.
         for chunk in text.as_bytes().chunks(64) {
             let part = core::str::from_utf8(chunk).unwrap_or("");
             if self.usb_dev.send_str(part).is_err() {
+                self.usb_dev.set_autotype_delay_ms(NORMAL_DELAY_MS);
                 self.modals.show_notification("EXPORT FAILED", None).ok();
                 return;
             }
         }
+        self.usb_dev.set_autotype_delay_ms(NORMAL_DELAY_MS);
         self.modals.show_notification("EXPORT DONE", None).ok();
     }
 
-    /// The actions list, shared by the grid and the full-screen view.
-    ///
-    /// Both screens use the same three buttons - back, select, actions - so anything that is
-    /// not "set this as the standby image" lives in here, where it takes a deliberate pick.
-    fn photo_actions(&mut self, from_grid: bool) {
-        let mut items = Vec::new();
-        if from_grid {
-            items.push("view");
-        }
-        items.push("export b64");
-        items.push("export ascii");
-        items.push("delete");
-        items.push("cancel");
-        if self.modals.add_list(items).is_err() {
-            return;
-        }
-        let choice = match self.modals.get_radiobutton("PHOTO ACTIONS") {
-            Ok(c) => c,
-            Err(_) => return,
-        };
-        match choice.as_str() {
-            "view" => self.show_selected_photo(),
-            "export b64" | "export ascii" => {
-                // the grid has no photo loaded yet; the export needs the full-size bits
-                if from_grid {
-                    self.show_selected_photo();
-                }
-                self.export_photo(choice == "export ascii");
-            }
-            "delete" => {
-                if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
-                    if self.confirm("DELETE THIS PHOTO?") {
-                        if let Err(e) = crate::storage::photo_delete(&self.pddb.borrow(), &key) {
-                            log::warn!("could not delete photo {}: {:?}", key, e);
-                        }
-                        self.load_photos();
-                        self.pending_photo = None;
-                        *self.mode.lock().unwrap() = VaultMode::PhotoList;
-                    }
-                }
-            }
-            _ => {}
-        }
+    /// Ask main to open the photo actions menu. Menus are owned by the main loop, so this
+    /// posts a message rather than drawing one here.
+    fn open_photo_actions(&mut self) {
+        xous::send_message(
+            self.main_cid,
+            xous::Message::new_scalar(VaultOp::MenuPhotoActions.to_usize().unwrap(), 0, 0, 0, 0),
+        )
+        .ok();
     }
 
     /// Ask before doing something that cannot be undone. "no" is listed first so the
@@ -1827,10 +1801,40 @@ impl VaultUi {
         matches!(self.modals.get_radiobutton(prompt), Ok(ref answer) if answer == "yes")
     }
 
+    /// Delete the photo under the cursor, after confirming.
+    pub(crate) fn delete_photo(&mut self) {
+        let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() else { return };
+        if !self.confirm("DELETE THIS PHOTO?") {
+            return;
+        }
+        if let Err(e) = crate::storage::photo_delete(&self.pddb.borrow(), &key) {
+            log::warn!("could not delete photo {}: {:?}", key, e);
+        }
+        self.load_photos();
+        self.pending_photo = None;
+        *self.mode.lock().unwrap() = VaultMode::PhotoList;
+    }
+
+    /// Load the photo under the cursor if the grid has not already done so. The export and
+    /// wallpaper actions both need the full-size bits, and the grid only holds thumbnails.
+    pub(crate) fn ensure_photo_loaded(&mut self) {
+        if self.pending_photo.is_some() {
+            return;
+        }
+        // Load the bits only. show_selected_photo would also switch to the full-screen mode,
+        // so setting a wallpaper from the grid would have dumped you into the viewer.
+        if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
+            match crate::storage::photo_get(&self.pddb.borrow(), &key) {
+                Some(bits) => self.pending_photo = Some(bits),
+                None => log::warn!("photo {} could not be read", key),
+            }
+        }
+    }
+
     /// Make the photo under the cursor the standby image.
     ///
     /// Standby choices are indexed past the built-ins, so photo N is BUILTIN_IMAGES.len() + N.
-    fn set_photo_as_bling(&mut self) {
+    pub(crate) fn set_photo_as_bling(&mut self) {
         if self.photo_cache.get(self.photo_cursor).is_none() {
             return;
         }
@@ -1843,7 +1847,7 @@ impl VaultUi {
     }
 
     /// Load the photo under the photos-list cursor for full-screen viewing.
-    fn show_selected_photo(&mut self) {
+    pub(crate) fn show_selected_photo(&mut self) {
         if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
             match crate::storage::photo_get(&self.pddb.borrow(), &key) {
                 Some(bits) => {
@@ -2000,8 +2004,8 @@ impl VaultUi {
                             step_cursor(self.photo_cursor, self.photo_cache.len(), k == '↑')
                     }
                     '←' => leaving = true,
-                    '🔥' => self.set_photo_as_bling(),
-                    '→' => self.photo_actions(true),
+                    '🔥' => self.open_photo_actions(),
+                    '→' => self.show_selected_photo(),
                     _ => {}
                 }
                 if leaving {
@@ -2049,11 +2053,9 @@ impl VaultUi {
                             step_cursor(self.photo_cursor, self.photo_cache.len(), k == '↑');
                         self.show_selected_photo();
                     }
-                    // Same three buttons as the grid, in the same order. Delete lives in the
-                    // actions list rather than under a button, so it cannot be reached by
-                    // pressing the same key twice on two different screens.
-                    '🔥' => self.set_photo_as_bling(),
-                    '→' => self.photo_actions(false),
+                    // Middle opens the actions menu on both screens. Everything destructive
+                    // or persistent lives in there, so no single press changes anything.
+                    '🔥' => self.open_photo_actions(),
                     _ => {}
                 }
                 self.redraw();

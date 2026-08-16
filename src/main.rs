@@ -148,6 +148,8 @@ enum ActiveMenu {
     Settings,
     /// the vault's own menu, used outside the idle screen
     Vault,
+    /// actions on the photo under the cursor
+    PhotoActions,
 }
 
 fn main() -> ! {
@@ -202,6 +204,8 @@ fn main() -> ! {
     let login_menu_mgr = idlemenu::create_login(conn, login_menu_sid);
     let settings_menu_sid = xous::create_server().unwrap();
     let settings_menu_mgr = idlemenu::create_settings(conn, settings_menu_sid);
+    let photo_menu_sid = xous::create_server().unwrap();
+    let photo_menu_mgr = idlemenu::create_photo_actions(conn, photo_menu_sid);
     let idle_menu_sid = xous::create_server().unwrap();
     let idle_menu_mgr = idlemenu::create_root(conn, idle_menu_sid);
 
@@ -409,6 +413,37 @@ fn main() -> ! {
                 vault_ui.refresh_draw_list();
                 vault_ui.redraw();
             }
+            // Photo actions. These act on the photo the screen is already showing, so they
+            // do not touch menu_origin: closing this menu returns to the photo, not to a menu.
+            Some(VaultOp::MenuPhotoActions) => {
+                active_menu = ActiveMenu::PhotoActions;
+                menu_just_opened = true;
+                animate.store(false, Ordering::SeqCst);
+                photo_menu_mgr.redraw();
+            }
+            Some(VaultOp::PhotoSetWallpaper) => {
+                active_menu = ActiveMenu::None;
+                vault_ui.ensure_photo_loaded();
+                vault_ui.set_photo_as_bling();
+                vault_ui.redraw();
+            }
+            Some(VaultOp::PhotoExportB64) => {
+                active_menu = ActiveMenu::None;
+                vault_ui.ensure_photo_loaded();
+                vault_ui.export_photo(false);
+                vault_ui.redraw();
+            }
+            Some(VaultOp::PhotoExportAscii) => {
+                active_menu = ActiveMenu::None;
+                vault_ui.ensure_photo_loaded();
+                vault_ui.export_photo(true);
+                vault_ui.redraw();
+            }
+            Some(VaultOp::PhotoDelete) => {
+                active_menu = ActiveMenu::None;
+                vault_ui.delete_photo();
+                vault_ui.redraw();
+            }
             Some(VaultOp::MenuClosed) => {
                 if menu_just_opened {
                     // a submenu is already on screen; painting the app over it would undo it
@@ -485,6 +520,7 @@ fn main() -> ! {
                         ActiveMenu::Login => login_menu_mgr.key_press(k),
                         ActiveMenu::Settings => settings_menu_mgr.key_press(k),
                         ActiveMenu::Vault => menu_mgr.key_press(k),
+                        ActiveMenu::PhotoActions => photo_menu_mgr.key_press(k),
                         _ => idle_menu_mgr.key_press(k),
                     }
                 } else {
@@ -518,6 +554,7 @@ fn main() -> ! {
                                 ActiveMenu::Login => login_menu_mgr.redraw(),
                                 ActiveMenu::Settings => settings_menu_mgr.redraw(),
                                 ActiveMenu::Vault => menu_mgr.redraw(),
+                                ActiveMenu::PhotoActions => photo_menu_mgr.redraw(),
                                 _ => idle_menu_mgr.redraw(),
                             }
                         }

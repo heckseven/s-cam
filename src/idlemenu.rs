@@ -85,3 +85,22 @@ pub fn create_settings(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic 
         menu_mgr,
     )
 }
+
+/// Actions on the photo under the cursor.
+///
+/// Built through the same helper as every other menu, so it looks and behaves like the
+/// settings list rather than a modal: same title bar, same focus brackets, LEFT to back out.
+pub fn create_photo_actions(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
+    build(
+        "PHOTO",
+        &[
+            ("set wallpaper", VaultOp::PhotoSetWallpaper),
+            ("export b64", VaultOp::PhotoExportB64),
+            ("export ascii", VaultOp::PhotoExportAscii),
+            ("delete", VaultOp::PhotoDelete),
+            ("back", VaultOp::MenuClosed),
+        ],
+        vault_conn,
+        menu_mgr,
+    )
+}

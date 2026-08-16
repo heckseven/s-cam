@@ -120,6 +120,16 @@ pub(crate) enum VaultOp {
     /// the menu widget reporting that it closed itself, on select or on LEFT. Distinct from
     /// MenuDone, which is the "back" entry asking to leave the menu tree entirely.
     MenuClosed = 1040,
+    /// open the photo actions menu
+    MenuPhotoActions = 1041,
+    /// make the shown photo the standby image
+    PhotoSetWallpaper = 1042,
+    /// type the shown photo to the host as a base64 data URI
+    PhotoExportB64 = 1043,
+    /// type the shown photo to the host as ASCII art
+    PhotoExportAscii = 1044,
+    /// delete the shown photo, after confirming
+    PhotoDelete = 1045,
 }
 
 // Compile-time guard on the VaultOp wire contract.
@@ -151,6 +161,11 @@ const _: () = assert!(VaultOp::MenuRoot as isize == 1037);
 const _: () = assert!(VaultOp::MenuLogin as isize == 1038);
 const _: () = assert!(VaultOp::MenuSettings as isize == 1039);
 const _: () = assert!(VaultOp::MenuClosed as isize == 1040);
+const _: () = assert!(VaultOp::MenuPhotoActions as isize == 1041);
+const _: () = assert!(VaultOp::PhotoSetWallpaper as isize == 1042);
+const _: () = assert!(VaultOp::PhotoExportB64 as isize == 1043);
+const _: () = assert!(VaultOp::PhotoExportAscii as isize == 1044);
+const _: () = assert!(VaultOp::PhotoDelete as isize == 1045);
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct IpcString {
