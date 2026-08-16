@@ -534,6 +534,8 @@ pub struct VaultUi {
 
     // when Some(), override the display state with this String in QR code format
     pub qr_override: Option<QrCode>,
+    /// full URL behind qr_override, captioned under the code and scrolled if too long
+    pub qr_caption: Option<String>,
     /// index into the console's pattern set; 0 means gene expression
     led_pattern: usize,
     /// PASSKEYS: FIDO2 registrations, loaded on entering the screen
@@ -576,6 +578,22 @@ pub struct VaultUi {
 
 /// Standby images that ship with the firmware. Captured photos are appended to this list
 /// at runtime, so "set a photo as the standby image" needs no separate mechanism.
+/// Return the slice of `text` to show this tick, scrolling if it does not fit.
+///
+/// The panel fits 18 monospace cells. Anything longer is scrolled one character every four
+/// ticks, with a gap so the end and the beginning are distinguishable when it wraps. Short
+/// text is returned unchanged rather than scrolled pointlessly.
+fn marquee(text: &str, quantum: u32) -> String {
+    const VISIBLE: usize = 18;
+    let count = text.chars().count();
+    if count <= VISIBLE {
+        return text.to_string();
+    }
+    let padded: Vec<char> = text.chars().chain("   ".chars()).collect();
+    let offset = (quantum as usize / 4) % padded.len();
+    padded.iter().cycle().skip(offset).take(VISIBLE).collect()
+}
+
 /// Move a list cursor one step, wrapping at both ends.
 ///
 /// Every list screen shares this so they behave the same way: on a 128px panel a list runs
@@ -693,6 +711,7 @@ impl VaultUi {
             token_help_state: TokenHelpState::TokenRecap { seen_press: false },
             global_config: None,
             qr_override: None,
+            qr_caption: None,
             led_pattern: 0,
             passkey_cache: Vec::new(),
             passkey_cursor: 0,
@@ -944,8 +963,8 @@ impl VaultUi {
                 let has = !rows.is_empty();
                 crate::theme::button_labels(
                     &self.gfx, self.screen_size,
-                    Some("BACK"),
-                    if has { Some("DEL") } else { None },
+                    Some("back"),
+                    if has { Some("del") } else { None },
                     None,
                 );
                 self.gfx.flush().ok();
@@ -961,9 +980,9 @@ impl VaultUi {
                 let has = !self.photo_cache.is_empty();
                 crate::theme::button_labels(
                     &self.gfx, self.screen_size,
-                    Some("BACK"),
-                    if has { Some("DEL") } else { None },
-                    if has { Some("VIEW") } else { None },
+                    Some("back"),
+                    if has { Some("del") } else { None },
+                    if has { Some("view") } else { None },
                 );
                 self.gfx.flush().ok();
             }
@@ -983,11 +1002,11 @@ impl VaultUi {
                 if fresh {
                     crate::theme::button_labels(
                         &self.gfx, self.screen_size,
-                        Some("BACK"), Some("REDO"), Some("SAVE"),
+                        Some("back"), Some("redo"), Some("save"),
                     );
                 } else {
                     crate::theme::button_labels(
-                        &self.gfx, self.screen_size, Some("BACK"), None, None,
+                        &self.gfx, self.screen_size, Some("back"), None, None,
                     );
                 }
                 self.gfx.flush().ok();
@@ -1004,7 +1023,7 @@ impl VaultUi {
                     crate::theme::ListStyle::Select { marked: Some(self.standby_choice) },
                 );
                 crate::theme::button_labels(
-                    &self.gfx, self.screen_size, Some("BACK"), None, Some("PICK"),
+                    &self.gfx, self.screen_size, Some("back"), None, Some("pick"),
                 );
                 self.gfx.flush().ok();
             }
@@ -1026,8 +1045,8 @@ impl VaultUi {
                     .unwrap_or(false);
                 crate::theme::button_labels(
                     &self.gfx, self.screen_size,
-                    Some("BACK"), None,
-                    if attached { Some("PICK") } else { Some("N/A") },
+                    Some("back"), None,
+                    if attached { Some("pick") } else { Some("n/a") },
                 );
                 self.gfx.flush().ok();
             }
@@ -1035,7 +1054,7 @@ impl VaultUi {
             VaultMode::AboutQr { quantum: _ } => {
                 self.clear_area();
                 crate::theme::heading(&self.gfx, self.screen_size, "ABOUT");
-                crate::theme::button_labels(&self.gfx, self.screen_size, Some("BACK"), None, None);
+                crate::theme::button_labels(&self.gfx, self.screen_size, Some("back"), None, None);
                 self.gfx.flush().ok();
             }
             VaultMode::Idle => {
@@ -1078,7 +1097,7 @@ impl VaultUi {
                 );
                 tv.invert = true;
                 tv.margin = Point::new(1, 1);
-                tv.style = GlyphStyle::Bold;
+                tv.style = crate::theme::FONT;
                 tv.draw_border = false;
                 // have to move this out or we lock up
                 let badge_type = self.global_config.as_ref().unwrap().lock().unwrap().badge_type();
@@ -1147,7 +1166,7 @@ impl VaultUi {
                     );
                     tv.invert = true;
                     tv.margin = Point::new(1, 1);
-                    tv.style = GlyphStyle::Bold;
+                    tv.style = crate::theme::FONT;
                     tv.draw_border = false;
                     write!(tv, "BIO ACTIVE").ok();
                     self.gfx.draw_textview(&mut tv).ok();
@@ -1161,7 +1180,8 @@ impl VaultUi {
                             Gid::dummy(),
                             TextBounds::CenteredTop(Rectangle::new(Point::new(0, 0), Point::new(127, 10))),
                         );
-                        msg.style = GlyphStyle::Small;
+                        msg.style = crate::theme::FONT;
+                        msg.invert = true;
                         if rate == MutationRate::Elevated {
                             write!(msg, "elevated").ok();
                         } else if rate == MutationRate::Radioactive {
@@ -1187,36 +1207,30 @@ impl VaultUi {
                             code.to_colors().into_iter().map(|c| c != Color::Light).collect();
                         self.gfx.render_qr(&modules, width, Point::new(0, 0)).ok();
                     }
-                    if quantum & 7 == 6 {
-                        let width = if matches!(mode_at_entry, VaultMode::Idle) { 14 } else { 17 };
-                        let mut tv = TextView::new(
-                            Gid::dummy(),
-                            TextBounds::CenteredTop(Rectangle::new(
-                                Point::new(64 - width, 127 - 12),
-                                Point::new(64 + width, 130),
-                            )),
-                        );
-                        tv.invert = true;
-                        tv.margin = Point::new(3, -2);
-                        tv.style = GlyphStyle::Bold;
-                        tv.draw_border = false;
-                        if matches!(mode_at_entry, VaultMode::Idle) {
-                            write!(tv, "NCE").ok();
-                        } else if matches!(mode_at_entry, VaultMode::ShowBookmarkQr { .. }) {
-                            write!(tv, "BKM").ok();
-                        } else {
-                            write!(tv, "DAT").ok();
+                    // Caption the code with the URL it encodes. Redrawn on every other tick so
+                    // a URL too long for the panel scrolls; the TextView refills its own box,
+                    // so repainting in place does not smear over the code above it.
+                    if quantum & 1 == 0 {
+                        if let Some(url) = self.qr_caption.clone() {
+                            let mut tv = TextView::new(
+                                Gid::dummy(),
+                                TextBounds::BoundingBox(Rectangle::new(
+                                    Point::new(0, self.screen_size.y - crate::theme::LABEL_BAR_H),
+                                    Point::new(self.screen_size.x, self.screen_size.y),
+                                )),
+                            );
+                            tv.invert = true;
+                            tv.margin = Point::new(0, 1);
+                            tv.style = crate::theme::FONT;
+                            tv.draw_border = false;
+                            write!(tv, "{}", marquee(&url, quantum)).ok();
+                            self.gfx.draw_textview(&mut tv).ok();
                         }
-                        self.gfx.draw_textview(&mut tv).ok();
                     }
-                    if matches!(mode_at_entry, VaultMode::Idle) {
-                        *self.mode.lock().unwrap() = VaultMode::Idle
-                    } else if matches!(mode_at_entry, VaultMode::Idle) {
-                        *self.mode.lock().unwrap() = VaultMode::Idle
-                    } else if matches!(mode_at_entry, VaultMode::ShowBookmarkQr { .. }) {
-                        *self.mode.lock().unwrap() =
-                            VaultMode::ShowBookmarkQr { quantum: quantum + 1 }
-                    }
+                    // This arm only runs while the mode IS ShowBookmarkQr, so the two Idle
+                    // branches that used to sit here could never fire. Just advance the tick
+                    // that drives the redraw cadence and the caption scroll.
+                    *self.mode.lock().unwrap() = VaultMode::ShowBookmarkQr { quantum: quantum + 1 };
                 } else {
                     // if no code, go back to idle mode
                     *self.mode.lock().unwrap() = VaultMode::Idle;
@@ -1230,9 +1244,9 @@ impl VaultUi {
                     let mut tv = TextView::new(Gid::dummy(), TextBounds::CenteredTop(TotpLayout::list_box()));
                     tv.invert = true;
                     tv.margin = Point::new(0, 0);
-                    tv.style = GlyphStyle::Bold;
+                    tv.style = crate::theme::FONT;
                     tv.draw_border = false;
-                    write!(tv, "Time is not set. Scan QR code to set time. See defcon.org/34b for details.")
+                    write!(tv, "TIME IS NOT SET.\nSCAN A QR CODE TO SET IT.")
                         .ok();
                     self.gfx.draw_textview(&mut tv).ok();
                     self.gfx.flush().ok();
@@ -1311,7 +1325,7 @@ impl VaultUi {
                 object_list.push(ClipObjectType::Rect(timer_remaining)).unwrap();
                 self.gfx.draw_object_list(object_list).unwrap();
                 crate::theme::button_labels(
-                    &self.gfx, self.screen_size, Some("BACK"), None, Some("SEND"),
+                    &self.gfx, self.screen_size, Some("back"), None, Some("send"),
                 );
                 self.gfx.flush().ok();
             }
@@ -1342,7 +1356,7 @@ impl VaultUi {
                     // left the screen with no way out and no indication there was one.
                     crate::theme::heading(&self.gfx, self.screen_size, "PASSWORDS");
                     crate::theme::button_labels(
-                        &self.gfx, self.screen_size, Some("BACK"), None, None,
+                        &self.gfx, self.screen_size, Some("back"), None, None,
                     );
                     self.gfx.flush().ok();
                     return;
@@ -1389,7 +1403,7 @@ impl VaultUi {
                 };
                 self.display_list.draw(insert_at);
                 crate::theme::button_labels(
-                    &self.gfx, self.screen_size, Some("BACK"), None, Some("TYPE"),
+                    &self.gfx, self.screen_size, Some("back"), None, Some("type"),
                 );
                 self.gfx.flush().ok();
             }// _ => unimplemented!(),
@@ -1420,8 +1434,8 @@ impl VaultUi {
                 let has = !rows.is_empty();
                 crate::theme::button_labels(
                     &self.gfx, self.screen_size,
-                    Some("BACK"), None,
-                    if has { Some("SHOW") } else { None },
+                    Some("back"), None,
+                    if has { Some("show") } else { None },
                 );
                 self.gfx.flush().ok();
             }
@@ -1448,7 +1462,7 @@ impl VaultUi {
                 }
                 crate::theme::button_labels(
                     &self.gfx, self.screen_size,
-                    Some("BACK"), Some("RETRY"), Some("SAVE"),
+                    Some("back"), Some("retry"), Some("save"),
                 );
             }
         }
@@ -1527,6 +1541,21 @@ impl VaultUi {
             xous::Message::new_scalar(VaultOp::ScanUrl.to_usize().unwrap(), 0, 0, 0, 0),
         )
         .ok();
+    }
+
+    /// Ask for the QR of the bookmark under the cursor.
+    ///
+    /// Routed through ActionManager rather than encoded here so browsing uses the same
+    /// validation path as opening one from the list - it is the only thing that checks the
+    /// stored URL before it becomes a QR code someone may scan.
+    fn request_bookmark_qr(&mut self) {
+        if let Some((key, _, _)) = self.bookmark_cache.get(self.bookmark_cursor) {
+            let ipc_key = crate::IpcString { s: key.clone() };
+            if let Ok(buf) = xous_ipc::Buffer::into_buf(ipc_key) {
+                buf.lend(self.actions_conn, crate::actions::ActionOp::BookmarkSelected.to_u32().unwrap())
+                    .ok();
+            }
+        }
     }
 
     /// Load the photo under the photos-list cursor for full-screen viewing.
@@ -1894,10 +1923,22 @@ impl VaultUi {
             // which returns the key without changing mode - the screen had no exit at all.
             VaultMode::AboutQr { quantum: _ } => self.to_menu(),
             VaultMode::ShowBookmarkQr { quantum: _ } => {
-                // Any key clears the bookmark QR and returns to Idle
-                self.qr_override = None;
-                *self.mode.lock().unwrap() = VaultMode::Idle;
-                Some(k)
+                match k {
+                    // browse the collection without going back to the list first
+                    '↑' | '↓' => {
+                        self.bookmark_cursor =
+                            step_cursor(self.bookmark_cursor, self.bookmark_cache.len(), k == '↑');
+                        self.request_bookmark_qr();
+                    }
+                    '←' => {
+                        self.qr_override = None;
+                        self.qr_caption = None;
+                        *self.mode.lock().unwrap() = VaultMode::BookmarkList;
+                        self.redraw();
+                    }
+                    _ => {}
+                }
+                None
             }
             VaultMode::ShowUrl => {
                 // Three plain buttons rather than a radio modal stacked on top of this

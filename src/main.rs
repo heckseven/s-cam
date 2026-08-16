@@ -422,6 +422,15 @@ fn main() -> ! {
                     idle_menu_mgr.redraw();
                 } else {
                     active_menu = ActiveMenu::None;
+                    // Back at standby the next menu press starts at the top, not in whichever
+                    // submenu the last screen happened to belong to.
+                    menu_origin = ActiveMenu::Root;
+                    // Leaving the tree for the standby screen forgets where you were.
+                    // Moving around inside it does not - coming back from a screen should land
+                    // on the item that opened it.
+                    idle_menu_mgr.set_index(0);
+                    login_menu_mgr.set_index(0);
+                    settings_menu_mgr.set_index(0);
                     vault_ui.refresh_draw_list();
                     animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                     vault_ui.redraw();
@@ -430,6 +439,12 @@ fn main() -> ! {
             Some(VaultOp::MenuDone) => {
                 active_menu = ActiveMenu::None;
                 menu_origin = ActiveMenu::Root;
+                    // Leaving the tree for the standby screen forgets where you were.
+                    // Moving around inside it does not - coming back from a screen should land
+                    // on the item that opened it.
+                    idle_menu_mgr.set_index(0);
+                    login_menu_mgr.set_index(0);
+                    settings_menu_mgr.set_index(0);
                 // update the TOTP codes, in case there were changes
                 vault_ui.refresh_draw_list();
                 animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
@@ -710,6 +725,8 @@ fn main() -> ! {
                                     code.version()
                                 );
                                 vault_ui.qr_override = Some(code);
+                                // the screen captions the code with the URL it encodes
+                                vault_ui.qr_caption = Some(url.as_str().to_string());
                                 *mode.lock().unwrap() = VaultMode::ShowBookmarkQr { quantum: 0 };
                                 animate.store(
                                     VaultMode::ShowBookmarkQr { quantum: 0 }.should_animate(),
