@@ -134,6 +134,10 @@ pub(crate) enum VaultOp {
     ConfirmYes = 1046,
     /// the confirm menu's no
     ConfirmNo = 1047,
+    /// open the typing speed test submenu
+    MenuTypeTest = 1048,
+    /// type the test alphabet; the delay in ms rides in the scalar payload
+    TypeTest = 1049,
 }
 
 // Compile-time guard on the VaultOp wire contract.
@@ -172,6 +176,8 @@ const _: () = assert!(VaultOp::PhotoExportAscii as isize == 1044);
 const _: () = assert!(VaultOp::PhotoDelete as isize == 1045);
 const _: () = assert!(VaultOp::ConfirmYes as isize == 1046);
 const _: () = assert!(VaultOp::ConfirmNo as isize == 1047);
+const _: () = assert!(VaultOp::MenuTypeTest as isize == 1048);
+const _: () = assert!(VaultOp::TypeTest as isize == 1049);
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct IpcString {

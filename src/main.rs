@@ -152,6 +152,8 @@ enum ActiveMenu {
     PhotoActions,
     /// a yes/no question
     Confirm,
+    /// typing speed test
+    TypeTest,
 }
 
 /// What a "yes" on the confirm menu should carry out.
@@ -223,6 +225,8 @@ fn main() -> ! {
     let photo_menu_mgr = idlemenu::create_photo_actions(conn, photo_menu_sid);
     let confirm_menu_sid = xous::create_server().unwrap();
     let confirm_menu_mgr = idlemenu::create_confirm(conn, confirm_menu_sid);
+    let typetest_menu_sid = xous::create_server().unwrap();
+    let typetest_menu_mgr = idlemenu::create_type_test(conn, typetest_menu_sid);
     let idle_menu_sid = xous::create_server().unwrap();
     let idle_menu_mgr = idlemenu::create_root(conn, idle_menu_sid);
 
@@ -468,6 +472,18 @@ fn main() -> ! {
                 confirm_menu_mgr.set_index(0);
                 confirm_menu_mgr.redraw();
             }
+            Some(VaultOp::MenuTypeTest) => {
+                active_menu = ActiveMenu::TypeTest;
+                menu_just_opened = true;
+                animate.store(false, Ordering::SeqCst);
+                typetest_menu_mgr.redraw();
+            }
+            // The delay rides in the menu entry's payload, so one opcode serves every speed.
+            Some(VaultOp::TypeTest) => xous::msg_scalar_unpack!(msg, delay, _, _, _, {
+                active_menu = ActiveMenu::None;
+                vault_ui.type_test(delay);
+                vault_ui.redraw();
+            }),
             Some(VaultOp::ConfirmNo) => {
                 pending = Pending::None;
                 active_menu = ActiveMenu::None;
@@ -567,6 +583,7 @@ fn main() -> ! {
                         ActiveMenu::Vault => menu_mgr.key_press(k),
                         ActiveMenu::PhotoActions => photo_menu_mgr.key_press(k),
                         ActiveMenu::Confirm => confirm_menu_mgr.key_press(k),
+                        ActiveMenu::TypeTest => typetest_menu_mgr.key_press(k),
                         _ => idle_menu_mgr.key_press(k),
                     }
                 } else {
@@ -602,6 +619,7 @@ fn main() -> ! {
                                 ActiveMenu::Vault => menu_mgr.redraw(),
                                 ActiveMenu::PhotoActions => photo_menu_mgr.redraw(),
                                 ActiveMenu::Confirm => confirm_menu_mgr.redraw(),
+                                ActiveMenu::TypeTest => typetest_menu_mgr.redraw(),
                                 _ => idle_menu_mgr.redraw(),
                             }
                         }
@@ -669,21 +687,7 @@ fn main() -> ! {
                 }
                 animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
             }
-            Some(VaultOp::MenuChangeFont) => {
-                for item in FONT_LIST {
-                    modals.add_list_item(item).expect("couldn't build radio item list");
-                }
-                animate.store(false, Ordering::SeqCst);
-                match modals.get_radiobutton(t!("vault.select_font", locales::LANG)) {
-                    Ok(style) => {
-                        vault_ui.store_glyph_style(name_to_style(&style).unwrap_or(DEFAULT_FONT));
-                        vault_ui.apply_glyph_style();
-                    }
-                    _ => log::error!("get_radiobutton failed"),
-                }
-                animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
-            }
-            Some(VaultOp::MenuDeleteStage1) => {
+Some(VaultOp::MenuDeleteStage1) => {
                 animate.store(false, Ordering::SeqCst);
                 if let Some(entry) = vault_ui.selected_entry() {
                     let buf = Buffer::into_buf(entry).expect("IPC error");

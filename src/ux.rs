@@ -1710,6 +1710,25 @@ impl VaultUi {
         out
     }
 
+    /// Type the alphabet at a given delay, to find where the host starts losing characters.
+    ///
+    /// Lower case then upper case: the upper case half exercises the shift modifier, which is
+    /// sent in the same report as the letter, and is the part most likely to break when the
+    /// pacing is too tight.
+    pub(crate) fn type_test(&mut self, delay_ms: usize) {
+        const ALPHABET: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        self.usb_dev.set_autotype_delay_ms(delay_ms);
+        let result = self.usb_dev.send_str(ALPHABET);
+        self.usb_dev.set_autotype_delay_ms(30);
+        let note = match result {
+            Ok(n) if n == ALPHABET.len() => "SENT 52",
+            Ok(0) => "NO USB HOST",
+            Ok(_) => "SENT SHORT",
+            Err(_) => "SEND FAILED",
+        };
+        self.modals.show_notification(note, None).ok();
+    }
+
     /// Render the shown photo as ASCII art.
     ///
     /// One character per 1x2 block of pixels, so 128 columns by 64 rows. Terminal cells are

@@ -39,7 +39,8 @@ def menu_entries(text):
     out = []
     for name in menus:
         body = re.search(r"pub fn create_%s\(.*?\n\}" % name, text, re.S).group(0)
-        pairs = re.findall(r'\("([^"]+)",\s*VaultOp::(\w+)\)', body)
+        # entries are either ("label", VaultOp::Op) or ("label", VaultOp::Op, payload)
+        pairs = re.findall(r'\("([^"]+)",\s*VaultOp::(\w+)[,)]', body)
         if not pairs:
             sys.exit(f"create_{name} defines no menu entries - has the shape changed?")
         for label, opcode in pairs:
@@ -96,12 +97,15 @@ def main():
         "PhotoExportB64",
         "PhotoExportAscii",
         "PhotoDelete",
+        "MenuTypeTest",
     }
 
     seen = {}
     for menu, label, opcode in entries:
+        # A menu built with payloads runs the same action at different settings, so repeated
+        # opcodes are the point there rather than a mistake.
         key = (menu, opcode)
-        if key in seen:
+        if key in seen and menu != "type_test":
             problems.append(
                 f'create_{menu}: "{label}" and "{seen[key]}" both send VaultOp::{opcode}, '
                 f"so one of them is unreachable"

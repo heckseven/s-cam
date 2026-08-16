@@ -48,6 +48,7 @@ pub fn create_root(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
             ("qr collection", VaultOp::ListBookmarks),
             ("photos", VaultOp::ListPhotos),
             ("settings", VaultOp::MenuSettings),
+            ("type test", VaultOp::MenuTypeTest),
             ("about", VaultOp::ShowAbout),
             ("back", VaultOp::MenuDone),
         ],
@@ -116,6 +117,49 @@ pub fn create_confirm(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
     build(
         "CONFIRM",
         &[("no", VaultOp::ConfirmNo), ("yes", VaultOp::ConfirmYes)],
+        vault_conn,
+        menu_mgr,
+    )
+}
+
+/// Like `build`, but each entry carries a value in its scalar payload. Used where the entries
+/// are the same action at different settings, so they share one opcode instead of needing one
+/// each.
+fn build_payload(
+    title: &'static str,
+    entries: &[(&str, VaultOp, u32)],
+    vault_conn: xous::CID,
+    menu_mgr: xous::SID,
+) -> MenuMatic {
+    let mut menu_items = Vec::<MenuItem>::new();
+    for (name, op, value) in entries {
+        menu_items.push(MenuItem {
+            name: String::from(*name),
+            action_conn: Some(vault_conn),
+            action_opcode: op.to_u32().unwrap(),
+            action_payload: MenuPayload::Scalar([*value, 0, 0, 0]),
+            close_on_select: true,
+        });
+    }
+    menu_matic(menu_items, title, Some(menu_mgr), vault_conn, VaultOp::MenuClosed.to_usize().unwrap())
+        .expect("couldn't create MenuMatic manager")
+}
+
+/// Typing speed test. Types the alphabet at a chosen delay so the speed at which the host
+/// starts dropping characters can be found by looking, rather than guessed at.
+pub fn create_type_test(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
+    build_payload(
+        "TYPE TEST",
+        &[
+            ("2 ms - too fast", VaultOp::TypeTest, 2),
+            ("4 ms", VaultOp::TypeTest, 4),
+            ("8 ms", VaultOp::TypeTest, 8),
+            ("12 ms", VaultOp::TypeTest, 12),
+            ("20 ms", VaultOp::TypeTest, 20),
+            ("30 ms - default", VaultOp::TypeTest, 30),
+            ("50 ms - slow", VaultOp::TypeTest, 50),
+            ("back", VaultOp::MenuRoot, 0),
+        ],
         vault_conn,
         menu_mgr,
     )
