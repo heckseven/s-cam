@@ -117,6 +117,9 @@ pub(crate) enum VaultOp {
     MenuLogin = 1038,
     /// open the settings submenu
     MenuSettings = 1039,
+    /// the menu widget reporting that it closed itself, on select or on LEFT. Distinct from
+    /// MenuDone, which is the "back" entry asking to leave the menu tree entirely.
+    MenuClosed = 1040,
 }
 
 // Compile-time guard on the VaultOp wire contract.
@@ -147,6 +150,7 @@ const _: () = assert!(VaultOp::ShowAbout as isize == 1036);
 const _: () = assert!(VaultOp::MenuRoot as isize == 1037);
 const _: () = assert!(VaultOp::MenuLogin as isize == 1038);
 const _: () = assert!(VaultOp::MenuSettings as isize == 1039);
+const _: () = assert!(VaultOp::MenuClosed as isize == 1040);
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct IpcString {

@@ -368,6 +368,9 @@ fn main() -> ! {
     }
 
     let mut active_menu = ActiveMenu::None;
+    // Set when a menu entry opened another menu. The widget's close notification arrives
+    // straight after, and without this it cannot tell that apart from the user pressing LEFT.
+    let mut menu_just_opened = false;
     // which menu a screen was opened from, so its BACK returns there rather than to the top
     let mut menu_origin = ActiveMenu::Root;
     let mut jig_ready_seen = false;
@@ -407,6 +410,22 @@ fn main() -> ! {
                 .ok();
                 vault_ui.refresh_draw_list();
                 vault_ui.redraw();
+            }
+            Some(VaultOp::MenuClosed) => {
+                if menu_just_opened {
+                    // a submenu is already on screen; painting the app over it would undo it
+                    menu_just_opened = false;
+                } else if matches!(active_menu, ActiveMenu::Login | ActiveMenu::Settings) {
+                    // LEFT out of a submenu goes up a level rather than out of the tree
+                    active_menu = ActiveMenu::Root;
+                    menu_origin = ActiveMenu::Root;
+                    idle_menu_mgr.redraw();
+                } else {
+                    active_menu = ActiveMenu::None;
+                    vault_ui.refresh_draw_list();
+                    animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
+                    vault_ui.redraw();
+                }
             }
             Some(VaultOp::MenuDone) => {
                 active_menu = ActiveMenu::None;
@@ -1220,17 +1239,20 @@ fn main() -> ! {
             // showing - so they must not clear menu_origin.
             Some(VaultOp::MenuRoot) => {
                 active_menu = ActiveMenu::Root;
+                menu_just_opened = true;
                 menu_origin = ActiveMenu::Root;
                 animate.store(false, Ordering::SeqCst);
                 idle_menu_mgr.redraw();
             }
             Some(VaultOp::MenuLogin) => {
                 active_menu = ActiveMenu::Login;
+                menu_just_opened = true;
                 animate.store(false, Ordering::SeqCst);
                 login_menu_mgr.redraw();
             }
             Some(VaultOp::MenuSettings) => {
                 active_menu = ActiveMenu::Settings;
+                menu_just_opened = true;
                 animate.store(false, Ordering::SeqCst);
                 settings_menu_mgr.redraw();
             }

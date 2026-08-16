@@ -28,7 +28,11 @@ fn build(
             close_on_select: true,
         });
     }
-    menu_matic(menu_items, title, Some(menu_mgr), vault_conn, VaultOp::MenuDone.to_usize().unwrap())
+    // MenuClosed, not MenuDone. The widget sends this to the parent whenever it closes -
+    // after every selection, and on LEFT - so it cannot be the same opcode as the "back"
+    // entry that tears the whole tree down. Wiring them together meant selecting a submenu
+    // drew it and then immediately closed it back to the idle screen.
+    menu_matic(menu_items, title, Some(menu_mgr), vault_conn, VaultOp::MenuClosed.to_usize().unwrap())
         .expect("couldn't create MenuMatic manager")
 }
 
