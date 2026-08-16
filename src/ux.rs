@@ -7,7 +7,7 @@ use bao1x_hal_service::Adc;
 use blitstr2::GlyphStyle;
 
 /// Patterns implemented in dc34-console; index 0 restores gene expression.
-const LED_PATTERN_COUNT: usize = 5;
+const LED_PATTERN_COUNT: usize = 8;
 use chrono::Datelike;
 use qrcode::{Color, QrCode};
 use ux_api::minigfx::*;
@@ -628,8 +628,17 @@ pub const DEFCON_IMAGE: usize = 1;
 
 /// Blinky choices. Index 0 is gene expression - the badge's protected behaviour and the
 /// default - and the rest map onto dc34-console's pattern table.
-pub const BLINKY_CHOICES: [&str; 6] =
-    ["GENE (DEFAULT)", "RAINBOW", "CHASE", "BREATHE", "EMBER", "RIOT"];
+pub const BLINKY_CHOICES: [&str; 9] = [
+    "GENE (DEFAULT)",
+    "RAINBOW",
+    "RAINBOW SPIN",
+    "RAINBOW WAVE",
+    "COMET",
+    "CHASE",
+    "BREATHE",
+    "EMBER",
+    "RIOT",
+];
 
 impl VaultUi {
     /// Apply a standby-image choice: 0 and 1 are the built-ins, higher indices are photos.
