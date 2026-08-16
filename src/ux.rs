@@ -1206,7 +1206,11 @@ impl VaultUi {
                         let width = code.width();
                         let modules: Vec<bool> =
                             code.to_colors().into_iter().map(|c| c != Color::Light).collect();
-                        self.gfx.render_qr(&modules, width, Point::new(0, 0)).ok();
+                        // Bound the code so it stops short of the caption strip. It is sized
+                        // from the width and drawn square, so at full width it fills the panel
+                        // and the caption's background then covers its bottom rows.
+                        let fit = (self.screen_size.y - crate::theme::LABEL_BAR_H) as usize;
+                        self.gfx.render_qr(&modules, width, Point::new(0, 0), fit).ok();
                     }
                     // Caption the code with the URL it encodes. Redrawn on every other tick so
                     // a URL too long for the panel scrolls; the TextView refills its own box,
@@ -1837,25 +1841,10 @@ impl VaultUi {
             VaultMode::Idle => match k {
                 // LEFT - show the default bookmark as a QR, press again to dismiss.
                 // "Default" is set explicitly from the bookmarks list; nothing defined it before.
-                '←' => {
-                    if self.qr_override.is_some() {
-                        self.qr_override = None;
-                    } else {
-                        let url = crate::storage::default_bookmark_url(&self.pddb.borrow());
-                        match url {
-                            Some(u) => match QrCode::with_error_correction_level(
-                                u.as_bytes(),
-                                qrcode::EcLevel::M,
-                            ) {
-                                Ok(code) => self.qr_override = Some(code),
-                                Err(e) => log::warn!("default bookmark will not fit in a QR: {:?}", e),
-                            },
-                            None => log::info!("no default bookmark set"),
-                        }
-                    }
-                    self.redraw();
-                    None
-                }
+                // LEFT opens the menu. It used to show the "default" bookmark as a QR, but
+                // nothing in the UI ever set a default, so it was a button that did nothing on
+                // most badges. The QR collection reaches every saved code.
+                '←' => Some('∴'),
                 // MIDDLE - open the camera. Routed through the main loop because
                 // ActionOp::AcquireQr is a blocking scalar and the key path cannot send one.
                 '🔥' => Some(k),

@@ -216,6 +216,9 @@ pub fn list(
         // same left margin as heading(), so a row's first character sits directly under the
         // heading's first character
         tv.margin = Point::new(1, 0);
+        // Truncate an over-long row rather than dropping it. Without this the typesetter
+        // aborts on overflow and the row renders as its number and nothing else.
+        tv.ellipsis = true;
         // Every row is white-on-black. Focus is the brackets, not an inverted slab: the
         // inverted row was the only black-on-white text on the panel and read as a blank bar.
         tv.invert = true;
