@@ -375,18 +375,26 @@ impl GlobalConfig {
     /// The pattern set and the rendering both live in dc34-console, which owns the LED
     /// hardware and is flash-resident. This side is only a scalar send, so the feature
     /// costs the app's page budget essentially nothing.
-    pub fn set_led_pattern(&self, index: usize) {
-        xous::send_message(
+    /// Select an LED pattern. Returns what the LED server reported, or None if it did not
+    /// answer - which is the difference between "the ring did not change" and "the request
+    /// never got there", and cannot be told apart from a fire-and-forget send.
+    pub fn set_led_pattern(&self, index: usize) -> Option<usize> {
+        match xous::send_message(
             self.led_server,
-            xous::Message::new_scalar(
+            xous::Message::new_blocking_scalar(
                 LedManagerOp::SetPattern.to_usize().unwrap(),
                 index,
                 0,
                 0,
                 0,
             ),
-        )
-        .ok();
+        ) {
+            Ok(xous::Result::Scalar1(status)) => Some(status),
+            other => {
+                log::warn!("LED server gave an unexpected reply: {:?}", other);
+                None
+            }
+        }
     }
 
     pub fn render_gene(&self) {

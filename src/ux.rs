@@ -1821,9 +1821,22 @@ impl VaultUi {
                         // no way to tell that from a pattern that simply did not render. The
                         // ring is on the carrier; with no carrier the write just goes nowhere.
                         self.led_pattern = self.blinky_cursor;
-                        if let Some(config) = self.global_config.as_ref() {
-                            config.lock().unwrap().set_led_pattern(self.blinky_cursor);
-                        }
+                        // TEMPORARY: show what the LED server reported. The ring has not
+                        // changed across several fixes and there is no readable log on a
+                        // running badge, so put the answer on the screen.
+                        let reply = self
+                            .global_config
+                            .as_ref()
+                            .and_then(|c| c.lock().unwrap().set_led_pattern(self.blinky_cursor));
+                        let note = match reply {
+                            Some(3) => "SENT: PATTERN SET",
+                            Some(1) => "SENT: GENE RESTORED",
+                            Some(2) => "SENT: NO GENE TO RESTORE",
+                            Some(4) => "SENT: INDEX OUT OF RANGE",
+                            Some(_) => "SENT: UNKNOWN REPLY",
+                            None => "LED SERVER DID NOT ANSWER",
+                        };
+                        self.modals.show_notification(note, None).ok();
                         if let Err(e) = crate::storage::set_blinky_choice(
                             &self.pddb.borrow(), self.blinky_cursor,
                         ) {
