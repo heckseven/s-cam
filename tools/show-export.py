@@ -102,12 +102,17 @@ def main():
     if not text.strip():
         sys.exit("nothing to read")
 
-    if PREFIX in text or sum(c in B64 for c in text) > len(text) * 0.9:
-        print("reading as base64:")
-        rows = from_base64(text)
-    else:
+    # Decide by shape, not by how clean the characters are: a corrupted base64 export is full
+    # of characters base64 cannot contain, and judging by that alone sent it down the art path
+    # where the real diagnosis - "these characters are impossible" - never got printed.
+    body = text.split(PREFIX, 1)[1] if PREFIX in text else text
+    art_like = body.count("\n") > 4 and sum(c in ART for c in body) > len(body) * 0.9
+    if art_like:
         print("reading as ascii art:")
         rows = from_art(text)
+    else:
+        print("reading as base64:")
+        rows = from_base64(text)
 
     if rows:
         print()
