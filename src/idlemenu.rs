@@ -104,3 +104,19 @@ pub fn create_photo_actions(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuM
         menu_mgr,
     )
 }
+
+/// Yes/no confirmation, as a menu rather than a modal.
+///
+/// The modal widget ignores LEFT and RIGHT outright and draws no button labels, so a
+/// confirmation asked that way had no way to back out and no hint about the controls. Built
+/// here it behaves like every other list: LEFT backs out, the same brackets mark the focus.
+///
+/// "no" is first so the default selection is the harmless one.
+pub fn create_confirm(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
+    build(
+        "CONFIRM",
+        &[("no", VaultOp::ConfirmNo), ("yes", VaultOp::ConfirmYes)],
+        vault_conn,
+        menu_mgr,
+    )
+}

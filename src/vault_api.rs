@@ -130,6 +130,10 @@ pub(crate) enum VaultOp {
     PhotoExportAscii = 1044,
     /// delete the shown photo, after confirming
     PhotoDelete = 1045,
+    /// the confirm menu's yes
+    ConfirmYes = 1046,
+    /// the confirm menu's no
+    ConfirmNo = 1047,
 }
 
 // Compile-time guard on the VaultOp wire contract.
@@ -166,6 +170,8 @@ const _: () = assert!(VaultOp::PhotoSetWallpaper as isize == 1042);
 const _: () = assert!(VaultOp::PhotoExportB64 as isize == 1043);
 const _: () = assert!(VaultOp::PhotoExportAscii as isize == 1044);
 const _: () = assert!(VaultOp::PhotoDelete as isize == 1045);
+const _: () = assert!(VaultOp::ConfirmYes as isize == 1046);
+const _: () = assert!(VaultOp::ConfirmNo as isize == 1047);
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct IpcString {

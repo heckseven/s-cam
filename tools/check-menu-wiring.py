@@ -84,7 +84,19 @@ def main():
 
     # Opcodes that move between menus rather than opening a screen. They deliberately keep the
     # menu tree open, so they must NOT clear the active menu the way screen handlers do.
-    navigation = {"MenuRoot", "MenuLogin", "MenuSettings", "MenuDone"}
+    #
+    # The three photo actions are here because each one asks for confirmation first, which is
+    # itself a menu - so their handlers open the confirm menu rather than closing anything.
+    # The confirm menu's own answers do close it, and are checked normally.
+    navigation = {
+        "MenuRoot",
+        "MenuLogin",
+        "MenuSettings",
+        "MenuDone",
+        "PhotoExportB64",
+        "PhotoExportAscii",
+        "PhotoDelete",
+    }
 
     seen = {}
     for menu, label, opcode in entries:

@@ -1753,9 +1753,6 @@ impl VaultUi {
             self.modals.show_notification("NOTHING TO EXPORT", None).ok();
             return;
         };
-        if !self.confirm("TYPE PHOTO TO HOST? FOCUS A TEXT FIELD FIRST") {
-            return;
-        }
         let text = if as_art {
             Self::ascii_art(&bits)
         } else {
@@ -1805,21 +1802,9 @@ impl VaultUi {
         .ok();
     }
 
-    /// Ask before doing something that cannot be undone. "no" is listed first so the
-    /// default selection is the harmless one.
-    fn confirm(&self, prompt: &str) -> bool {
-        if self.modals.add_list(vec!["no", "yes"]).is_err() {
-            return false;
-        }
-        matches!(self.modals.get_radiobutton(prompt), Ok(ref answer) if answer == "yes")
-    }
-
-    /// Delete the photo under the cursor, after confirming.
+    /// Delete the photo under the cursor. The caller asks first.
     pub(crate) fn delete_photo(&mut self) {
         let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() else { return };
-        if !self.confirm("DELETE THIS PHOTO?") {
-            return;
-        }
         if let Err(e) = crate::storage::photo_delete(&self.pddb.borrow(), &key) {
             log::warn!("could not delete photo {}: {:?}", key, e);
         }

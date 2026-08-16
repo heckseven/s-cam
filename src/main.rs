@@ -150,6 +150,21 @@ enum ActiveMenu {
     Vault,
     /// actions on the photo under the cursor
     PhotoActions,
+    /// a yes/no question
+    Confirm,
+}
+
+/// What a "yes" on the confirm menu should carry out.
+///
+/// The menu answers asynchronously - it dispatches an opcode rather than returning a value -
+/// so the question and the action it guards cannot live in one function the way a modal's
+/// blocking call allowed.
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum Pending {
+    None,
+    DeletePhoto,
+    ExportB64,
+    ExportAscii,
 }
 
 fn main() -> ! {
@@ -206,6 +221,8 @@ fn main() -> ! {
     let settings_menu_mgr = idlemenu::create_settings(conn, settings_menu_sid);
     let photo_menu_sid = xous::create_server().unwrap();
     let photo_menu_mgr = idlemenu::create_photo_actions(conn, photo_menu_sid);
+    let confirm_menu_sid = xous::create_server().unwrap();
+    let confirm_menu_mgr = idlemenu::create_confirm(conn, confirm_menu_sid);
     let idle_menu_sid = xous::create_server().unwrap();
     let idle_menu_mgr = idlemenu::create_root(conn, idle_menu_sid);
 
@@ -373,6 +390,7 @@ fn main() -> ! {
     // Set when a menu entry opened another menu. The widget's close notification arrives
     // straight after, and without this it cannot tell that apart from the user pressing LEFT.
     let mut menu_just_opened = false;
+    let mut pending = Pending::None;
     // which menu a screen was opened from, so its BACK returns there rather than to the top
     let mut menu_origin = ActiveMenu::Root;
     let mut jig_ready_seen = false;
@@ -427,21 +445,48 @@ fn main() -> ! {
                 vault_ui.set_photo_as_bling();
                 vault_ui.redraw();
             }
+            // These three ask first. The question is a menu, so it answers by dispatching an
+            // opcode rather than returning - hence remembering what it is guarding.
             Some(VaultOp::PhotoExportB64) => {
-                active_menu = ActiveMenu::None;
-                vault_ui.ensure_photo_loaded();
-                vault_ui.export_photo(false);
-                vault_ui.redraw();
+                pending = Pending::ExportB64;
+                active_menu = ActiveMenu::Confirm;
+                menu_just_opened = true;
+                confirm_menu_mgr.set_index(0);
+                confirm_menu_mgr.redraw();
             }
             Some(VaultOp::PhotoExportAscii) => {
-                active_menu = ActiveMenu::None;
-                vault_ui.ensure_photo_loaded();
-                vault_ui.export_photo(true);
-                vault_ui.redraw();
+                pending = Pending::ExportAscii;
+                active_menu = ActiveMenu::Confirm;
+                menu_just_opened = true;
+                confirm_menu_mgr.set_index(0);
+                confirm_menu_mgr.redraw();
             }
             Some(VaultOp::PhotoDelete) => {
+                pending = Pending::DeletePhoto;
+                active_menu = ActiveMenu::Confirm;
+                menu_just_opened = true;
+                confirm_menu_mgr.set_index(0);
+                confirm_menu_mgr.redraw();
+            }
+            Some(VaultOp::ConfirmNo) => {
+                pending = Pending::None;
                 active_menu = ActiveMenu::None;
-                vault_ui.delete_photo();
+                vault_ui.redraw();
+            }
+            Some(VaultOp::ConfirmYes) => {
+                active_menu = ActiveMenu::None;
+                match std::mem::replace(&mut pending, Pending::None) {
+                    Pending::DeletePhoto => vault_ui.delete_photo(),
+                    Pending::ExportB64 => {
+                        vault_ui.ensure_photo_loaded();
+                        vault_ui.export_photo(false);
+                    }
+                    Pending::ExportAscii => {
+                        vault_ui.ensure_photo_loaded();
+                        vault_ui.export_photo(true);
+                    }
+                    Pending::None => {}
+                }
                 vault_ui.redraw();
             }
             Some(VaultOp::MenuClosed) => {
@@ -521,6 +566,7 @@ fn main() -> ! {
                         ActiveMenu::Settings => settings_menu_mgr.key_press(k),
                         ActiveMenu::Vault => menu_mgr.key_press(k),
                         ActiveMenu::PhotoActions => photo_menu_mgr.key_press(k),
+                        ActiveMenu::Confirm => confirm_menu_mgr.key_press(k),
                         _ => idle_menu_mgr.key_press(k),
                     }
                 } else {
@@ -555,6 +601,7 @@ fn main() -> ! {
                                 ActiveMenu::Settings => settings_menu_mgr.redraw(),
                                 ActiveMenu::Vault => menu_mgr.redraw(),
                                 ActiveMenu::PhotoActions => photo_menu_mgr.redraw(),
+                                ActiveMenu::Confirm => confirm_menu_mgr.redraw(),
                                 _ => idle_menu_mgr.redraw(),
                             }
                         }
