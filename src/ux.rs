@@ -1027,7 +1027,7 @@ impl VaultUi {
                     );
                 } else {
                     crate::theme::button_labels(
-                        &self.gfx, self.screen_size, Some("back"), Some("set"), Some("del"),
+                        &self.gfx, self.screen_size, Some("back"), Some("del"), Some("set"),
                     );
                 }
                 self.gfx.flush().ok();
@@ -1646,6 +1646,15 @@ impl VaultUi {
         );
     }
 
+    /// Ask before doing something that cannot be undone. "no" is listed first so the
+    /// default selection is the harmless one.
+    fn confirm(&self, prompt: &str) -> bool {
+        if self.modals.add_list(vec!["no", "yes"]).is_err() {
+            return false;
+        }
+        matches!(self.modals.get_radiobutton(prompt), Ok(ref answer) if answer == "yes")
+    }
+
     /// Make the photo under the cursor the standby image.
     ///
     /// Standby choices are indexed past the built-ins, so photo N is BUILTIN_IMAGES.len() + N.
@@ -1819,10 +1828,11 @@ impl VaultUi {
                             step_cursor(self.photo_cursor, self.photo_cache.len(), k == '↑')
                     }
                     '←' => leaving = true,
-                    '→' => {
-                        self.show_selected_photo();
-                        return None;
-                    }
+                    // No early return here. handle_key redraws at the end, so returning from
+                    // inside the arm changed the mode and left the old screen on the panel
+                    // until the next keypress - which made 'view' look like it had done
+                    // nothing, and put the next press on a different screen than expected.
+                    '→' => self.show_selected_photo(),
                     '🔥' => self.set_photo_as_bling(),
                     _ => {}
                 }
@@ -1871,18 +1881,25 @@ impl VaultUi {
                             step_cursor(self.photo_cursor, self.photo_cache.len(), k == '↑');
                         self.show_selected_photo();
                     }
-                    '🔥' => self.set_photo_as_bling(),
-                    '→' => {
+                    // DELETE is the middle button and SET is the right one, the opposite way
+                    // round from the grid's 'view'. Right on the grid opens a photo, so right
+                    // here has to be something harmless: it used to be delete, which meant two
+                    // presses of the same button viewed a photo and then destroyed it.
+                    '🔥' => {
                         if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
-                            if let Err(e) = crate::storage::photo_delete(&self.pddb.borrow(), &key)
-                            {
-                                log::warn!("could not delete photo {}: {:?}", key, e);
+                            if self.confirm("DELETE THIS PHOTO?") {
+                                if let Err(e) =
+                                    crate::storage::photo_delete(&self.pddb.borrow(), &key)
+                                {
+                                    log::warn!("could not delete photo {}: {:?}", key, e);
+                                }
+                                self.load_photos();
+                                self.pending_photo = None;
+                                *self.mode.lock().unwrap() = VaultMode::PhotoList;
                             }
-                            self.load_photos();
-                            self.pending_photo = None;
-                            *self.mode.lock().unwrap() = VaultMode::PhotoList;
                         }
                     }
+                    '→' => self.set_photo_as_bling(),
                     _ => {}
                 }
                 self.redraw();
