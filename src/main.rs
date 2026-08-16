@@ -422,15 +422,16 @@ fn main() -> ! {
                     idle_menu_mgr.redraw();
                 } else {
                     active_menu = ActiveMenu::None;
-                    // Back at standby the next menu press starts at the top, not in whichever
-                    // submenu the last screen happened to belong to.
-                    menu_origin = ActiveMenu::Root;
-                    // Leaving the tree for the standby screen forgets where you were.
-                    // Moving around inside it does not - coming back from a screen should land
-                    // on the item that opened it.
-                    idle_menu_mgr.set_index(0);
-                    login_menu_mgr.set_index(0);
-                    settings_menu_mgr.set_index(0);
+                    // This notice also arrives after a selection, so "did the user leave the
+                    // tree?" cannot be assumed. If an item opened a screen the mode is no
+                    // longer Idle, and clearing here would wipe the origin that item just
+                    // recorded - which sent every back-out to the top menu and lost the cursor.
+                    if matches!(*mode.lock().unwrap(), VaultMode::Idle) {
+                        menu_origin = ActiveMenu::Root;
+                        idle_menu_mgr.set_index(0);
+                        login_menu_mgr.set_index(0);
+                        settings_menu_mgr.set_index(0);
+                    }
                     vault_ui.refresh_draw_list();
                     animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
                     vault_ui.redraw();

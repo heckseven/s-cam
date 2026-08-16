@@ -472,8 +472,14 @@ impl AboutState {
 /// Centralizes tunable UI parameters for TOTP
 struct TotpLayout {}
 impl TotpLayout {
+    /// Everything sits below the heading strip, so this screen is laid out like the others.
+    const TOP: isize = crate::theme::LABEL_BAR_H;
+
     pub fn totp_box() -> RoundedRectangle {
-        RoundedRectangle::new(Rectangle::new(Point::new(0, 0), Point::new(127, 40)), 0)
+        RoundedRectangle::new(
+            Rectangle::new(Point::new(0, Self::TOP), Point::new(127, Self::TOP + 34)),
+            0,
+        )
     }
 
     /// Vertical margin for the font because the centering algorithm also aligns-top, and we want a little
@@ -484,12 +490,14 @@ impl TotpLayout {
 
     pub fn totp_font() -> GlyphStyle { GlyphStyle::ExtraLarge }
 
-    pub fn timer_box() -> Rectangle { Rectangle::new(Point::new(0, 40), Point::new(127, 50)) }
+    pub fn timer_box() -> Rectangle {
+        Rectangle::new(Point::new(0, Self::TOP + 34), Point::new(127, Self::TOP + 42))
+    }
 
     /// The list stops short of the bottom to leave the button bar room. Running it to 127
     /// drew rows underneath the labels.
     pub fn list_box() -> Rectangle {
-        Rectangle::new(Point::new(0, 50), Point::new(127, 127 - crate::theme::LABEL_BAR_H))
+        Rectangle::new(Point::new(0, Self::TOP + 42), Point::new(127, 127 - crate::theme::LABEL_BAR_H))
     }
 
     pub fn list_font() -> GlyphStyle { crate::theme::FONT }
@@ -590,7 +598,7 @@ fn marquee(text: &str, quantum: u32) -> String {
         return text.to_string();
     }
     let padded: Vec<char> = text.chars().chain("   ".chars()).collect();
-    let offset = (quantum as usize / 4) % padded.len();
+    let offset = (quantum as usize / 2) % padded.len();
     padded.iter().cycle().skip(offset).take(VISIBLE).collect()
 }
 
@@ -1038,15 +1046,8 @@ impl VaultUi {
                     crate::theme::ListStyle::Select { marked: Some(self.led_pattern) },
                 );
                 // patterns need the carrier; say so rather than offering a dead control
-                let attached = self
-                    .global_config
-                    .as_ref()
-                    .map(|c| c.lock().unwrap().is_badge_attached())
-                    .unwrap_or(false);
                 crate::theme::button_labels(
-                    &self.gfx, self.screen_size,
-                    Some("back"), None,
-                    if attached { Some("pick") } else { Some("n/a") },
+                    &self.gfx, self.screen_size, Some("back"), None, Some("pick"),
                 );
                 self.gfx.flush().ok();
             }
@@ -1238,6 +1239,7 @@ impl VaultUi {
             }
             VaultMode::Totp => {
                 self.clear_area();
+                crate::theme::heading(&self.gfx, self.screen_size, "2FA DIGITS");
                 // check if time is set
                 if chrono::Local::now().year() < 2026 {
                     // time is not set, print a warning to set time instead of the regular UI
@@ -1362,8 +1364,9 @@ impl VaultUi {
                     return;
                 }
 
+                crate::theme::heading(&self.gfx, self.screen_size, "PASSWORDS");
                 // ---- draw the top "detail info" about the selected password ----
-                let mut insert_at = 0;
+                let mut insert_at = crate::theme::LABEL_BAR_H;
                 if let Some(entry) = self.get_selected_item() {
                     log::debug!("rendering entry {:?}", entry);
                     // draw more data about the selected item
@@ -1399,7 +1402,7 @@ impl VaultUi {
                         ))
                         .ok();
                     log::error!("Couldn't retrieve password info to render top area");
-                    insert_at = self.item_height * 2;
+                    insert_at = crate::theme::LABEL_BAR_H + self.item_height * 2;
                 };
                 self.display_list.draw(insert_at);
                 crate::theme::button_labels(
@@ -1409,12 +1412,7 @@ impl VaultUi {
             }// _ => unimplemented!(),
             VaultMode::BookmarkList => {
                 self.clear_area();
-                crate::theme::heading(&self.gfx, self.screen_size, "BOOKMARKS");
-                // The default bookmark is what the idle screen's LEFT button shows, so the
-                // list has to say which one that is. It is a stored key, not a position.
-                let default_key = crate::storage::default_bookmark_key(&self.pddb.borrow());
-                let marked = default_key
-                    .and_then(|d| self.bookmark_cache.iter().position(|(k, _, _)| *k == d));
+                crate::theme::heading(&self.gfx, self.screen_size, "QR COLLECTION");
                 let rows: Vec<String> = self
                     .bookmark_cache
                     .iter()
@@ -1429,7 +1427,7 @@ impl VaultUi {
                 crate::theme::list(
                     &self.gfx, self.screen_size, self.item_height,
                     &rows, self.bookmark_cursor, "NO BOOKMARKS YET",
-                    crate::theme::ListStyle::Select { marked },
+                    crate::theme::ListStyle::Numbered,
                 );
                 let has = !rows.is_empty();
                 crate::theme::button_labels(
@@ -1814,24 +1812,18 @@ impl VaultUi {
                     }
                     '←' => leaving = true,
                     '→' => {
-                        // no carrier means no LED ring; do not pretend the choice took effect
-                        let attached = self
-                            .global_config
-                            .as_ref()
-                            .map(|c| c.lock().unwrap().is_badge_attached())
-                            .unwrap_or(false);
-                        if attached {
-                            self.led_pattern = self.blinky_cursor;
-                            if let Some(config) = self.global_config.as_ref() {
-                                config.lock().unwrap().set_led_pattern(self.blinky_cursor);
-                            }
-                            if let Err(e) = crate::storage::set_blinky_choice(
-                                &self.pddb.borrow(), self.blinky_cursor,
-                            ) {
-                                log::warn!("could not persist LED pattern: {:?}", e);
-                            }
-                        } else {
-                            log::info!("no badge carrier attached; LED pattern not applied");
+                        // Always send it. This used to be gated on an attachment probe, which
+                        // meant a wrong or stale probe silently swallowed the selection with
+                        // no way to tell that from a pattern that simply did not render. The
+                        // ring is on the carrier; with no carrier the write just goes nowhere.
+                        self.led_pattern = self.blinky_cursor;
+                        if let Some(config) = self.global_config.as_ref() {
+                            config.lock().unwrap().set_led_pattern(self.blinky_cursor);
+                        }
+                        if let Err(e) = crate::storage::set_blinky_choice(
+                            &self.pddb.borrow(), self.blinky_cursor,
+                        ) {
+                            log::warn!("could not persist LED pattern: {:?}", e);
                         }
                     }
                     _ => {}

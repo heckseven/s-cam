@@ -141,12 +141,13 @@ fn check_mark(gfx: &ux_api::service::gfx::Gfx, gutter: Rectangle) {
     gfx.draw_object_list(ol).unwrap();
 }
 
-/// Grow `inner` by one pixel on each side, clamped to `limit`.
+/// Fit a focus box around `inner`, clamped to `limit`.
 ///
-/// One pixel of air keeps the brackets off the glyphs without making them look detached.
+/// Air on the right and below only. Padding all four sides made the box a pixel too wide and
+/// a pixel too tall, and sat it a pixel high of the text it was marking.
 fn pad(inner: Rectangle, limit: Rectangle) -> Rectangle {
     Rectangle::new(
-        Point::new((inner.tl().x - 1).max(limit.tl().x), (inner.tl().y - 1).max(limit.tl().y)),
+        Point::new(inner.tl().x.max(limit.tl().x), inner.tl().y.max(limit.tl().y)),
         Point::new((inner.br().x + 1).min(limit.br().x), (inner.br().y + 1).min(limit.br().y)),
     )
 }
@@ -188,9 +189,12 @@ pub fn list(
         return;
     }
 
+    // Only a check mark needs a gutter. A numbered row carries its number in the text, so
+    // giving it a gutter too indented it twice and pushed the first character out of line with
+    // the heading above.
     let gutter = match style {
-        ListStyle::Ghost => 0,
-        ListStyle::Numbered | ListStyle::Select { .. } => GUTTER_W,
+        ListStyle::Ghost | ListStyle::Numbered => 0,
+        ListStyle::Select { .. } => GUTTER_W,
     };
 
     // scroll so the cursor stays on screen
@@ -209,6 +213,9 @@ pub fn list(
         );
         tv.style = FONT;
         tv.draw_border = false;
+        // same left margin as heading(), so a row's first character sits directly under the
+        // heading's first character
+        tv.margin = Point::new(1, 0);
         // Every row is white-on-black. Focus is the brackets, not an inverted slab: the
         // inverted row was the only black-on-white text on the panel and read as a blank bar.
         tv.invert = true;
