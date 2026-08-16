@@ -1775,34 +1775,30 @@ impl VaultUi {
         let text = if as_art {
             Self::ascii_art(&bits)
         } else {
-            format!("data:image/bmp;base64,{}", Self::base64(&Self::photo_to_bmp(&bits)))
+            format!("data:image/bmp;base64,{}\n", Self::base64(&Self::photo_to_bmp(&bits)))
         };
-        // No delay override. At 12ms only 14% of the characters arrived: when the endpoint is
-        // not ready the report write fails and the queued keystroke is discarded rather than
-        // retried, so typing faster than the host polls simply loses keys. 30ms is the shipped
-        // default that password autotype relies on, so correctness first; this can be tuned
-        // down once an export is known to arrive intact.
 
-        // Send in chunks: one call for 2800 characters would hold the USB server for the whole
-        // transfer, and a partial failure would be invisible.
-        for chunk in text.as_bytes().chunks(64) {
-            let part = core::str::from_utf8(chunk).unwrap_or("");
-            // Check how many characters actually went. When the host has not configured the
-            // USB device the server returns Ok(0) rather than an error, so testing only for
-            // Err reported a successful export having typed nothing at all.
-            match self.usb_dev.send_str(part) {
-                Ok(sent) if sent == part.chars().count() => {}
+        // Over the CDC serial port, not the keyboard.
+        //
+        // Typing it was never going to work. The HID path turns each character into keycodes,
+        // and a report the endpoint is not ready for used to be discarded outright - which
+        // lost characters and, when the lost report was a key-up, left the host repeating a
+        // key. Measured at seven different delays, including 50ms, every run came back
+        // incomplete and identical, so no amount of pacing was going to fix it.
+        //
+        // Serial carries bytes. It reports how many were accepted, so a short write can be
+        // retried rather than silently dropped, and there is no keymap in the path at all.
+        let data = text.as_bytes();
+        let mut sent = 0;
+        while sent < data.len() {
+            match self.usb_dev.serial_send(&data[sent..]) {
                 Ok(0) => {
                     self.modals.show_notification("NO USB HOST - NOTHING SENT", None).ok();
                     return;
                 }
-                Ok(sent) => {
-                    log::warn!("export truncated: {} of {}", sent, part.chars().count());
-                    self.modals.show_notification("EXPORT TRUNCATED", None).ok();
-                    return;
-                }
+                Ok(n) => sent += n,
                 Err(e) => {
-                    log::warn!("export failed: {:?}", e);
+                    log::warn!("serial export failed after {} bytes: {:?}", sent, e);
                     self.modals.show_notification("EXPORT FAILED", None).ok();
                     return;
                 }
