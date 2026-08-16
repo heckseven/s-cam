@@ -90,21 +90,6 @@ pub fn create_settings(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic 
 /// Actions on the photo under the cursor.
 ///
 /// Built through the same helper as every other menu, so it looks and behaves like the
-/// settings list rather than a modal: same title bar, same focus brackets, LEFT to back out.
-pub fn create_photo_actions(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
-    build(
-        "PHOTO",
-        &[
-            ("set wallpaper", VaultOp::PhotoSetWallpaper),
-            ("export b64", VaultOp::PhotoExportB64),
-            ("export ascii", VaultOp::PhotoExportAscii),
-            ("delete", VaultOp::PhotoDelete),
-            ("back", VaultOp::MenuClosed),
-        ],
-        vault_conn,
-        menu_mgr,
-    )
-}
 
 /// Yes/no confirmation, as a menu rather than a modal.
 ///
@@ -112,15 +97,6 @@ pub fn create_photo_actions(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuM
 /// confirmation asked that way had no way to back out and no hint about the controls. Built
 /// here it behaves like every other list: LEFT backs out, the same brackets mark the focus.
 ///
-/// "no" is first so the default selection is the harmless one.
-pub fn create_confirm(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
-    build(
-        "CONFIRM",
-        &[("no", VaultOp::ConfirmNo), ("yes", VaultOp::ConfirmYes)],
-        vault_conn,
-        menu_mgr,
-    )
-}
 
 /// Like `build`, but each entry carries a value in its scalar payload. Used where the entries
 /// are the same action at different settings, so they share one opcode instead of needing one
@@ -146,21 +122,63 @@ fn build_payload(
 }
 
 /// Typing speed test. Types the alphabet at a chosen delay so the speed at which the host
-/// starts dropping characters can be found by looking, rather than guessed at.
-pub fn create_type_test(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
-    build_payload(
-        "TYPE TEST",
-        &[
-            ("2 ms - too fast", VaultOp::TypeTest, 2),
-            ("4 ms", VaultOp::TypeTest, 4),
-            ("8 ms", VaultOp::TypeTest, 8),
-            ("12 ms", VaultOp::TypeTest, 12),
-            ("20 ms", VaultOp::TypeTest, 20),
-            ("30 ms - default", VaultOp::TypeTest, 30),
-            ("50 ms - slow", VaultOp::TypeTest, 50),
-            ("back", VaultOp::MenuRoot, 0),
-        ],
-        vault_conn,
-        menu_mgr,
-    )
+
+/// Entries for the one reusable menu, by purpose.
+///
+/// These three were a menu each. Every `menu_matic` costs a server and TWO threads, and three
+/// of them made the badge noticeably less stable - it is a swap-resident app with a real
+/// memory budget. One manager, retitled and refilled before it opens, costs a fraction of that.
+pub const PHOTO_ACTIONS: [(&str, VaultOp, u32); 5] = [
+    ("set wallpaper", VaultOp::PhotoSetWallpaper, 0),
+    ("export b64", VaultOp::PhotoExportB64, 0),
+    ("export ascii", VaultOp::PhotoExportAscii, 0),
+    ("delete", VaultOp::PhotoDelete, 0),
+    ("back", VaultOp::MenuClosed, 0),
+];
+
+/// "no" first, so the default selection is the harmless one.
+pub const CONFIRM: [(&str, VaultOp, u32); 2] =
+    [("no", VaultOp::ConfirmNo, 0), ("yes", VaultOp::ConfirmYes, 0)];
+
+/// The delay rides in the payload, so one opcode serves every speed.
+pub const TYPE_TEST: [(&str, VaultOp, u32); 8] = [
+    ("2 ms - too fast", VaultOp::TypeTest, 2),
+    ("4 ms", VaultOp::TypeTest, 4),
+    ("8 ms", VaultOp::TypeTest, 8),
+    ("12 ms", VaultOp::TypeTest, 12),
+    ("20 ms", VaultOp::TypeTest, 20),
+    ("30 ms - default", VaultOp::TypeTest, 30),
+    ("50 ms - slow", VaultOp::TypeTest, 50),
+    ("back", VaultOp::MenuRoot, 0),
+];
+
+/// The reusable menu. Created empty; `fill` gives it a title and entries before each use.
+pub fn create_scratch(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
+    build_payload("", &[], vault_conn, menu_mgr)
+}
+
+/// Retitle and refill the reusable menu, returning the labels now in it so the next fill can
+/// clear them again.
+pub fn fill(
+    menu: &MenuMatic,
+    previous: &[String],
+    title: &str,
+    entries: &[(&str, VaultOp, u32)],
+    vault_conn: xous::CID,
+) -> Vec<String> {
+    for name in previous {
+        menu.delete_item(name);
+    }
+    for (label, op, value) in entries {
+        menu.add_item(MenuItem {
+            name: String::from(*label),
+            action_conn: Some(vault_conn),
+            action_opcode: op.to_u32().unwrap(),
+            action_payload: MenuPayload::Scalar([*value, 0, 0, 0]),
+            close_on_select: true,
+        });
+    }
+    menu.set_title(title);
+    menu.set_index(0);
+    entries.iter().map(|(l, _, _)| String::from(*l)).collect()
 }

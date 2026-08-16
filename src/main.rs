@@ -221,12 +221,12 @@ fn main() -> ! {
     let login_menu_mgr = idlemenu::create_login(conn, login_menu_sid);
     let settings_menu_sid = xous::create_server().unwrap();
     let settings_menu_mgr = idlemenu::create_settings(conn, settings_menu_sid);
-    let photo_menu_sid = xous::create_server().unwrap();
-    let photo_menu_mgr = idlemenu::create_photo_actions(conn, photo_menu_sid);
-    let confirm_menu_sid = xous::create_server().unwrap();
-    let confirm_menu_mgr = idlemenu::create_confirm(conn, confirm_menu_sid);
-    let typetest_menu_sid = xous::create_server().unwrap();
-    let typetest_menu_mgr = idlemenu::create_type_test(conn, typetest_menu_sid);
+    // One reusable menu for the photo actions, the confirmations and the type test. Each
+    // menu_matic costs a server and two threads; three of them made the badge visibly less
+    // stable, and this is a swap-resident app with a real memory budget.
+    let scratch_menu_sid = xous::create_server().unwrap();
+    let scratch_menu_mgr = idlemenu::create_scratch(conn, scratch_menu_sid);
+    let mut scratch_items: Vec<String> = Vec::new();
     let idle_menu_sid = xous::create_server().unwrap();
     let idle_menu_mgr = idlemenu::create_root(conn, idle_menu_sid);
 
@@ -441,7 +441,10 @@ fn main() -> ! {
                 active_menu = ActiveMenu::PhotoActions;
                 menu_just_opened = true;
                 animate.store(false, Ordering::SeqCst);
-                photo_menu_mgr.redraw();
+                scratch_items = idlemenu::fill(
+                    &scratch_menu_mgr, &scratch_items, "PHOTO", &idlemenu::PHOTO_ACTIONS, conn,
+                );
+                scratch_menu_mgr.redraw();
             }
             Some(VaultOp::PhotoSetWallpaper) => {
                 active_menu = ActiveMenu::None;
@@ -455,28 +458,37 @@ fn main() -> ! {
                 pending = Pending::ExportB64;
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
-                confirm_menu_mgr.set_index(0);
-                confirm_menu_mgr.redraw();
+                scratch_items = idlemenu::fill(
+                    &scratch_menu_mgr, &scratch_items, "CONFIRM", &idlemenu::CONFIRM, conn,
+                );
+                scratch_menu_mgr.redraw();
             }
             Some(VaultOp::PhotoExportAscii) => {
                 pending = Pending::ExportAscii;
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
-                confirm_menu_mgr.set_index(0);
-                confirm_menu_mgr.redraw();
+                scratch_items = idlemenu::fill(
+                    &scratch_menu_mgr, &scratch_items, "CONFIRM", &idlemenu::CONFIRM, conn,
+                );
+                scratch_menu_mgr.redraw();
             }
             Some(VaultOp::PhotoDelete) => {
                 pending = Pending::DeletePhoto;
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
-                confirm_menu_mgr.set_index(0);
-                confirm_menu_mgr.redraw();
+                scratch_items = idlemenu::fill(
+                    &scratch_menu_mgr, &scratch_items, "CONFIRM", &idlemenu::CONFIRM, conn,
+                );
+                scratch_menu_mgr.redraw();
             }
             Some(VaultOp::MenuTypeTest) => {
                 active_menu = ActiveMenu::TypeTest;
                 menu_just_opened = true;
                 animate.store(false, Ordering::SeqCst);
-                typetest_menu_mgr.redraw();
+                scratch_items = idlemenu::fill(
+                    &scratch_menu_mgr, &scratch_items, "TYPE TEST", &idlemenu::TYPE_TEST, conn,
+                );
+                scratch_menu_mgr.redraw();
             }
             // The delay rides in the menu entry's payload, so one opcode serves every speed.
             Some(VaultOp::TypeTest) => xous::msg_scalar_unpack!(msg, delay, _, _, _, {
@@ -581,9 +593,9 @@ fn main() -> ! {
                         ActiveMenu::Login => login_menu_mgr.key_press(k),
                         ActiveMenu::Settings => settings_menu_mgr.key_press(k),
                         ActiveMenu::Vault => menu_mgr.key_press(k),
-                        ActiveMenu::PhotoActions => photo_menu_mgr.key_press(k),
-                        ActiveMenu::Confirm => confirm_menu_mgr.key_press(k),
-                        ActiveMenu::TypeTest => typetest_menu_mgr.key_press(k),
+                        ActiveMenu::PhotoActions
+                        | ActiveMenu::Confirm
+                        | ActiveMenu::TypeTest => scratch_menu_mgr.key_press(k),
                         _ => idle_menu_mgr.key_press(k),
                     }
                 } else {
@@ -617,9 +629,9 @@ fn main() -> ! {
                                 ActiveMenu::Login => login_menu_mgr.redraw(),
                                 ActiveMenu::Settings => settings_menu_mgr.redraw(),
                                 ActiveMenu::Vault => menu_mgr.redraw(),
-                                ActiveMenu::PhotoActions => photo_menu_mgr.redraw(),
-                                ActiveMenu::Confirm => confirm_menu_mgr.redraw(),
-                                ActiveMenu::TypeTest => typetest_menu_mgr.redraw(),
+                                ActiveMenu::PhotoActions
+                                | ActiveMenu::Confirm
+                                | ActiveMenu::TypeTest => scratch_menu_mgr.redraw(),
                                 _ => idle_menu_mgr.redraw(),
                             }
                         }

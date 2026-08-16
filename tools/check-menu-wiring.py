@@ -25,26 +25,25 @@ SRC = pathlib.Path(__file__).resolve().parent.parent / "src"
 
 
 def menu_entries(text):
-    """Yield (menu, label, opcode) for every entry across the whole menu tree.
+    """Yield (source, label, opcode) for every entry across the whole menu tree.
 
-    The tree is built by three functions sharing one builder, so there is no single table to
-    parse any more. Each `create_*` passes a slice of `("label", VaultOp::Op)` pairs; find
-    them all, or a whole submenu could go unchecked - which is exactly how the settings
-    entries went unreachable before.
+    Entries live in two shapes now: inside a `create_*` builder, and in `const` tables used to
+    fill the one reusable menu. Both must be walked, or a whole screen's worth of entries goes
+    unchecked - which is how the settings entries became unreachable in the first place.
     """
-    menus = re.findall(r"pub fn create_(\w+)\(.*?\n\}", text, re.S)
-    if not menus:
-        sys.exit("could not find any create_* menu builders in idlemenu.rs")
-
     out = []
-    for name in menus:
+
+    for name in re.findall(r"pub fn create_(\w+)\(", text):
         body = re.search(r"pub fn create_%s\(.*?\n\}" % name, text, re.S).group(0)
-        # entries are either ("label", VaultOp::Op) or ("label", VaultOp::Op, payload)
-        pairs = re.findall(r'\("([^"]+)",\s*VaultOp::(\w+)[,)]', body)
-        if not pairs:
-            sys.exit(f"create_{name} defines no menu entries - has the shape changed?")
-        for label, opcode in pairs:
+        for label, opcode in re.findall(r'\("([^"]+)",\s*VaultOp::(\w+)[,)]', body):
+            out.append((f"create_{name}", label, opcode))
+
+    for name, body in re.findall(r"pub const (\w+): \[\(&str, VaultOp, u32\); \d+\] =(.*?)\];", text, re.S):
+        for label, opcode in re.findall(r'\("([^"]+)",\s*VaultOp::(\w+)', body):
             out.append((name, label, opcode))
+
+    if not out:
+        sys.exit("found no menu entries at all in idlemenu.rs - has the shape changed?")
     return out
 
 
@@ -102,12 +101,11 @@ def main():
 
     seen = {}
     for menu, label, opcode in entries:
-        # A menu built with payloads runs the same action at different settings, so repeated
-        # opcodes are the point there rather than a mistake.
+        # A table of the same action at different settings repeats an opcode on purpose.
         key = (menu, opcode)
-        if key in seen and menu != "type_test":
+        if key in seen and menu != "TYPE_TEST":
             problems.append(
-                f'create_{menu}: "{label}" and "{seen[key]}" both send VaultOp::{opcode}, '
+                f'{menu}: "{label}" and "{seen[key]}" both send VaultOp::{opcode}, '
                 f"so one of them is unreachable"
             )
         seen[key] = label
@@ -115,16 +113,16 @@ def main():
         body = bodies.get(opcode)
         if body is None:
             problems.append(
-                f'create_{menu}: "{label}" sends VaultOp::{opcode}, which main.rs does not handle'
+                f'{menu}: "{label}" sends VaultOp::{opcode}, which main.rs does not handle'
             )
         elif "msg_blocking_scalar_unpack!" in body:
             problems.append(
-                f'create_{menu}: "{label}" sends VaultOp::{opcode}, whose handler uses '
+                f'{menu}: "{label}" sends VaultOp::{opcode}, whose handler uses '
                 f"msg_blocking_scalar_unpack! - menu scalars are non-blocking and will never match"
             )
         elif opcode not in navigation and "active_menu = ActiveMenu::None" not in body:
             problems.append(
-                f'create_{menu}: "{label}" sends VaultOp::{opcode}, whose handler never closes '
+                f'{menu}: "{label}" sends VaultOp::{opcode}, whose handler never closes '
                 f"the menu - keys will keep going to it and the screen it opens will be inert"
             )
 
