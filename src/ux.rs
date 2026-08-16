@@ -1002,7 +1002,7 @@ impl VaultUi {
                 } else {
                     self.draw_photo_grid();
                     crate::theme::button_labels(
-                        &self.gfx, self.screen_size, Some("back"), Some("set"), Some("view"),
+                        &self.gfx, self.screen_size, Some("back"), Some("set"), Some("more"),
                     );
                 }
                 self.gfx.flush().ok();
@@ -1027,7 +1027,7 @@ impl VaultUi {
                     );
                 } else {
                     crate::theme::button_labels(
-                        &self.gfx, self.screen_size, Some("back"), Some("del"), Some("set"),
+                        &self.gfx, self.screen_size, Some("back"), Some("set"), Some("more"),
                     );
                 }
                 self.gfx.flush().ok();
@@ -1646,6 +1646,143 @@ impl VaultUi {
         );
     }
 
+    /// Wrap a captured frame in a 1bpp BMP.
+    ///
+    /// BMP because it can be built with a fixed 62-byte header and no compression, so the
+    /// badge emits something a browser opens directly - PNG would need zlib and a CRC.
+    ///
+    /// Height is negative so rows read top-down; BMP is bottom-up by default. Bits are
+    /// reversed within each byte: the frame stores the leftmost pixel in the LSB, BMP wants it
+    /// in the MSB. The palette is white then black, matching the frame where 0 is lit.
+    fn photo_to_bmp(bits: &[u32; 512]) -> Vec<u8> {
+        const W: usize = 128;
+        const ROW: usize = W / 8; // already a multiple of 4, so no padding needed
+        let pixels = ROW * W;
+        let offset: u32 = 14 + 40 + 8;
+        let size: u32 = offset + pixels as u32;
+
+        let mut b = Vec::with_capacity(size as usize);
+        b.extend_from_slice(b"BM");
+        b.extend_from_slice(&size.to_le_bytes());
+        b.extend_from_slice(&0u32.to_le_bytes());
+        b.extend_from_slice(&offset.to_le_bytes());
+        b.extend_from_slice(&40u32.to_le_bytes()); // BITMAPINFOHEADER
+        b.extend_from_slice(&(W as i32).to_le_bytes());
+        b.extend_from_slice(&(-(W as i32)).to_le_bytes()); // negative: top-down
+        b.extend_from_slice(&1u16.to_le_bytes()); // planes
+        b.extend_from_slice(&1u16.to_le_bytes()); // bits per pixel
+        b.extend_from_slice(&0u32.to_le_bytes()); // BI_RGB
+        b.extend_from_slice(&(pixels as u32).to_le_bytes());
+        b.extend_from_slice(&0u32.to_le_bytes());
+        b.extend_from_slice(&0u32.to_le_bytes());
+        b.extend_from_slice(&2u32.to_le_bytes()); // colours used
+        b.extend_from_slice(&0u32.to_le_bytes());
+        b.extend_from_slice(&[0xFF, 0xFF, 0xFF, 0x00]); // index 0: white
+        b.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // index 1: black
+
+        let mut rows = vec![0u8; pixels];
+        for y in 0..W {
+            for x in 0..W {
+                let i = x + y * W;
+                if (bits[i >> 5] >> (i & 31)) & 1 != 0 {
+                    rows[y * ROW + x / 8] |= 0x80 >> (x % 8);
+                }
+            }
+        }
+        b.extend_from_slice(&rows);
+        b
+    }
+
+    /// Standard base64. Written out rather than pulled in as a dependency - it is fifteen
+    /// lines and the app is watching its page budget.
+    fn base64(data: &[u8]) -> String {
+        const SET: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+        for chunk in data.chunks(3) {
+            let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+            let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
+            out.push(SET[(n >> 18) as usize & 63] as char);
+            out.push(SET[(n >> 12) as usize & 63] as char);
+            out.push(if chunk.len() > 1 { SET[(n >> 6) as usize & 63] as char } else { '=' });
+            out.push(if chunk.len() > 2 { SET[n as usize & 63] as char } else { '=' });
+        }
+        out
+    }
+
+    /// Type the shown photo to the host as a data URI.
+    ///
+    /// The badge has no way to hand over a file: mass storage is the boot ROM's, not the
+    /// app's, and this USB core is fixed to keyboard plus FIDO. So it types. A data URI means
+    /// the result is openable as-is in a browser rather than needing a decoder.
+    ///
+    /// About 2800 characters, so it takes a while and goes wherever the host's focus is -
+    /// hence the confirm, and the reminder to put the cursor somewhere first.
+    fn export_photo(&mut self) {
+        let Some(bits) = self.pending_photo else {
+            self.modals.show_notification("NOTHING TO EXPORT", None).ok();
+            return;
+        };
+        if !self.confirm("TYPE PHOTO TO HOST? FOCUS A TEXT FIELD FIRST") {
+            return;
+        }
+        let text = format!("data:image/bmp;base64,{}", Self::base64(&Self::photo_to_bmp(&bits)));
+        // Send in chunks: one call for 2800 characters would hold the USB server for the whole
+        // transfer, and a partial failure would be invisible.
+        for chunk in text.as_bytes().chunks(64) {
+            let part = core::str::from_utf8(chunk).unwrap_or("");
+            if self.usb_dev.send_str(part).is_err() {
+                self.modals.show_notification("EXPORT FAILED", None).ok();
+                return;
+            }
+        }
+        self.modals.show_notification("EXPORT DONE", None).ok();
+    }
+
+    /// The actions list, shared by the grid and the full-screen view.
+    ///
+    /// Both screens use the same three buttons - back, select, actions - so anything that is
+    /// not "set this as the standby image" lives in here, where it takes a deliberate pick.
+    fn photo_actions(&mut self, from_grid: bool) {
+        let mut items = Vec::new();
+        if from_grid {
+            items.push("view");
+        }
+        items.push("export");
+        items.push("delete");
+        items.push("cancel");
+        if self.modals.add_list(items).is_err() {
+            return;
+        }
+        let choice = match self.modals.get_radiobutton("PHOTO ACTIONS") {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        match choice.as_str() {
+            "view" => self.show_selected_photo(),
+            "export" => {
+                // the grid has no photo loaded yet; the export needs the full-size bits
+                if from_grid {
+                    self.show_selected_photo();
+                }
+                self.export_photo();
+            }
+            "delete" => {
+                if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
+                    if self.confirm("DELETE THIS PHOTO?") {
+                        if let Err(e) = crate::storage::photo_delete(&self.pddb.borrow(), &key) {
+                            log::warn!("could not delete photo {}: {:?}", key, e);
+                        }
+                        self.load_photos();
+                        self.pending_photo = None;
+                        *self.mode.lock().unwrap() = VaultMode::PhotoList;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Ask before doing something that cannot be undone. "no" is listed first so the
     /// default selection is the harmless one.
     fn confirm(&self, prompt: &str) -> bool {
@@ -1828,12 +1965,8 @@ impl VaultUi {
                             step_cursor(self.photo_cursor, self.photo_cache.len(), k == '↑')
                     }
                     '←' => leaving = true,
-                    // No early return here. handle_key redraws at the end, so returning from
-                    // inside the arm changed the mode and left the old screen on the panel
-                    // until the next keypress - which made 'view' look like it had done
-                    // nothing, and put the next press on a different screen than expected.
-                    '→' => self.show_selected_photo(),
                     '🔥' => self.set_photo_as_bling(),
+                    '→' => self.photo_actions(true),
                     _ => {}
                 }
                 if leaving {
@@ -1881,25 +2014,11 @@ impl VaultUi {
                             step_cursor(self.photo_cursor, self.photo_cache.len(), k == '↑');
                         self.show_selected_photo();
                     }
-                    // DELETE is the middle button and SET is the right one, the opposite way
-                    // round from the grid's 'view'. Right on the grid opens a photo, so right
-                    // here has to be something harmless: it used to be delete, which meant two
-                    // presses of the same button viewed a photo and then destroyed it.
-                    '🔥' => {
-                        if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
-                            if self.confirm("DELETE THIS PHOTO?") {
-                                if let Err(e) =
-                                    crate::storage::photo_delete(&self.pddb.borrow(), &key)
-                                {
-                                    log::warn!("could not delete photo {}: {:?}", key, e);
-                                }
-                                self.load_photos();
-                                self.pending_photo = None;
-                                *self.mode.lock().unwrap() = VaultMode::PhotoList;
-                            }
-                        }
-                    }
-                    '→' => self.set_photo_as_bling(),
+                    // Same three buttons as the grid, in the same order. Delete lives in the
+                    // actions list rather than under a button, so it cannot be reached by
+                    // pressing the same key twice on two different screens.
+                    '🔥' => self.set_photo_as_bling(),
+                    '→' => self.photo_actions(false),
                     _ => {}
                 }
                 self.redraw();
