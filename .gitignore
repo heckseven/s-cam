@@ -102,3 +102,6 @@ tools-bao/.venv/
 # Zig artifacts
 .zig-cache/
 zig-out/
+
+# agent worktrees are separate checkouts, not part of this repo
+.claude/worktrees/
