@@ -164,6 +164,8 @@ enum Pending {
     None,
     DeletePhoto,
     DeleteBookmark,
+    TypeB64,
+    TypeAscii,
     ExportB64,
     ExportAscii,
 }
@@ -481,6 +483,22 @@ fn main() -> ! {
                 );
                 scratch_menu_mgr.redraw();
             }
+            // Host-driven pull over the serial console. Blocking, because the console is
+            // waiting on the answer to print it.
+            Some(VaultOp::SerialPhotoCount) => {
+                xous::return_scalar(msg.sender, vault_ui.photo_count()).ok();
+            }
+            Some(VaultOp::SerialPhotoGet) => xous::msg_blocking_scalar_unpack!(
+                msg,
+                index,
+                ascii,
+                _,
+                _,
+                {
+                    let ok = vault_ui.export_photo_at(index, ascii != 0);
+                    xous::return_scalar(msg.sender, if ok { 1 } else { 0 }).ok();
+                }
+            ),
             Some(VaultOp::MenuBookmarkActions) => {
                 active_menu = ActiveMenu::RecordActions;
                 menu_just_opened = true;
@@ -497,6 +515,26 @@ fn main() -> ! {
             }
             Some(VaultOp::BookmarkDelete) => {
                 pending = Pending::DeleteBookmark;
+                active_menu = ActiveMenu::Confirm;
+                menu_just_opened = true;
+                scratch_items = idlemenu::fill(
+                    &scratch_menu_mgr, &scratch_items, "CONFIRM", &idlemenu::CONFIRM, conn,
+                );
+                scratch_menu_mgr.redraw();
+            }
+            // Typing thousands of characters into whatever window has focus gets the same
+            // confirmation as the serial exports do.
+            Some(VaultOp::PhotoTypeB64) => {
+                pending = Pending::TypeB64;
+                active_menu = ActiveMenu::Confirm;
+                menu_just_opened = true;
+                scratch_items = idlemenu::fill(
+                    &scratch_menu_mgr, &scratch_items, "CONFIRM", &idlemenu::CONFIRM, conn,
+                );
+                scratch_menu_mgr.redraw();
+            }
+            Some(VaultOp::PhotoTypeAscii) => {
+                pending = Pending::TypeAscii;
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
                 scratch_items = idlemenu::fill(
@@ -530,6 +568,14 @@ fn main() -> ! {
                     Pending::ExportAscii => {
                         vault_ui.ensure_photo_loaded();
                         vault_ui.export_photo(true);
+                    }
+                    Pending::TypeB64 => {
+                        vault_ui.ensure_photo_loaded();
+                        vault_ui.type_photo(false);
+                    }
+                    Pending::TypeAscii => {
+                        vault_ui.ensure_photo_loaded();
+                        vault_ui.type_photo(true);
                     }
                     Pending::None => {}
                 }

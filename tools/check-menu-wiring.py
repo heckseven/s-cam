@@ -98,6 +98,8 @@ def main():
         "PhotoDelete",
         # opens the confirmation menu rather than closing the tree
         "BookmarkDelete",
+        "PhotoTypeB64",
+        "PhotoTypeAscii",
     }
 
     seen = {}

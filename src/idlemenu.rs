@@ -128,10 +128,12 @@ fn build_payload(
 /// These three were a menu each. Every `menu_matic` costs a server and TWO threads, and three
 /// of them made the badge noticeably less stable - it is a swap-resident app with a real
 /// memory budget. One manager, retitled and refilled before it opens, costs a fraction of that.
-pub const PHOTO_ACTIONS: [(&str, VaultOp, u32); 5] = [
+pub const PHOTO_ACTIONS: [(&str, VaultOp, u32); 7] = [
     ("set wallpaper", VaultOp::PhotoSetWallpaper, 0),
     ("export b64", VaultOp::PhotoExportB64, 0),
     ("export ascii", VaultOp::PhotoExportAscii, 0),
+    ("type b64", VaultOp::PhotoTypeB64, 0),
+    ("type ascii", VaultOp::PhotoTypeAscii, 0),
     ("delete", VaultOp::PhotoDelete, 0),
     ("back", VaultOp::MenuClosed, 0),
 ];

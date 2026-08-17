@@ -1822,6 +1822,114 @@ impl VaultUi {
     ///
     /// About 2800 characters, so it takes a while and goes wherever the host's focus is -
     /// hence the confirm, and the reminder to put the cursor somewhere first.
+    /// How many photos are stored. Answers the serial console's `photo list`.
+    pub(crate) fn photo_count(&mut self) -> usize {
+        self.load_photos();
+        self.photo_cache.len()
+    }
+
+    /// Export photo `index` without disturbing the screen or the cursor.
+    ///
+    /// The menu-driven export works on whatever the cursor is pointing at, which is right for
+    /// someone standing at the badge and wrong for a host asking for a specific photo. This
+    /// takes the index from the request, and reports over serial rather than on the display -
+    /// nobody is looking at the badge when they are driving it from a terminal.
+    pub(crate) fn export_photo_at(&mut self, index: usize, as_art: bool) -> bool {
+        self.load_photos();
+        let Some(key) = self.photo_cache.get(index).cloned() else {
+            return false;
+        };
+        let Some(bits) = crate::storage::photo_get(&self.pddb.borrow(), &key) else {
+            return false;
+        };
+        let text = if as_art {
+            Self::ascii_art(&bits)
+        } else {
+            format!("data:image/bmp;base64,{}\n", Self::base64(&Self::photo_to_bmp(&bits)))
+        };
+        self.serial_out(&text);
+        true
+    }
+
+    /// Type the shown photo to the host as keystrokes.
+    ///
+    /// Slower than serial by a wide margin - a report per keystroke, two per character, each
+    /// waiting on the host's polling interval - but it needs nothing installed on the other
+    /// end, which is the whole point of having it.
+    pub(crate) fn type_photo(&mut self, as_art: bool) {
+        let Some(bits) = self.pending_photo else {
+            self.notify("NOTHING TO EXPORT");
+            return;
+        };
+        let text = if as_art {
+            Self::ascii_art(&bits)
+        } else {
+            format!("data:image/bmp;base64,{}\n", Self::base64(&Self::photo_to_bmp(&bits)))
+        };
+
+        // Chunked for the same reason the serial path is: the string crosses to the USB
+        // server in one memory page, and a whole photo does not fit in one. Serial panicked
+        // on that rather than returning an error, and this path is no safer.
+        const CHUNK: usize = 1024;
+        let chars: Vec<char> = text.chars().collect();
+        let mut typed = 0;
+        for part in chars.chunks(CHUNK) {
+            let s: String = part.iter().collect();
+            match self.usb_dev.send_str(&s) {
+                Ok(0) => {
+                    self.notify("NO USB HOST");
+                    return;
+                }
+                Ok(n) => typed += n,
+                Err(e) => {
+                    log::error!("HID photo type failed: {:?}", e);
+                    self.notify("TYPE FAILED");
+                    return;
+                }
+            }
+        }
+        if typed >= chars.len() {
+            self.notify("TYPED TO HOST");
+        } else {
+            log::warn!("typed {} of {} characters", typed, chars.len());
+            self.notify(&format!("TYPED {} OF {}", typed, chars.len()));
+        }
+    }
+
+    /// Push text out of the CDC serial port, a page at a time.
+    ///
+    /// Shared by the menu export and the host-driven one so the chunking, the flush and the
+    /// log-quieting cannot drift apart between them.
+    fn serial_out(&mut self, text: &str) -> bool {
+        const CHUNK: usize = 3840; // usb-bao1x SERIAL_BINARY_BUFLEN, not re-exported
+        let prior_level = log::max_level();
+        log::set_max_level(log::LevelFilter::Warn);
+        let data = text.as_bytes();
+        let mut sent = 0;
+        let mut ok = true;
+        while sent < data.len() {
+            let end = (sent + CHUNK).min(data.len());
+            match self.usb_dev.serial_send(&data[sent..end]) {
+                Ok(0) => {
+                    ok = false;
+                    break;
+                }
+                Ok(n) => {
+                    sent += n;
+                    self.usb_dev.serial_flush().ok();
+                }
+                Err(e) => {
+                    log::error!("serial export failed: {:?}", e);
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        self.usb_dev.serial_flush().ok();
+        log::set_max_level(prior_level);
+        ok
+    }
+
     pub(crate) fn export_photo(&mut self, as_art: bool) {
         let Some(bits) = self.pending_photo else {
             self.notify("NOTHING TO EXPORT");

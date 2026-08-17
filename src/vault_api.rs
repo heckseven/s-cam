@@ -54,6 +54,14 @@ pub(crate) enum VaultOp {
     BookmarkType,
     /// delete the saved QR, after confirming
     BookmarkDelete,
+    /// type the shown photo to the host as base64, over HID
+    PhotoTypeB64,
+    /// type the shown photo to the host as ASCII art, over HID
+    PhotoTypeAscii,
+    /// how many photos are stored; blocking, answers the serial console
+    SerialPhotoCount,
+    /// send photo N over serial. arg0 = index, arg1 = 1 for ascii art, 0 for base64
+    SerialPhotoGet,
     MenuUsernames,
     MenuFilter,
 
