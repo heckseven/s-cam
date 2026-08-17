@@ -1849,6 +1849,15 @@ impl VaultUi {
         // which takes the whole app down. Base64 of a photo fits in a page and ASCII art does
         // not, which is why one worked and the other crashed the badge.
         const CHUNK: usize = 3840; // usb-bao1x SERIAL_BINARY_BUFLEN, not re-exported
+
+        // Quiet the log for the duration. The log and this export share a CDC interface, so
+        // anything logged while the transfer is running is spliced into the middle of the
+        // image - a menu selection logged mid-export put 770 bytes of "INFO:ux_api::menu"
+        // through the middle of a photo. The receiver drops whole log lines, but one injected
+        // mid-line splits a row of data and neither half looks like a log line any more.
+        let prior_level = log::max_level();
+        log::set_max_level(log::LevelFilter::Warn);
+
         let data = text.as_bytes();
         let mut sent = 0;
         while sent < data.len() {
@@ -1856,6 +1865,7 @@ impl VaultUi {
             match self.usb_dev.serial_send(&data[sent..end]) {
                 Ok(0) => {
                     self.notify("NO USB HOST - NOTHING SENT");
+                    log::set_max_level(prior_level);
                     return;
                 }
                 Ok(n) => {
@@ -1869,11 +1879,14 @@ impl VaultUi {
                 Err(e) => {
                     log::warn!("serial export failed after {} bytes: {:?}", sent, e);
                     self.notify("EXPORT FAILED");
+                    log::set_max_level(prior_level);
                     return;
                 }
             }
         }
         self.usb_dev.serial_flush().ok();
+        // the notification itself logs, so restore only once the bytes are out
+        log::set_max_level(prior_level);
         self.notify("EXPORT DONE");
     }
 
