@@ -974,8 +974,13 @@ impl VaultUi {
         self.gfx.flush().ok();
 
         self.tt.sleep_ms(HOLD_MS).ok();
-        // the standby screen only repaints when it changes, so force it to repaint here
+        // Force a full repaint of whatever is underneath. Two screens paint only what has
+        // changed since last time - the standby image, and any list that is mid-marquee - and
+        // a notification has just painted over the whole panel. Without resetting both, the
+        // redraw below repaints one list row over the notification and leaves the rest of it
+        // on screen, which reads as "it never went back to the list".
         self.standby_drawn = None;
+        self.list_quantum = 0;
         self.redraw();
     }
 

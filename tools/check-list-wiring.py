@@ -78,7 +78,30 @@ def main():
                 f"scroll clock, so nothing advances the marquee"
             )
 
-    # 4. every route into the bookmark list must force a full repaint
+    # 4. anything that paints over the whole panel and then redraws must invalidate the
+    #    partial-repaint state, or the redraw restores one row and leaves the rest covered
+    for m in re.finditer(r"fn (\w+)\(&mut self[^)]*\)[^{]*\{", ux):
+        name = m.group(1)
+        body_start = m.end()
+        depth, end = 1, body_start
+        for j in range(body_start, len(ux)):
+            if ux[j] == "{":
+                depth += 1
+            elif ux[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = j
+                    break
+        body = ux[body_start:end]
+        overpaints = "self.clear_area()" in body
+        redraws = "self.redraw()" in body
+        if overpaints and redraws and "list_quantum = 0" not in body:
+            problems.append(
+                f"{UX}: {name}() paints over the panel and then redraws without resetting "
+                f"list_quantum, so a list underneath repaints one row and stays covered"
+            )
+
+    # 5. every route into the bookmark list must force a full repaint
     for path, src in ((UX, ux), (MAIN, main_rs)):
         for m in re.finditer(r"=\s*VaultMode::BookmarkList\s*;", src):
             line = line_of(src, m.start())
