@@ -2004,7 +2004,14 @@ impl VaultUi {
                     // LEFT is back on every screen; the menu already reaches 2fa digits
                     // directly, so the old left-types / right-switches pair is retired.
                     '←' => return self.to_menu(),
-                    '🔥' => self.open_record_actions(),
+                    '🔥' => {
+                        // Consumed here. This arm falls through to `Some(k)`, and the main
+                        // loop reads a stray middle button as "open the camera" - so handling
+                        // the key without also swallowing it opened the actions menu and the
+                        // camera at once.
+                        self.open_record_actions();
+                        return None;
+                    }
                     '→' => {
                         if let Some(item) = self.get_selected_item() {
                             // print any errors within this function as a panic at this line
@@ -2044,7 +2051,14 @@ impl VaultUi {
                         self.display_list.key_action('↓');
                     }
                     '←' => return self.to_menu(),
-                    '🔥' => self.open_record_actions(),
+                    '🔥' => {
+                        // Consumed here. This arm falls through to `Some(k)`, and the main
+                        // loop reads a stray middle button as "open the camera" - so handling
+                        // the key without also swallowing it opened the actions menu and the
+                        // camera at once.
+                        self.open_record_actions();
+                        return None;
+                    }
                     '→' => {
                         if let Some(code) = self.update_selected_totp_code() {
                             // ignore USB errors while sending code
@@ -2254,7 +2268,14 @@ impl VaultUi {
                         // back to the menu this was opened from, not past it to standby
                         return self.to_menu();
                     }
-                    '🔥' => self.open_bookmark_actions(),
+                    '🔥' => {
+                        // Consumed here. This arm falls through to `Some(k)`, and the main
+                        // loop reads a stray middle button as "open the camera" - so handling
+                        // the key without also swallowing it opened the actions menu and the
+                        // camera at once.
+                        self.open_bookmark_actions();
+                        return None;
+                    }
                     '→' => {
                         // select highlighted bookmark → trigger QR render via ActionManager
                         if let Some((key, _, _)) = self.bookmark_cache.get(self.bookmark_cursor) {
