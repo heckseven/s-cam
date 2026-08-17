@@ -46,6 +46,8 @@ pub(crate) enum VaultOp {
     MenuDone,
     /// open the actions menu for the record under the cursor
     MenuRecordActions,
+    /// create a record on this screen; forwarded to the actions thread
+    MenuAddnew,
     MenuUsernames,
     MenuFilter,
 

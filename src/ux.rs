@@ -1406,11 +1406,13 @@ impl VaultUi {
                         write!(box_text, "NOTHING MATCHING {}", &self.filter).ok();
                     }
                     self.gfx.draw_textview(&mut box_text).expect("couldn't post empty notification");
+                    // "more" stays on an empty list: it carries "new", which is the only way
+                    // to get the first record onto the badge.
                     // The empty state used to return here, before any labels were drawn, which
                     // left the screen with no way out and no indication there was one.
                     crate::theme::heading(&self.gfx, self.screen_size, "PASSWORDS");
                     crate::theme::button_labels(
-                        &self.gfx, self.screen_size, Some("back"), None, None,
+                        &self.gfx, self.screen_size, Some("back"), Some("more"), None,
                     );
                     self.gfx.flush().ok();
                     return;

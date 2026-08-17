@@ -687,6 +687,18 @@ fn main() -> ! {
                     }
                 }
             }),
+            Some(VaultOp::MenuAddnew) => {
+                active_menu = ActiveMenu::None;
+                // The flow lives on the actions thread because it is a chain of blocking
+                // modals. Its only caller used to be src/ux/framework.rs, which is not
+                // compiled - so record creation existed and was unreachable.
+                animate.store(false, Ordering::SeqCst);
+                xous::send_message(
+                    actions_conn,
+                    xous::Message::new_scalar(ActionOp::MenuAddnew.to_usize().unwrap(), 0, 0, 0, 0),
+                )
+                .ok();
+            }
             Some(VaultOp::MenuEditStage1) => {
                 active_menu = ActiveMenu::None;
                 // stage 1 happens here because the filtered list and selection entry are in the responsive UX

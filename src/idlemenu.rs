@@ -139,7 +139,8 @@ pub const PHOTO_ACTIONS: [(&str, VaultOp, u32); 5] = [
 /// What the middle button offers on a record screen. Replaces the legacy "Token Menu",
 /// which mixed these with a duplicate of settings, two entries that only closed the menu,
 /// and a developer tool.
-pub const RECORD_ACTIONS: [(&str, VaultOp, u32); 4] = [
+pub const RECORD_ACTIONS: [(&str, VaultOp, u32); 5] = [
+    ("new", VaultOp::MenuAddnew, 0),
     ("edit", VaultOp::MenuEditStage1, 0),
     ("delete", VaultOp::MenuDeleteStage1, 0),
     ("filter", VaultOp::MenuFilter, 0),
