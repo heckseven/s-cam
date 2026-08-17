@@ -1834,10 +1834,17 @@ impl VaultUi {
         //
         // Serial carries bytes. It reports how many were accepted, so a short write can be
         // retried rather than silently dropped, and there is no keymap in the path at all.
+        // Hand over at most one buffer's worth at a time. serial_send clamps the length it
+        // *reports* to SERIAL_BINARY_BUFLEN but copies whatever it is given into a single
+        // page, and then panics on the failure rather than returning it - on the main thread,
+        // which takes the whole app down. Base64 of a photo fits in a page and ASCII art does
+        // not, which is why one worked and the other crashed the badge.
+        const CHUNK: usize = 3840; // usb-bao1x SERIAL_BINARY_BUFLEN, not re-exported
         let data = text.as_bytes();
         let mut sent = 0;
         while sent < data.len() {
-            match self.usb_dev.serial_send(&data[sent..]) {
+            let end = (sent + CHUNK).min(data.len());
+            match self.usb_dev.serial_send(&data[sent..end]) {
                 Ok(0) => {
                     self.notify("NO USB HOST - NOTHING SENT");
                     return;
