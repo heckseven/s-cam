@@ -531,7 +531,39 @@ pub struct CtapState {
 
 impl CtapState {
     pub fn new(env: &mut impl Env, now: Instant) -> Self {
-        storage::init(env).ok().unwrap();
+        // This ran as `storage::init(env).ok().unwrap()`, which threw the error away and then
+        // panicked on the None. The panic killed the process - and on this badge that process
+        // is the whole UI, so a FIDO store that was not ready took the screen down with it.
+        // The visible symptom was a "Guru Meditation / couldn't return memory
+        // ProcessNotFound" some moments later, raised by whichever process next tried to
+        // return memory to the one that had just died. That is a bystander reporting the
+        // death, not the cause, which is why it never pointed anywhere useful.
+        //
+        // The init itself is PDDB-backed and runs a heartbeat after the PDDB reports mounted,
+        // so it is not always ready to answer. Retry, and if it still will not, carry on
+        // without FIDO: the badge's job is reading QR codes, and losing a credential store is
+        // not a reason for the display to stop.
+        const TRIES: usize = 5;
+        for attempt in 1..=TRIES {
+            match storage::init(env) {
+                Ok(()) => break,
+                Err(e) if attempt < TRIES => {
+                    log::warn!(
+                        "CTAP storage init failed ({:?}), attempt {}/{}; retrying",
+                        e,
+                        attempt,
+                        TRIES
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
+                Err(e) => log::error!(
+                    "CTAP storage init failed after {} attempts: {:?}. FIDO is unavailable \
+                     this boot; everything else keeps working.",
+                    TRIES,
+                    e
+                ),
+            }
+        }
         let client_pin = ClientPin::new(env.rng());
         CtapState {
             client_pin,

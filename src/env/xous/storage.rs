@@ -17,6 +17,7 @@ use crate::env::UpgradeStorage;
 use persistent_store::{Storage, StorageIndex, StorageResult};
 use std::borrow::Cow;
 
+#[derive(Debug)]
 pub struct XousStorage {
 }
 

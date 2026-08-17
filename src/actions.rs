@@ -765,7 +765,7 @@ impl ActionManager {
             }
             match self.storage.borrow_mut().delete(choice, guid) {
                 Ok(_) => {
-                    self.modals.show_notification(t!("vault.completed", locales::LANG), None).ok().unwrap()
+                    self.notify(t!("vault.completed", locales::LANG))
                 }
                 Err(e) => self.report_err(t!("vault.error.internal_error", locales::LANG), Some(e)),
             }

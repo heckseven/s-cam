@@ -104,7 +104,11 @@ impl XousEnv {
     pub fn new(conn: xous::CID, animate: Arc<AtomicBool>) -> Self {
         // We rely on `take_storage` to ensure that this function is called only once.
         let storage = XousStorage {};
-        let store = Store::new(storage).ok().unwrap();
+        // Not `.ok().unwrap()`: that discards the error and then panics on the None, which
+        // is how the CTAP storage failure spent so long looking like an unexplained
+        // "Guru Meditation" instead of a store that would not open.
+        let store = Store::new(storage)
+            .unwrap_or_else(|e| panic!("FIDO store would not open: {:?}", e));
         let xns = XousNames::new().unwrap();
         let ctap1_sid = xous::create_server().unwrap();
         let ctap1_cid = xous::connect(ctap1_sid).unwrap();
