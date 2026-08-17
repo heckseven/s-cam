@@ -558,6 +558,10 @@ pub struct VaultUi {
     standby_choice: usize,
     /// a just-taken photo held for the preview screen, before the user keeps it
     pending_photo: Option<[u32; 512]>,
+    /// Which stored photo `pending_photo` currently holds, when it came from storage rather
+    /// than the camera. Without this, "is a photo loaded?" was the whole test, so selecting a
+    /// different one and exporting it re-sent the previous photo's bits.
+    photo_loaded_key: Option<String>,
     /// what the standby screen currently has painted, so it is only repainted on change
     standby_drawn: Option<(usize, bool)>,
     /// BLINKY: 0 is gene expression, 1..=LED_PATTERN_COUNT are standalone patterns
@@ -727,6 +731,7 @@ impl VaultUi {
             bling_cursor: 0,
             standby_choice: 0,
             pending_photo: None,
+            photo_loaded_key: None,
             standby_drawn: None,
             blinky_cursor: 0,
             show_url: None,
@@ -1580,6 +1585,8 @@ impl VaultUi {
         match self.gfx.acquire_frame() {
             Ok(capture) if capture.ok => {
                 self.pending_photo = Some(capture.bits);
+                // a fresh capture is not any stored photo
+                self.photo_loaded_key = None;
                 *self.mode.lock().unwrap() = VaultMode::PhotoPreview;
             }
             Ok(_) => log::warn!("frame capture reported failure"),
@@ -1597,6 +1604,7 @@ impl VaultUi {
             Some(key) => {
                 log::info!("photo stored as {}", key);
                 self.pending_photo = None;
+        self.photo_loaded_key = None;
                 self.load_photos();
                 true
             }
@@ -1611,6 +1619,7 @@ impl VaultUi {
     /// handing back the live camera beats dropping you into a list.
     fn reopen_camera(&mut self) {
         self.pending_photo = None;
+        self.photo_loaded_key = None;
         *self.mode.lock().unwrap() = VaultMode::Idle;
         xous::send_message(
             self.main_cid,
@@ -1941,22 +1950,29 @@ impl VaultUi {
         }
         self.load_photos();
         self.pending_photo = None;
+        self.photo_loaded_key = None;
         *self.mode.lock().unwrap() = VaultMode::PhotoList;
     }
 
     /// Load the photo under the cursor if the grid has not already done so. The export and
     /// wallpaper actions both need the full-size bits, and the grid only holds thumbnails.
     pub(crate) fn ensure_photo_loaded(&mut self) {
-        if self.pending_photo.is_some() {
+        let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() else { return };
+        // Reload when the cursor has moved to a different photo. The test used to be simply
+        // "is anything loaded?", which is true as soon as one photo has been opened - so
+        // selecting a second photo and exporting it sent the first one's bits again.
+        if self.pending_photo.is_some() && self.photo_loaded_key.as_deref() == Some(key.as_str())
+        {
             return;
         }
         // Load the bits only. show_selected_photo would also switch to the full-screen mode,
         // so setting a wallpaper from the grid would have dumped you into the viewer.
-        if let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() {
-            match crate::storage::photo_get(&self.pddb.borrow(), &key) {
-                Some(bits) => self.pending_photo = Some(bits),
-                None => log::warn!("photo {} could not be read", key),
+        match crate::storage::photo_get(&self.pddb.borrow(), &key) {
+            Some(bits) => {
+                self.pending_photo = Some(bits);
+                self.photo_loaded_key = Some(key);
             }
+            None => log::warn!("photo {} could not be read", key),
         }
     }
 
@@ -1981,6 +1997,7 @@ impl VaultUi {
             match crate::storage::photo_get(&self.pddb.borrow(), &key) {
                 Some(bits) => {
                     self.pending_photo = Some(bits);
+                    self.photo_loaded_key = Some(key);
                     *self.mode.lock().unwrap() = VaultMode::PhotoView;
                 }
                 None => log::warn!("photo {} could not be read", key),
@@ -2158,6 +2175,7 @@ impl VaultUi {
                     // was never stored, so there is nothing else to undo.
                     '←' => {
                         self.pending_photo = None;
+        self.photo_loaded_key = None;
                         *self.mode.lock().unwrap() = VaultMode::Idle;
                     }
                     '🔥' => {
@@ -2171,6 +2189,7 @@ impl VaultUi {
                             return None;
                         }
                         self.pending_photo = None;
+        self.photo_loaded_key = None;
                         self.notify("PHOTO STORE FULL");
                     }
                     _ => {}
@@ -2182,6 +2201,7 @@ impl VaultUi {
                 match k {
                     '←' => {
                         self.pending_photo = None;
+        self.photo_loaded_key = None;
                         *self.mode.lock().unwrap() = VaultMode::PhotoList;
                     }
                     // browse without going back to the list
