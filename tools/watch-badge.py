@@ -47,6 +47,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("-o", "--out", default="badge.log")
     ap.add_argument("--quiet", action="store_true", help="write to the file only")
+    ap.add_argument("--port", help="listen to this port only, e.g. /dev/ttyACM2. Several "
+                                   "interfaces carry the same log; narrow to one when a "
+                                   "trace has to be counted exactly.")
     args = ap.parse_args()
 
     log = open(args.out, "a", buffering=1)
@@ -57,6 +60,14 @@ def main():
     fds = {}          # fd -> path
     partial = {}      # fd -> bytes not yet ending in a newline
     last_scan = 0.0
+    # The badge presents several CDC interfaces and more than one carries the same log, so
+    # listening to all of them records some lines twice. That is not harmless - it made a
+    # keystroke trace look as though characters were being sent twice, and cost a round of
+    # chasing a duplicate that was never there. Each line is therefore tagged with the port
+    # it arrived on, and --port narrows the capture to one when a trace has to be exact.
+    #
+    # Dropping repeats by content would be wrong: "https" really does log 't' twice in a row,
+    # and a deduplicating capture would quietly delete the evidence it exists to collect.
 
     try:
         while True:
@@ -85,7 +96,7 @@ def main():
                             pass
                         print(f"--- {path} was replaced (badge re-enumerated); reopening ---")
 
-                for path in sorted(glob.glob("/dev/ttyACM*")):
+                for path in sorted([args.port] if args.port else glob.glob("/dev/ttyACM*")):
                     if path not in fds.values():
                         try:
                             fd = open_raw(path)
@@ -121,7 +132,8 @@ def main():
                         continue
                     mark = ">>> " if any(p in text for p in PANIC) else "    "
                     stamp = time.strftime("%H:%M:%S")
-                    line = f"{stamp} {mark}{text}"
+                    tag = fds[fd][-1]  # which interface this arrived on
+                    line = f"{stamp} [{tag}] {mark}{text}"
                     log.write(line + "\n")
                     if not args.quiet:
                         print(line)
