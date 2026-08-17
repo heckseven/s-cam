@@ -1931,6 +1931,15 @@ impl ActionManager {
         log::info!("~~fin~~");
     }
 
+    /// Milliseconds between keystrokes when typing to a host.
+    ///
+    /// Deliberately slow. The HID IN endpoint is declared with bInterval 10ms and a character
+    /// costs two reports, so ~20ms is the protocol floor; below it the host simply never
+    /// collects what was sent. This sits well above the floor because the driver underneath
+    /// currently has no working back-pressure - its buffer-overflow check is disabled - so
+    /// the only thing keeping reports from overwriting each other is the clock.
+    const TYPE_DELAY_MS: usize = 150;
+
     pub(crate) fn type_out_url(&mut self, url: &str) {
         use crate::sanitize::{CAP_URL_DISPLAY, SanitizedUrl, send_str_sanitized};
         // Re-validate: by construction the URL in show_url was already validated,
@@ -1957,6 +1966,9 @@ impl ActionManager {
 
     pub(crate) fn save_bookmark(&mut self, url: &str) {
         use crate::sanitize::{CAP_BOOKMARK_URL, SanitizedUrl};
+        // The service documents this as needing to be set on every boot, and nothing in this
+        // app was setting it at all.
+        self.usb_dev.set_autotype_delay_ms(Self::TYPE_DELAY_MS);
         // Validate against bookmark cap (more restrictive than display cap).
         match SanitizedUrl::new(url, CAP_BOOKMARK_URL) {
             Ok(sanitized) => {
