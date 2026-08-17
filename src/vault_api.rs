@@ -58,10 +58,6 @@ pub(crate) enum VaultOp {
     PhotoTypeB64,
     /// type the shown photo to the host as ASCII art, over HID
     PhotoTypeAscii,
-    /// how many photos are stored; blocking, answers the serial console
-    SerialPhotoCount,
-    /// send photo N over serial. arg0 = index, arg1 = 1 for ascii art, 0 for base64
-    SerialPhotoGet,
     MenuUsernames,
     MenuFilter,
 
@@ -153,6 +149,12 @@ pub(crate) enum VaultOp {
     /// show a brief confirmation over the current screen; text arrives as an IpcString.
     /// Only the main loop owns the display, so background threads report through this.
     Notify = 1048,
+    /// how many photos are stored. Blocking; answers dc34-console's `photo list`.
+    /// Pinned like the rest of this block: dc34-console addresses it by number.
+    SerialPhotoCount = 1049,
+    /// send photo N over serial. arg0 = index, arg1 = 1 for ascii art, 0 for base64.
+    /// Blocking, returning 1 on success and 0 if there is no such photo.
+    SerialPhotoGet = 1050,
 }
 
 // Compile-time guard on the VaultOp wire contract.
@@ -192,6 +194,9 @@ const _: () = assert!(VaultOp::PhotoDelete as isize == 1045);
 const _: () = assert!(VaultOp::ConfirmYes as isize == 1046);
 const _: () = assert!(VaultOp::ConfirmNo as isize == 1047);
 const _: () = assert!(VaultOp::Notify as isize == 1048);
+// dc34-console sends these by literal number - see its cmds/photo.rs
+const _: () = assert!(VaultOp::SerialPhotoCount as isize == 1049);
+const _: () = assert!(VaultOp::SerialPhotoGet as isize == 1050);
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct IpcString {
