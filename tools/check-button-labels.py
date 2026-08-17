@@ -30,7 +30,15 @@ SOURCES = [
 ]
 CELL_PX = 8      # pessimistic: the server lays out fewer cells than 7px/glyph implies
 PANEL_PX = 128
-CAPACITY = PANEL_PX // CELL_PX
+PAD_PX = 4       # slack the drawing code puts around each label
+CAPACITY = (PANEL_PX - PAD_PX * 3) // CELL_PX
+
+# Every label is four characters. That is not a style rule, it is what makes the bar fit:
+# three four-character labels plus their slack is the widest arrangement the panel holds, and
+# every longer word tried so far has had a four-character synonym already in use elsewhere
+# (select -> pick, retry -> redo). Keeping them uniform also means no label is ever the one
+# that gets shortened.
+MAX_LABEL = 4
 
 
 def call_args(src, start):
@@ -61,6 +69,12 @@ def main():
             if not labels:
                 continue
             checked += 1
+            for t in labels:
+                if len(t) > MAX_LABEL:
+                    problems.append(
+                        f'{path}:{line}: label "{t}" is {len(t)} characters; the bar is sized '
+                        f"for {MAX_LABEL}"
+                    )
             cells = sum(len(t) for t in labels) + max(0, len(labels) - 1)
             if cells > CAPACITY:
                 problems.append(

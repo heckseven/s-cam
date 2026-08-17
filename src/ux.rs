@@ -1521,7 +1521,7 @@ impl VaultUi {
                 }
                 crate::theme::button_labels(
                     &self.gfx, self.screen_size,
-                    Some("back"), Some("retry"), Some("save"),
+                    Some("back"), Some("redo"), Some("save"),
                 );
             }
         }
