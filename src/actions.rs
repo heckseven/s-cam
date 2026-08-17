@@ -1933,12 +1933,14 @@ impl ActionManager {
 
     /// Milliseconds between keystrokes when typing to a host.
     ///
-    /// Deliberately slow. The HID IN endpoint is declared with bInterval 10ms and a character
-    /// costs two reports, so ~20ms is the protocol floor; below it the host simply never
-    /// collects what was sent. This sits well above the floor because the driver underneath
-    /// currently has no working back-pressure - its buffer-overflow check is disabled - so
-    /// the only thing keeping reports from overwriting each other is the clock.
-    const TYPE_DELAY_MS: usize = 20;
+    /// Extra delay between keystrokes, on top of what the hardware imposes.
+    ///
+    /// Zero. This was 150ms, then 20ms, back when the clock was doing the driver's job: a
+    /// report could be overwritten before the host fetched it, so the only protection was
+    /// leaving enough time between them, and typing had to be slow to be correct. The driver
+    /// now refuses to queue a report while the previous one is still in flight, so the
+    /// hardware sets the pace. Any delay added here just makes it slower than it needs to be.
+    const TYPE_DELAY_MS: usize = 0;
 
     pub(crate) fn type_out_url(&mut self, url: &str) {
         use crate::sanitize::{CAP_URL_DISPLAY, SanitizedUrl, send_str_sanitized};

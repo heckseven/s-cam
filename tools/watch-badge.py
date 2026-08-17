@@ -131,7 +131,10 @@ def main():
                     if not text:
                         continue
                     mark = ">>> " if any(p in text for p in PANIC) else "    "
-                    stamp = time.strftime("%H:%M:%S")
+                    # milliseconds, because the things worth timing here - a keystroke, a
+                    # whole type-out - all happen inside one second
+                    now = time.time()
+                    stamp = time.strftime("%H:%M:%S", time.localtime(now)) + f".{int(now % 1 * 1000):03d}"
                     tag = fds[fd][-1]  # which interface this arrived on
                     line = f"{stamp} [{tag}] {mark}{text}"
                     log.write(line + "\n")
