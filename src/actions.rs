@@ -1938,7 +1938,7 @@ impl ActionManager {
     /// collects what was sent. This sits well above the floor because the driver underneath
     /// currently has no working back-pressure - its buffer-overflow check is disabled - so
     /// the only thing keeping reports from overwriting each other is the clock.
-    const TYPE_DELAY_MS: usize = 150;
+    const TYPE_DELAY_MS: usize = 20;
 
     pub(crate) fn type_out_url(&mut self, url: &str) {
         use crate::sanitize::{CAP_URL_DISPLAY, SanitizedUrl, send_str_sanitized};
