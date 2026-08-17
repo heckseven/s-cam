@@ -142,7 +142,14 @@ def main():
             parts = pending[fd].split(b"\n")
             pending[fd] = bytearray(parts.pop())  # trailing fragment, not yet a line
             for line in parts:
-                if is_log(line.rstrip(b"\r")):
+                stripped = line.rstrip(b"\r")
+                # An empty line is never payload: an ASCII-art row is 128 characters (a blank
+                # row is 128 spaces) and base64 lines are not empty either. Stray newlines do
+                # arrive - one capture began with ten of them - and keeping them shifts every
+                # row and makes the file look corrupt when the image is entirely intact.
+                if not stripped:
+                    continue
+                if is_log(stripped):
                     continue
                 if source is None:
                     source = fds[fd]
