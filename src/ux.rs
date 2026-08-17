@@ -961,7 +961,12 @@ impl VaultUi {
         let cell = ux_api::widgets::cell_width(&self.gfx, crate::theme::FONT);
         let cols = ((self.screen_size.x - 4) / cell).max(1) as usize;
         let lines = (msg.chars().count().max(1) + cols - 1) / cols;
-        let band = self.item_height * lines as isize;
+        // One row of slack. Sizing the band at exactly item_height * lines leaves the
+        // server no room for its own inset, and a TextView that overruns is dropped rather
+        // than clipped - so the notification silently drew nothing at all. It only appeared
+        // once the cell width was corrected and a second line was needed, which is why this
+        // looked like the fix causing the bug.
+        let band = self.item_height * (lines as isize + 1);
 
         self.clear_area();
         let mut tv = TextView::new(
