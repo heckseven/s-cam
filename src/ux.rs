@@ -1867,15 +1867,27 @@ impl VaultUi {
             format!("data:image/bmp;base64,{}\n", Self::base64(&Self::photo_to_bmp(&bits)))
         };
 
-        // Chunked for the same reason the serial path is: the string crosses to the USB
-        // server in one memory page, and a whole photo does not fit in one. Serial panicked
-        // on that rather than returning an error, and this path is no safer.
-        const CHUNK: usize = 1024;
-        let chars: Vec<char> = text.chars().collect();
+        // Small chunks, and not because of the page limit.
+        //
+        // The USB server handles one message at a time, and a send_str call does not return
+        // until every keystroke in it has been typed. At 1024 characters that is ten to
+        // twenty seconds during which nothing else can use USB at all - including the CDC
+        // serial that carries the log - and the badge reliably fell over partway through a
+        // photo. Sixty-four characters is about a second per call, so the server stays
+        // responsive between them. The total time is unchanged; the stalls are not.
+        //
+        // Bytes rather than chars: both formats are ASCII by construction, and collecting
+        // 8256 chars into a Vec<char> cost 33KB of heap on an app that is demand-paged out
+        // of encrypted swap.
+        const CHUNK: usize = 64;
+        let bytes = text.as_bytes();
         let mut typed = 0;
-        for part in chars.chunks(CHUNK) {
-            let s: String = part.iter().collect();
-            match self.usb_dev.send_str(&s) {
+        for part in bytes.chunks(CHUNK) {
+            let s = match core::str::from_utf8(part) {
+                Ok(s) => s,
+                Err(_) => continue, // unreachable for ASCII, and not worth dying over
+            };
+            match self.usb_dev.send_str(s) {
                 Ok(0) => {
                     self.notify("NO USB HOST");
                     return;
@@ -1888,11 +1900,11 @@ impl VaultUi {
                 }
             }
         }
-        if typed >= chars.len() {
+        if typed >= bytes.len() {
             self.notify("TYPED TO HOST");
         } else {
-            log::warn!("typed {} of {} characters", typed, chars.len());
-            self.notify(&format!("TYPED {} OF {}", typed, chars.len()));
+            log::warn!("typed {} of {} characters", typed, bytes.len());
+            self.notify(&format!("TYPED {} OF {}", typed, bytes.len()));
         }
     }
 
