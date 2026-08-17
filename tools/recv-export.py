@@ -120,7 +120,9 @@ def main():
     source = None
     started = time.time()
     last = None          # last time PAYLOAD arrived, not last time anything arrived
-    pending = bytearray()
+    # One partial-line buffer per port. A single shared one splices the tail of a line from
+    # one interface onto the head of a line from another.
+    pending = {fd: bytearray() for fd in fds}
     while True:
         ready, _, _ = select.select(list(fds), [], [], 0.25)
         for fd in ready:
@@ -135,16 +137,22 @@ def main():
                 continue
             if not chunk:
                 continue
-            pending += chunk
+            pending[fd] += chunk
             # Judge whole lines only: a log line has to be complete to be recognised.
-            parts = pending.split(b"\n")
-            pending = bytearray(parts.pop())  # trailing fragment, not yet a line
+            parts = pending[fd].split(b"\n")
+            pending[fd] = bytearray(parts.pop())  # trailing fragment, not yet a line
             for line in parts:
                 if is_log(line.rstrip(b"\r")):
                     continue
                 if source is None:
                     source = fds[fd]
                     print(f"receiving on {source}")
+                elif fds[fd] != source:
+                    # The badge carries the same stream on more than one interface. Taking
+                    # both concatenates the export with itself - chunks appear twice, and so
+                    # does the trailing "==" of a base64 payload. Listen to one and ignore
+                    # the rest.
+                    continue
                 data += line + b"\n"
                 last = time.time()
         if last and time.time() - last > args.idle:
