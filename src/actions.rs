@@ -1942,13 +1942,28 @@ impl ActionManager {
 
     pub(crate) fn type_out_url(&mut self, url: &str) {
         use crate::sanitize::{CAP_URL_DISPLAY, SanitizedUrl, send_str_sanitized};
+        // The service documents this as needing to be set on every boot, and nothing in this
+        // app was setting it at all.
+        self.usb_dev.set_autotype_delay_ms(Self::TYPE_DELAY_MS);
         // Re-validate: by construction the URL in show_url was already validated,
         // but we re-check here as the ONLY HID call site for URL type-out.
         match SanitizedUrl::new(url, CAP_URL_DISPLAY) {
             Ok(sanitized) => {
+                // Report what was actually sent. This arm was `Ok(_)`, which called a
+                // send of zero characters a success - so a host that was not listening, or
+                // a USB stack that had not configured, showed "URL typed to host" instantly
+                // with nothing typed at all. That cost a full round of debugging aimed at
+                // the transport when the badge was telling us it had sent nothing.
+                let expected = sanitized.as_str().chars().count();
                 match send_str_sanitized(&self.usb_dev, &sanitized) {
-                    Ok(_) => {
-                        self.notify("URL typed to host");
+                    Ok(n) if n >= expected => self.notify("URL typed to host"),
+                    Ok(0) => {
+                        log::warn!("type_out_url: nothing sent; USB not configured?");
+                        self.notify("NO USB HOST");
+                    }
+                    Ok(n) => {
+                        log::warn!("type_out_url: sent {} of {} characters", n, expected);
+                        self.notify(&format!("TYPED {} OF {}", n, expected));
                     }
                     Err(e) => {
                         log::error!("USB HID type-out error: {:?}", e);
@@ -1966,9 +1981,6 @@ impl ActionManager {
 
     pub(crate) fn save_bookmark(&mut self, url: &str) {
         use crate::sanitize::{CAP_BOOKMARK_URL, SanitizedUrl};
-        // The service documents this as needing to be set on every boot, and nothing in this
-        // app was setting it at all.
-        self.usb_dev.set_autotype_delay_ms(Self::TYPE_DELAY_MS);
         // Validate against bookmark cap (more restrictive than display cap).
         match SanitizedUrl::new(url, CAP_BOOKMARK_URL) {
             Ok(sanitized) => {
