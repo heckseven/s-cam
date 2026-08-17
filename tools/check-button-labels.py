@@ -54,8 +54,32 @@ def call_args(src, start):
     return ""
 
 
+def check_no_hardcoded_cell(problems):
+    """No layout may assume a character is 7px wide.
+
+    The font tables say 7. The graphics server lays out 8. Every place that trusted the
+    tables has had to be fixed after the fact - list rows dropped their text, the button bar
+    silently deleted the right-hand label, and a notification typeset "URL typed to host" as
+    "url typed to". The measurement is available from ux_api::widgets::cell_width; nothing
+    should be dividing by a literal again.
+    """
+    for path in ("src/ux.rs", "src/theme.rs"):
+        try:
+            src = open(path).read()
+        except FileNotFoundError:
+            continue
+        for n, line in enumerate(src.splitlines(), 1):
+            code = line.split("//", 1)[0]
+            if re.search(r"[/*]\s*7\b", code) and "cell_width" not in code:
+                problems.append(
+                    f"{path}:{n}: hardcodes 7px per character; the server lays out 8. "
+                    f"Use ux_api::widgets::cell_width() - {code.strip()[:60]}"
+                )
+
+
 def main():
     problems, checked = [], 0
+    check_no_hardcoded_cell(problems)
     for path in SOURCES:
         try:
             src = open(path).read()

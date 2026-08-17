@@ -953,7 +953,13 @@ impl VaultUi {
 
         // Size the band to the wrapped text before placing it: a TextView whose bounds are
         // too small aborts typesetting rather than clipping, which would show nothing at all.
-        let cols = ((self.screen_size.x - 4) / 7).max(1) as usize;
+        // Ask the server how wide a cell is rather than assuming 7px from the font tables.
+        // It is 8, and assuming 7 here made this band think seventeen characters fit when
+        // fifteen do - so "URL typed to host" was typeset as "url typed to". The same wrong
+        // assumption cost the list rows and the button bar a fix each; this was the last
+        // place still making it.
+        let cell = ux_api::widgets::cell_width(&self.gfx, crate::theme::FONT);
+        let cols = ((self.screen_size.x - 4) / cell).max(1) as usize;
         let lines = (msg.chars().count().max(1) + cols - 1) / cols;
         let band = self.item_height * lines as isize;
 
