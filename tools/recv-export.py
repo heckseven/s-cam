@@ -38,6 +38,39 @@ def open_raw(path):
     return fd
 
 
+def other_readers(paths):
+    """Find other processes holding these ports open.
+
+    A tty delivers each byte to exactly one reader. The badge's log capture listens on every
+    interface, so leaving it running during an export silently splits the transfer between
+    the two tools and the image arrives corrupt - which looks like a badge fault and is not.
+    """
+    import glob as _glob
+
+    want = {os.path.realpath(p) for p in paths}
+    found = []
+    for fd_dir in _glob.glob("/proc/[0-9]*/fd"):
+        pid = fd_dir.split("/")[2]
+        if pid == str(os.getpid()):
+            continue
+        try:
+            for entry in os.listdir(fd_dir):
+                try:
+                    target = os.readlink(os.path.join(fd_dir, entry))
+                except OSError:
+                    continue
+                if target in want:
+                    try:
+                        name = open(f"/proc/{pid}/comm").read().strip()
+                    except OSError:
+                        name = "?"
+                    found.append((int(pid), name, target))
+                    break
+        except OSError:
+            continue
+    return found
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("ports", nargs="*", help="serial devices; default is every /dev/ttyACM*")
@@ -61,6 +94,17 @@ def main():
     if not fds:
         sys.exit("could not open any port")
 
+    rivals = other_readers(fds.values())
+    if rivals:
+        print()
+        print("  WARNING: these processes are also reading the same port(s):")
+        for pid, name, path in rivals:
+            print(f"    pid {pid} {name}  ->  {path}")
+        print("  Two readers split the stream between them - each byte goes to exactly one.")
+        print("  The export will arrive incomplete. Stop the other reader first:")
+        print(f"    kill {' '.join(str(p) for p, _, _ in rivals)}")
+        print()
+
     print(f"listening on {', '.join(fds.values())}")
     print("now run the export on the badge: photos -> more -> export -> yes")
 
@@ -80,7 +124,15 @@ def main():
     while True:
         ready, _, _ = select.select(list(fds), [], [], 0.25)
         for fd in ready:
-            chunk = os.read(fd, 4096)
+            try:
+                chunk = os.read(fd, 4096)
+            except BlockingIOError:
+                # select() said readable, but another reader took the bytes first. Harmless
+                # on its own - the real problem is that it happened at all; see the warning
+                # printed at startup.
+                continue
+            except OSError:
+                continue
             if not chunk:
                 continue
             pending += chunk
