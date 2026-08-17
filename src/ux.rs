@@ -1492,7 +1492,8 @@ impl VaultUi {
                     let has = !rows.is_empty();
                     crate::theme::button_labels(
                         &self.gfx, self.screen_size,
-                        Some("back"), None,
+                        Some("back"),
+                        if has { Some("more") } else { None },
                         if has { Some("show") } else { None },
                     );
                 }
@@ -1846,11 +1847,53 @@ impl VaultUi {
 
     /// Ask main to open the photo actions menu. Menus are owned by the main loop, so this
     /// posts a message rather than drawing one here.
+    /// Type the focused saved URL to the host over HID.
+    ///
+    /// Short strings only, which a URL is. Bulk data goes over serial instead - typing a
+    /// photo out dropped characters at every delay that was measured.
+    pub(crate) fn type_bookmark(&mut self) {
+        let Some((_, url, _)) = self.bookmark_cache.get(self.bookmark_cursor) else {
+            self.notify("NOTHING SELECTED");
+            return;
+        };
+        let msg = crate::IpcString { s: url.clone() };
+        match xous_ipc::Buffer::into_buf(msg) {
+            Ok(buf) => {
+                buf.lend(self.actions_conn, crate::actions::ActionOp::TypeOutUrl.to_u32().unwrap())
+                    .ok();
+            }
+            Err(e) => log::error!("type_bookmark: IPC buffer error: {:?}", e),
+        }
+    }
+
+    /// Delete the saved QR under the cursor. The caller asks first.
+    pub(crate) fn delete_bookmark(&mut self) {
+        let Some((key, _, _)) = self.bookmark_cache.get(self.bookmark_cursor).cloned() else {
+            return;
+        };
+        let deleted = crate::storage::bookmark_delete(&self.pddb.borrow(), &key);
+        if let Err(e) = deleted {
+            log::warn!("could not delete bookmark {}: {:?}", key, e);
+            self.notify("DELETE FAILED");
+            return;
+        }
+        self.load_bookmarks();
+        self.notify("DELETED");
+    }
+
     /// Open the actions menu for the record under the cursor.
     ///
     /// Same shape as the photo actions: the middle button offers what you can do with the
     /// thing you are looking at. These used to live in a separate "Token Menu" reached by
     /// the jog press, which had no label anywhere and so was effectively undiscoverable.
+    fn open_bookmark_actions(&mut self) {
+        xous::send_message(
+            self.main_cid,
+            xous::Message::new_scalar(VaultOp::MenuBookmarkActions.to_usize().unwrap(), 0, 0, 0, 0),
+        )
+        .ok();
+    }
+
     fn open_record_actions(&mut self) {
         xous::send_message(
             self.main_cid,
@@ -2211,7 +2254,8 @@ impl VaultUi {
                         // back to the menu this was opened from, not past it to standby
                         return self.to_menu();
                     }
-                    '→' | '🔥' => {
+                    '🔥' => self.open_bookmark_actions(),
+                    '→' => {
                         // select highlighted bookmark → trigger QR render via ActionManager
                         if let Some((key, _, _)) = self.bookmark_cache.get(self.bookmark_cursor) {
                             let key = key.clone();

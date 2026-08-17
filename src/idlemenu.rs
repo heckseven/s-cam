@@ -147,6 +147,14 @@ pub const RECORD_ACTIONS: [(&str, VaultOp, u32); 5] = [
     ("back", VaultOp::MenuClosed, 0),
 ];
 
+/// What the middle button offers on a saved QR. The photo actions minus the ones that only
+/// make sense for an image, plus typing the URL out - which is the point of saving one.
+pub const QR_ACTIONS: [(&str, VaultOp, u32); 3] = [
+    ("type to host", VaultOp::BookmarkType, 0),
+    ("delete", VaultOp::BookmarkDelete, 0),
+    ("back", VaultOp::MenuClosed, 0),
+];
+
 /// "no" first, so the default selection is the harmless one.
 pub const CONFIRM: [(&str, VaultOp, u32); 2] =
     [("no", VaultOp::ConfirmNo, 0), ("yes", VaultOp::ConfirmYes, 0)];

@@ -48,6 +48,12 @@ pub(crate) enum VaultOp {
     MenuRecordActions,
     /// create a record on this screen; forwarded to the actions thread
     MenuAddnew,
+    /// open the actions menu for the saved QR under the cursor
+    MenuBookmarkActions,
+    /// type the saved URL to the host over HID
+    BookmarkType,
+    /// delete the saved QR, after confirming
+    BookmarkDelete,
     MenuUsernames,
     MenuFilter,
 

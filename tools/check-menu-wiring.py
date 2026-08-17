@@ -96,6 +96,8 @@ def main():
         "PhotoExportB64",
         "PhotoExportAscii",
         "PhotoDelete",
+        # opens the confirmation menu rather than closing the tree
+        "BookmarkDelete",
     }
 
     seen = {}

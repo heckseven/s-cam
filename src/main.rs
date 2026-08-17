@@ -163,6 +163,7 @@ enum ActiveMenu {
 enum Pending {
     None,
     DeletePhoto,
+    DeleteBookmark,
     ExportB64,
     ExportAscii,
 }
@@ -480,6 +481,29 @@ fn main() -> ! {
                 );
                 scratch_menu_mgr.redraw();
             }
+            Some(VaultOp::MenuBookmarkActions) => {
+                active_menu = ActiveMenu::RecordActions;
+                menu_just_opened = true;
+                animate.store(false, Ordering::SeqCst);
+                scratch_items = idlemenu::fill(
+                    &scratch_menu_mgr, &scratch_items, "QR CODE", &idlemenu::QR_ACTIONS, conn,
+                );
+                scratch_menu_mgr.redraw();
+            }
+            Some(VaultOp::BookmarkType) => {
+                active_menu = ActiveMenu::None;
+                vault_ui.type_bookmark();
+                vault_ui.redraw();
+            }
+            Some(VaultOp::BookmarkDelete) => {
+                pending = Pending::DeleteBookmark;
+                active_menu = ActiveMenu::Confirm;
+                menu_just_opened = true;
+                scratch_items = idlemenu::fill(
+                    &scratch_menu_mgr, &scratch_items, "CONFIRM", &idlemenu::CONFIRM, conn,
+                );
+                scratch_menu_mgr.redraw();
+            }
             Some(VaultOp::PhotoDelete) => {
                 pending = Pending::DeletePhoto;
                 active_menu = ActiveMenu::Confirm;
@@ -498,6 +522,7 @@ fn main() -> ! {
                 active_menu = ActiveMenu::None;
                 match std::mem::replace(&mut pending, Pending::None) {
                     Pending::DeletePhoto => vault_ui.delete_photo(),
+                    Pending::DeleteBookmark => vault_ui.delete_bookmark(),
                     Pending::ExportB64 => {
                         vault_ui.ensure_photo_loaded();
                         vault_ui.export_photo(false);

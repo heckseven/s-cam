@@ -1311,6 +1311,14 @@ pub(crate) fn photo_delete(pddb: &pddb::Pddb, key: &str) -> Result<(), std::io::
     pddb.delete_key(VAULT_PHOTOS_DICT, key, None)
 }
 
+/// Free-function form for the UX side, which holds a Pddb rather than a Storage. The method
+/// on Storage stays for the actions thread, which holds one.
+pub(crate) fn bookmark_delete(pddb: &pddb::Pddb, key: &str) -> Result<(), std::io::Error> {
+    pddb.delete_key(VAULT_BOOKMARKS_DICT, key, None)?;
+    pddb.sync().unwrap_or(());
+    Ok(())
+}
+
 fn set_usize(pddb: &pddb::Pddb, key: &str, v: usize) -> Result<(), std::io::Error> {
     let mut k = pddb.get(VAULT_SETTINGS_DICT, key, None, true, true, Some(8), None::<fn()>)?;
     use std::io::Write;
