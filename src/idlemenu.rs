@@ -65,6 +65,7 @@ pub fn create_login(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
             ("2fa digits", VaultOp::List2faDigits),
             ("passkeys", VaultOp::ListPasskeys),
             ("passwords", VaultOp::ListPasswords),
+            ("manage usernames", VaultOp::MenuUsernames),
             ("back", VaultOp::MenuRoot),
         ],
         vault_conn,
@@ -132,6 +133,16 @@ pub const PHOTO_ACTIONS: [(&str, VaultOp, u32); 5] = [
     ("export b64", VaultOp::PhotoExportB64, 0),
     ("export ascii", VaultOp::PhotoExportAscii, 0),
     ("delete", VaultOp::PhotoDelete, 0),
+    ("back", VaultOp::MenuClosed, 0),
+];
+
+/// What the middle button offers on a record screen. Replaces the legacy "Token Menu",
+/// which mixed these with a duplicate of settings, two entries that only closed the menu,
+/// and a developer tool.
+pub const RECORD_ACTIONS: [(&str, VaultOp, u32); 4] = [
+    ("edit", VaultOp::MenuEditStage1, 0),
+    ("delete", VaultOp::MenuDeleteStage1, 0),
+    ("filter", VaultOp::MenuFilter, 0),
     ("back", VaultOp::MenuClosed, 0),
 ];
 

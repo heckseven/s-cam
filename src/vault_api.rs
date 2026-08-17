@@ -44,8 +44,8 @@ pub(crate) enum VaultOp {
     MenuAutotypeRate,
     MenuLeftyMode,
     MenuDone,
-    BadgeMode,
-    MenuTokenHelp,
+    /// open the actions menu for the record under the cursor
+    MenuRecordActions,
     MenuUsernames,
     MenuFilter,
 

@@ -795,10 +795,6 @@ impl VaultUi {
 
     pub fn reset_about_state(&mut self) { self.about_state = AboutState::Bunnie { seen_press: false }; }
 
-    pub fn reset_token_help_state(&mut self) {
-        self.token_help_state = TokenHelpState::TokenRecap { seen_press: false };
-    }
-
     pub fn reset_factory_test(&mut self) {
         self.factory_test = FactoryTestState::InitWait { start_time: std::time::Instant::now() };
     }
@@ -1014,7 +1010,7 @@ impl VaultUi {
                 crate::theme::button_labels(
                     &self.gfx, self.screen_size,
                     Some("back"),
-                    if has { Some("del") } else { None },
+                    if has { Some("more") } else { None },
                     None,
                 );
                 self.gfx.flush().ok();
@@ -1383,7 +1379,7 @@ impl VaultUi {
                 object_list.push(ClipObjectType::Rect(timer_remaining)).unwrap();
                 self.gfx.draw_object_list(object_list).unwrap();
                 crate::theme::button_labels(
-                    &self.gfx, self.screen_size, Some("back"), None, Some("send"),
+                    &self.gfx, self.screen_size, Some("back"), Some("more"), Some("send"),
                 );
                 self.gfx.flush().ok();
             }
@@ -1462,7 +1458,7 @@ impl VaultUi {
                 };
                 self.display_list.draw(insert_at);
                 crate::theme::button_labels(
-                    &self.gfx, self.screen_size, Some("back"), None, Some("type"),
+                    &self.gfx, self.screen_size, Some("back"), Some("more"), Some("type"),
                 );
                 self.gfx.flush().ok();
             }// _ => unimplemented!(),
@@ -1848,6 +1844,19 @@ impl VaultUi {
 
     /// Ask main to open the photo actions menu. Menus are owned by the main loop, so this
     /// posts a message rather than drawing one here.
+    /// Open the actions menu for the record under the cursor.
+    ///
+    /// Same shape as the photo actions: the middle button offers what you can do with the
+    /// thing you are looking at. These used to live in a separate "Token Menu" reached by
+    /// the jog press, which had no label anywhere and so was effectively undiscoverable.
+    fn open_record_actions(&mut self) {
+        xous::send_message(
+            self.main_cid,
+            xous::Message::new_scalar(VaultOp::MenuRecordActions.to_usize().unwrap(), 0, 0, 0, 0),
+        )
+        .ok();
+    }
+
     fn open_photo_actions(&mut self) {
         xous::send_message(
             self.main_cid,
@@ -1950,6 +1959,7 @@ impl VaultUi {
                     // LEFT is back on every screen; the menu already reaches 2fa digits
                     // directly, so the old left-types / right-switches pair is retired.
                     '←' => return self.to_menu(),
+                    '🔥' => self.open_record_actions(),
                     '→' => {
                         if let Some(item) = self.get_selected_item() {
                             // print any errors within this function as a panic at this line
@@ -1989,6 +1999,7 @@ impl VaultUi {
                         self.display_list.key_action('↓');
                     }
                     '←' => return self.to_menu(),
+                    '🔥' => self.open_record_actions(),
                     '→' => {
                         if let Some(code) = self.update_selected_totp_code() {
                             // ignore USB errors while sending code
@@ -2029,17 +2040,9 @@ impl VaultUi {
                             step_cursor(self.passkey_cursor, self.passkey_cache.len(), k == '↑')
                     }
                     '←' => leaving = true,
-                    '🔥' => {
-                        if let Some(p) = self.passkey_cache.get(self.passkey_cursor) {
-                            let key = p.key.clone();
-                            if let Err(e) =
-                                crate::storage::passkey_delete(&self.pddb.borrow(), &key)
-                            {
-                                log::warn!("could not delete passkey {}: {:?}", key, e);
-                            }
-                            self.load_passkeys();
-                        }
-                    }
+                    // Delete moved into the actions menu. As a bare button it removed a
+                    // credential on one press with nothing to confirm it.
+                    '🔥' => self.open_record_actions(),
                     _ => {}
                 }
                 if leaving {

@@ -7,7 +7,6 @@ mod itemcache;
 use itemcache::*;
 mod actions;
 mod storage;
-mod submenu;
 mod theme;
 mod totp;
 pub mod vault_api;
@@ -147,8 +146,8 @@ enum ActiveMenu {
     Root,
     Login,
     Settings,
-    /// the vault's own menu, used outside the idle screen
-    Vault,
+    /// actions on the record under the cursor, opened from a record screen
+    RecordActions,
     /// actions on the photo under the cursor
     PhotoActions,
     /// a yes/no question
@@ -217,8 +216,6 @@ fn main() -> ! {
     );
 
     log::info!("menus");
-    let menu_sid = xous::create_server().unwrap();
-    let menu_mgr = submenu::create_submenu(conn, actions_conn, menu_sid);
     let login_menu_sid = xous::create_server().unwrap();
     let login_menu_mgr = idlemenu::create_login(conn, login_menu_sid);
     let settings_menu_sid = xous::create_server().unwrap();
@@ -439,6 +436,15 @@ fn main() -> ! {
             }
             // Photo actions. These act on the photo the screen is already showing, so they
             // do not touch menu_origin: closing this menu returns to the photo, not to a menu.
+            Some(VaultOp::MenuRecordActions) => {
+                active_menu = ActiveMenu::RecordActions;
+                menu_just_opened = true;
+                animate.store(false, Ordering::SeqCst);
+                scratch_items = idlemenu::fill(
+                    &scratch_menu_mgr, &scratch_items, "RECORD", &idlemenu::RECORD_ACTIONS, conn,
+                );
+                scratch_menu_mgr.redraw();
+            }
             Some(VaultOp::MenuPhotoActions) => {
                 active_menu = ActiveMenu::PhotoActions;
                 menu_just_opened = true;
@@ -579,10 +585,9 @@ fn main() -> ! {
                     match active_menu {
                         ActiveMenu::Login => login_menu_mgr.key_press(k),
                         ActiveMenu::Settings => settings_menu_mgr.key_press(k),
-                        ActiveMenu::Vault => menu_mgr.key_press(k),
-                        ActiveMenu::PhotoActions | ActiveMenu::Confirm => {
-                            scratch_menu_mgr.key_press(k)
-                        }
+                        ActiveMenu::PhotoActions
+                        | ActiveMenu::Confirm
+                        | ActiveMenu::RecordActions => scratch_menu_mgr.key_press(k),
                         _ => idle_menu_mgr.key_press(k),
                     }
                 } else {
@@ -603,19 +608,30 @@ fn main() -> ! {
                             // handlers record where they were opened from, that then stuck.
                             let mode_after = *mode.lock().unwrap();
                             active_menu = if matches!(mode_after, VaultMode::Idle) {
-                                // never carry Vault forward as an origin
+                                // never carry a screen's own menu forward as an origin
                                 match menu_origin {
                                     ActiveMenu::Login => ActiveMenu::Login,
                                     ActiveMenu::Settings => ActiveMenu::Settings,
                                     _ => ActiveMenu::Root,
                                 }
                             } else {
-                                ActiveMenu::Vault
+                                ActiveMenu::RecordActions
                             };
                             match active_menu {
                                 ActiveMenu::Login => login_menu_mgr.redraw(),
                                 ActiveMenu::Settings => settings_menu_mgr.redraw(),
-                                ActiveMenu::Vault => menu_mgr.redraw(),
+                                ActiveMenu::RecordActions => {
+                                    // Fill before showing. The scratch menu is shared with the
+                                    // photo actions and the confirmations, so whatever ran last
+                                    // is still in it - reopening without refilling would offer
+                                    // the wrong screen's actions.
+                                    menu_just_opened = true;
+                                    scratch_items = idlemenu::fill(
+                                        &scratch_menu_mgr, &scratch_items, "RECORD",
+                                        &idlemenu::RECORD_ACTIONS, conn,
+                                    );
+                                    scratch_menu_mgr.redraw();
+                                }
                                 ActiveMenu::PhotoActions | ActiveMenu::Confirm => {
                                     scratch_menu_mgr.redraw()
                                 }
@@ -672,6 +688,7 @@ fn main() -> ! {
                 }
             }),
             Some(VaultOp::MenuEditStage1) => {
+                active_menu = ActiveMenu::None;
                 // stage 1 happens here because the filtered list and selection entry are in the responsive UX
                 // section.
                 log::debug!("selecting entry for edit");
@@ -686,7 +703,8 @@ fn main() -> ! {
                 }
                 animate.store(mode.lock().unwrap().should_animate(), Ordering::SeqCst);
             }
-Some(VaultOp::MenuDeleteStage1) => {
+            Some(VaultOp::MenuDeleteStage1) => {
+                active_menu = ActiveMenu::None;
                 animate.store(false, Ordering::SeqCst);
                 if let Some(entry) = vault_ui.selected_entry() {
                     let buf = Buffer::into_buf(entry).expect("IPC error");
@@ -705,6 +723,7 @@ Some(VaultOp::MenuDeleteStage1) => {
                 vault_ui.redraw();
             }
             Some(VaultOp::MenuUsernames) => {
+                active_menu = ActiveMenu::None;
                 // TODO: clean this up/consolidate with add_password() routine in actions.rs
                 use std::path::Path;
                 use std::{fs::File, io, io::BufRead, io::Write};
@@ -765,6 +784,7 @@ Some(VaultOp::MenuDeleteStage1) => {
                 vault_ui.redraw();
             }
             Some(VaultOp::MenuFilter) => {
+                active_menu = ActiveMenu::None;
                 let new_filter = &modals
                     .alert_builder("Filter by:")
                     .field(Some(vault_ui.get_filter()), None)
@@ -1012,15 +1032,6 @@ Some(VaultOp::MenuDeleteStage1) => {
             Some(VaultOp::DefconHelp) => {
                 *mode.lock().unwrap() = VaultMode::Idle;
                 vault_ui.reset_help_state();
-                vault_ui.redraw();
-            }
-            Some(VaultOp::MenuTokenHelp) => {
-                *mode.lock().unwrap() = VaultMode::Idle;
-                vault_ui.reset_token_help_state();
-                vault_ui.redraw();
-            }
-            Some(VaultOp::BadgeMode) => {
-                *mode.lock().unwrap() = VaultMode::Idle;
                 vault_ui.redraw();
             }
             Some(VaultOp::About) => {
