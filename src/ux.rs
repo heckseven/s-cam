@@ -607,6 +607,19 @@ impl VaultUi {
     /// acknowledge it adds a step to every save without telling them anything they did not
     /// already know. It paints centred over the current screen, holds long enough to read,
     /// then redraws whatever was underneath: a menu, a list or an image.
+    /// Forget what is believed to be on the panel, so the next redraw paints all of it.
+    ///
+    /// Two screens paint only what changed since last time: the standby image, and a list
+    /// mid-marquee, which repaints its focused row alone. Neither knows that a menu was drawn
+    /// over the top of it. Coming back from one, the list repainted a single row onto the
+    /// menu's leftovers - one readable entry surrounded by the menu that was supposed to be
+    /// gone. Called wherever a menu closes; a needless full repaint costs one frame, a missed
+    /// one leaves the screen visibly broken.
+    pub(crate) fn invalidate(&mut self) {
+        self.standby_drawn = None;
+        self.list_quantum = 0;
+    }
+
     pub(crate) fn notify(&mut self, text: &str) {
         const HOLD_MS: usize = 1200;
         let msg = text.to_lowercase();
@@ -1958,12 +1971,15 @@ impl VaultUi {
                     '←' => leaving = true,
                     // Gated on there being a photo: the label bar hides "more" and "view"
                     // on an empty list, so acting anyway made them unlabelled controls.
-                    '🔥' | '∴' => {
+                    '🔥' => {
                         if !self.photo_cache.is_empty() {
                             self.open_photo_actions();
                         }
                     }
-                    '→' => {
+                    // The jog press opens the focused item, the same as RIGHT - matching the
+                    // QR collection next door. This arm ends in None either way, so the press
+                    // never reaches the main loop's record-actions default.
+                    '→' | '∴' => {
                         if !self.photo_cache.is_empty() {
                             self.show_selected_photo();
                         }
@@ -2136,31 +2152,23 @@ impl VaultUi {
                     // Consumed here. This arm falls through to `Some(k)`, and the main loop
                     // reads a stray middle button as "open the camera" - so handling the key
                     // without also swallowing it opened the actions menu and the camera at
-                    // once. The jog press has to be swallowed for a different reason: unhandled
-                    // it reached the main loop, which reads a bare '∴' as "open the record
-                    // actions" and offered new/edit/delete/filter for a PASSWORD record on a
-                    // screen full of URLs.
-                    '🔥' | '∴' => {
+                    // once.
+                    '🔥' => {
                         if !self.bookmark_cache.is_empty() {
                             self.open_bookmark_actions();
                         }
                         return None;
                     }
-                    '→' => {
-                        // select highlighted bookmark → trigger QR render via ActionManager
-                        if let Some((key, _, _)) = self.bookmark_cache.get(self.bookmark_cursor) {
-                            let key = key.clone();
-                            let ipc_key = crate::IpcString { s: key };
-                            if let Ok(buf) = xous_ipc::Buffer::into_buf(ipc_key) {
-                                buf.lend(
-                                    self.actions_conn,
-                                    crate::actions::ActionOp::BookmarkSelected
-                                        .to_u32()
-                                        .unwrap(),
-                                )
-                                .ok();
-                            }
-                        }
+                    // select highlighted bookmark → trigger QR render via ActionManager
+                    '→' => self.request_bookmark_qr(),
+                    // On a list the jog press opens the focused item, the same as RIGHT. It
+                    // has to be handled here either way: unhandled it reaches the main loop,
+                    // which answers a bare '∴' by opening the password record actions - so on
+                    // this screen it offered new/edit/delete/filter for a PASSWORD record over
+                    // a list of URLs. Returning None keeps it from going there.
+                    '∴' => {
+                        self.request_bookmark_qr();
+                        return None;
                     }
                     _ => {}
                 }

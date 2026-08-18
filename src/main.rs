@@ -460,6 +460,7 @@ fn main() -> ! {
             }
             Some(VaultOp::PhotoSetWallpaper) => {
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 vault_ui.ensure_photo_loaded();
                 vault_ui.set_photo_as_bling();
                 vault_ui.redraw();
@@ -540,6 +541,7 @@ fn main() -> ! {
             }
             Some(VaultOp::BookmarkType) => {
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 vault_ui.type_bookmark();
                 vault_ui.redraw();
             }
@@ -584,10 +586,12 @@ fn main() -> ! {
             Some(VaultOp::ConfirmNo) => {
                 pending = Pending::None;
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 vault_ui.redraw();
             }
             Some(VaultOp::ConfirmYes) => {
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 match std::mem::replace(&mut pending, Pending::None) {
                     Pending::DeletePhoto => vault_ui.delete_photo(),
                     Pending::DeleteBookmark => vault_ui.delete_bookmark(),
@@ -622,6 +626,7 @@ fn main() -> ! {
                     idle_menu_mgr.redraw();
                 } else {
                     active_menu = ActiveMenu::None;
+                    vault_ui.invalidate();
                     // This notice also arrives after a selection, so "did the user leave the
                     // tree?" cannot be assumed. If an item opened a screen the mode is no
                     // longer Idle, and clearing here would wipe the origin that item just
@@ -639,6 +644,7 @@ fn main() -> ! {
             }
             Some(VaultOp::MenuDone) => {
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 menu_origin = ActiveMenu::Root;
                     // Leaving the tree for the standby screen forgets where you were.
                     // Moving around inside it does not - coming back from a screen should land
@@ -790,6 +796,7 @@ fn main() -> ! {
             }),
             Some(VaultOp::MenuAddnew) => {
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 // The flow lives on the actions thread because it is a chain of blocking
                 // modals. Its only caller used to be src/ux/framework.rs, which is not
                 // compiled - so record creation existed and was unreachable.
@@ -802,6 +809,7 @@ fn main() -> ! {
             }
             Some(VaultOp::MenuEditStage1) => {
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 // stage 1 happens here because the filtered list and selection entry are in the responsive UX
                 // section.
                 log::debug!("selecting entry for edit");
@@ -818,6 +826,7 @@ fn main() -> ! {
             }
             Some(VaultOp::MenuDeleteStage1) => {
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 animate.store(false, Ordering::SeqCst);
                 if let Some(entry) = vault_ui.selected_entry() {
                     let buf = Buffer::into_buf(entry).expect("IPC error");
@@ -837,6 +846,7 @@ fn main() -> ! {
             }
             Some(VaultOp::MenuUsernames) => {
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 // TODO: clean this up/consolidate with add_password() routine in actions.rs
                 use std::path::Path;
                 use std::{fs::File, io, io::BufRead, io::Write};
@@ -898,6 +908,7 @@ fn main() -> ! {
             }
             Some(VaultOp::MenuFilter) => {
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 let new_filter = &modals
                     .alert_builder("Filter by:")
                     .field(Some(vault_ui.get_filter()), None)
@@ -1171,6 +1182,7 @@ fn main() -> ! {
             Some(VaultOp::ScreenOff) => {
                 menu_origin = active_menu;
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 global_config.lock().unwrap().screen_off();
             }
             Some(VaultOp::ImageLoad) => xous::msg_scalar_unpack!(msg, load, _, _, _, {
@@ -1208,6 +1220,7 @@ fn main() -> ! {
                 // screen below never sees one - that is what made every BACK button dead.
                 menu_origin = active_menu;
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 *mode.lock().unwrap() = VaultMode::Password;
                 animate.store(VaultMode::Password.should_animate(), Ordering::SeqCst);
                 vault_ui.redraw();
@@ -1215,6 +1228,7 @@ fn main() -> ! {
             Some(VaultOp::List2faDigits) => {
                 menu_origin = active_menu;
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 *mode.lock().unwrap() = VaultMode::Totp;
                 animate.store(VaultMode::Totp.should_animate(), Ordering::SeqCst);
                 vault_ui.redraw();
@@ -1222,6 +1236,7 @@ fn main() -> ! {
             Some(VaultOp::ListPasskeys) => {
                 menu_origin = active_menu;
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 vault_ui.load_passkeys();
                 *mode.lock().unwrap() = VaultMode::Passkeys;
                 animate.store(false, Ordering::SeqCst);
@@ -1230,6 +1245,7 @@ fn main() -> ! {
             Some(VaultOp::ListPhotos) => {
                 menu_origin = active_menu;
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 vault_ui.load_photos();
                 *mode.lock().unwrap() = VaultMode::PhotoList;
                 animate.store(false, Ordering::SeqCst);
@@ -1238,6 +1254,7 @@ fn main() -> ! {
             Some(VaultOp::SettingsBling) => {
                 menu_origin = active_menu;
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 vault_ui.load_photos(); // photos are selectable as standby images
                 *mode.lock().unwrap() = VaultMode::SettingsBling;
                 animate.store(false, Ordering::SeqCst);
@@ -1246,6 +1263,7 @@ fn main() -> ! {
             Some(VaultOp::SettingsBlinky) => {
                 menu_origin = active_menu;
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 *mode.lock().unwrap() = VaultMode::SettingsBlinky;
                 animate.store(false, Ordering::SeqCst);
                 vault_ui.redraw();
@@ -1274,6 +1292,7 @@ fn main() -> ! {
             Some(VaultOp::ShowAbout) => {
                 menu_origin = active_menu;
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 // Render theme::ABOUT_URL as a code. The constant and the screen both already
                 // existed, but nothing ever built the QR between them, so ABOUT drew a heading
                 // over an empty panel - while flagged as animating, so it repainted that empty
@@ -1307,6 +1326,7 @@ fn main() -> ! {
             Some(VaultOp::ListBookmarks) => {
                 menu_origin = active_menu;
                 active_menu = ActiveMenu::None;
+                vault_ui.invalidate();
                 vault_ui.load_bookmarks();
                 *mode.lock().unwrap() = VaultMode::BookmarkList;
                 animate.store(VaultMode::BookmarkList.should_animate(), Ordering::SeqCst);

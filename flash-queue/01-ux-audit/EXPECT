@@ -1,0 +1,3 @@
+PASS = boots to the S-CAM standby image and the menu opens.
+Highest risk is GlobalConfig::init - four fields were removed from it.
+A failing boot logs "dc34_vault: handlers" and then nothing more.
