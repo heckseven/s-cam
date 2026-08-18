@@ -50,6 +50,7 @@ python3 "$vault/check-app-size.py" "$vault_elf"
 echo "===== Checking wiring ====="
 python3 "$here/check-menu-wiring.py"
 python3 "$here/check-camera-wiring.py"
+python3 "$here/check-jog-press.py"
 
 echo "===== Bundling ====="
 (

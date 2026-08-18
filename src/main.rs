@@ -472,7 +472,7 @@ fn main() -> ! {
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "CONFIRM", &idlemenu::CONFIRM, conn,
+                    &scratch_menu_mgr, &scratch_items, "EXPORT B64?", &idlemenu::CONFIRM, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -481,7 +481,7 @@ fn main() -> ! {
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "CONFIRM", &idlemenu::CONFIRM, conn,
+                    &scratch_menu_mgr, &scratch_items, "EXPORT ASCII?", &idlemenu::CONFIRM, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -549,7 +549,7 @@ fn main() -> ! {
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "CONFIRM", &idlemenu::CONFIRM, conn,
+                    &scratch_menu_mgr, &scratch_items, "DELETE QR?", &idlemenu::CONFIRM, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -560,7 +560,7 @@ fn main() -> ! {
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "CONFIRM", &idlemenu::CONFIRM, conn,
+                    &scratch_menu_mgr, &scratch_items, "TYPE B64?", &idlemenu::CONFIRM, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -569,7 +569,7 @@ fn main() -> ! {
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "CONFIRM", &idlemenu::CONFIRM, conn,
+                    &scratch_menu_mgr, &scratch_items, "TYPE ASCII?", &idlemenu::CONFIRM, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -578,7 +578,7 @@ fn main() -> ! {
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "CONFIRM", &idlemenu::CONFIRM, conn,
+                    &scratch_menu_mgr, &scratch_items, "DELETE PHOTO?", &idlemenu::CONFIRM, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -1148,11 +1148,6 @@ fn main() -> ! {
                 vault_ui.reset_help_state();
                 vault_ui.redraw();
             }
-            Some(VaultOp::About) => {
-                *mode.lock().unwrap() = VaultMode::Idle;
-                vault_ui.reset_about_state();
-                vault_ui.redraw();
-            }
             Some(VaultOp::PowerOff) => {
                 global_config.lock().unwrap().power_off();
                 *mode.lock().unwrap() = VaultMode::Idle;
@@ -1285,8 +1280,34 @@ fn main() -> ! {
             Some(VaultOp::ShowAbout) => {
                 menu_origin = active_menu;
                 active_menu = ActiveMenu::None;
-                *mode.lock().unwrap() = VaultMode::AboutQr { quantum: 0 };
-                animate.store(true, Ordering::SeqCst);
+                // Render theme::ABOUT_URL as a code. The constant and the screen both already
+                // existed, but nothing ever built the QR between them, so ABOUT drew a heading
+                // over an empty panel - while flagged as animating, so it repainted that empty
+                // panel several times a second. Reading a QR is what this badge is for; the
+                // project it came from is offered the same way as everything else.
+                match QrCode::with_error_correction_level(
+                    theme::ABOUT_URL.as_bytes(),
+                    qrcode::EcLevel::M,
+                ) {
+                    Ok(code) => {
+                        vault_ui.qr_override = Some(code);
+                        vault_ui.qr_caption = Some(format!(
+                            "{} v{} - {}",
+                            theme::BADGE_NAME,
+                            env!("CARGO_PKG_VERSION"),
+                            theme::ABOUT_URL,
+                        ));
+                        *mode.lock().unwrap() = VaultMode::AboutQr { quantum: 0 };
+                        animate.store(true, Ordering::SeqCst);
+                    }
+                    Err(e) => {
+                        // Only reachable if ABOUT_URL is edited past CAP_QR_DISPLAY.
+                        log::error!("About QR encode failed: {:?}", e);
+                        animate.store(false, Ordering::SeqCst);
+                        vault_ui.notify("ABOUT UNAVAILABLE");
+                        *mode.lock().unwrap() = VaultMode::Idle;
+                    }
+                }
                 vault_ui.redraw();
             }
             Some(VaultOp::ListBookmarks) => {

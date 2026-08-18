@@ -437,37 +437,9 @@ impl TokenTourState {
     }
 }
 
-enum AboutState {
-    BaochipLogo { seen_press: bool },
-    Bunnie { seen_press: bool },
-    Cheeso { seen_press: bool },
-    InfoScreen { seen_press: bool },
-    Diagnostics { seen_press: bool },
-    End { seen_press: bool },
-    Error(String),
-}
-
-impl AboutState {
-    fn handle_input(self, k: char) -> Self {
-        tour_advance!(self, k;
-            auto {
-                Bunnie             => BaochipLogo,
-                BaochipLogo        => Cheeso,
-                Cheeso             => InfoScreen,
-                InfoScreen         => Diagnostics,
-                Diagnostics        => End,
-                End                => End,  // terminal — stays put
-            }
-            custom {
-                Self::Error(e) => Self::Error(e)
-            }
-        )
-    }
-
-    fn is_terminal(&self) -> bool { matches!(self, AboutState::End { seen_press: _ } | AboutState::Error(_)) }
-
-    fn is_diagnostics(&self) -> bool { matches!(self, AboutState::Diagnostics { seen_press: _ }) }
-}
+// AboutState - a six-screen slideshow with its own advance logic - used to live here. It was
+// write-only: constructed, reset by an opcode no menu sends, and never once read by a redraw.
+// The About screen it belonged to now shows a QR of the project instead.
 
 /// Centralizes tunable UI parameters for TOTP
 struct TotpLayout {}
@@ -537,7 +509,6 @@ pub struct VaultUi {
     token_tour_state: TokenTourState,
     token_help_state: TokenHelpState,
     help_state: HelpState,
-    about_state: AboutState,
     standalone_test: StandAloneTestState,
 
     // when Some(), override the display state with this String in QR code format
@@ -717,7 +688,6 @@ impl VaultUi {
             tour_state: TourState::Welcome { seen_press: false },
             token_tour_state: TokenTourState::TokenTour1 { seen_press: false },
             help_state: HelpState::BadgeRecap { seen_press: false },
-            about_state: AboutState::Bunnie { seen_press: false },
             standalone_test: StandAloneTestState::JogPress { seen_press: false },
             token_help_state: TokenHelpState::TokenRecap { seen_press: false },
             global_config: None,
@@ -798,7 +768,6 @@ impl VaultUi {
 
     pub fn reset_help_state(&mut self) { self.help_state = HelpState::BadgeRecap { seen_press: false }; }
 
-    pub fn reset_about_state(&mut self) { self.about_state = AboutState::Bunnie { seen_press: false }; }
 
     pub fn reset_factory_test(&mut self) {
         self.factory_test = FactoryTestState::InitWait { start_time: std::time::Instant::now() };
@@ -1121,12 +1090,6 @@ impl VaultUi {
                 self.gfx.flush().ok();
             }
 
-            VaultMode::AboutQr { quantum: _ } => {
-                self.clear_area();
-                crate::theme::heading(&self.gfx, self.screen_size, "ABOUT");
-                crate::theme::button_labels(&self.gfx, self.screen_size, Some("back"), None, None);
-                self.gfx.flush().ok();
-            }
             VaultMode::Idle => {
                 let now = self.tt.elapsed_ms();
                 // Draw the chosen standby image, and only that one. It used to alternate the
@@ -1268,7 +1231,14 @@ impl VaultUi {
                     _ => {}
                 }
             }
-            VaultMode::ShowBookmarkQr { quantum } => {
+            // Both QR screens draw the same thing: a code filling the panel with its text
+            // scrolling underneath. They differ only in what was encoded and where LEFT
+            // goes, and both of those are settled elsewhere - so they share the drawing
+            // rather than keeping a second copy of it. ABOUT used to have its own arm that
+            // drew a heading and nothing else, on a mode flagged as animating, so it
+            // repainted an empty panel several times a second.
+            VaultMode::ShowBookmarkQr { quantum } | VaultMode::AboutQr { quantum } => {
+                let about = matches!(mode_at_entry, VaultMode::AboutQr { .. });
                 if let Some(code) = &self.qr_override {
                     if quantum & 7 == 0 {
                         self.clear_area();
@@ -1301,10 +1271,13 @@ impl VaultUi {
                             self.gfx.draw_textview(&mut tv).ok();
                         }
                     }
-                    // This arm only runs while the mode IS ShowBookmarkQr, so the two Idle
-                    // branches that used to sit here could never fire. Just advance the tick
-                    // that drives the redraw cadence and the caption scroll.
-                    *self.mode.lock().unwrap() = VaultMode::ShowBookmarkQr { quantum: quantum + 1 };
+                    // Advance the tick that drives the redraw cadence and the caption scroll,
+                    // staying on whichever of the two screens is showing.
+                    *self.mode.lock().unwrap() = if about {
+                        VaultMode::AboutQr { quantum: quantum + 1 }
+                    } else {
+                        VaultMode::ShowBookmarkQr { quantum: quantum + 1 }
+                    };
                 } else {
                     // if no code, go back to idle mode
                     *self.mode.lock().unwrap() = VaultMode::Idle;
@@ -1713,6 +1686,22 @@ impl VaultUi {
                 Point::new(cx + CELL as isize - 1 + pad, cy + CELL as isize - 1 + pad),
             ),
         );
+
+        // Say whether there are more pages. The grid shows four at a time and silently paged
+        // on the cursor, so eight photos and four looked exactly the same until you walked
+        // off the end of the screen. The centred grid leaves 8px clear on each side, so the
+        // bar goes in that margin rather than over a thumbnail.
+        if self.photo_cache.len() > COLS * ROWS {
+            crate::theme::scrollbar(
+                &self.gfx,
+                self.screen_size.x,
+                Y0 as isize,
+                (Y0 + ROWS * PITCH - GAP) as isize,
+                first,
+                COLS * ROWS,
+                self.photo_cache.len(),
+            );
+        }
     }
 
     /// Wrap a captured frame in a 1bpp BMP.
@@ -2034,6 +2023,9 @@ impl VaultUi {
     /// Delete the saved QR under the cursor. The caller asks first.
     pub(crate) fn delete_bookmark(&mut self) {
         let Some((key, _, _)) = self.bookmark_cache.get(self.bookmark_cursor).cloned() else {
+            // Say so. Answering "yes" to a confirmation and getting silence back is
+            // indistinguishable from a delete that worked.
+            self.notify("NOTHING SELECTED");
             return;
         };
         let deleted = crate::storage::bookmark_delete(&self.pddb.borrow(), &key);
@@ -2077,14 +2069,23 @@ impl VaultUi {
 
     /// Delete the photo under the cursor. The caller asks first.
     pub(crate) fn delete_photo(&mut self) {
-        let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() else { return };
-        if let Err(e) = crate::storage::photo_delete(&self.pddb.borrow(), &key) {
-            log::warn!("could not delete photo {}: {:?}", key, e);
-        }
+        // Say something either way. This used to delete in silence and swallow the error in
+        // silence too, so a failed delete and a successful one looked identical - and the
+        // saved-QR screen next door already answers both cases.
+        let Some(key) = self.photo_cache.get(self.photo_cursor).cloned() else {
+            self.notify("NOTHING SELECTED");
+            return;
+        };
+        let failed = crate::storage::photo_delete(&self.pddb.borrow(), &key)
+            .inspect_err(|e| log::warn!("could not delete photo {}: {:?}", key, e))
+            .is_err();
         self.load_photos();
         self.pending_photo = None;
         self.photo_loaded_key = None;
+        // Set the mode before notifying: the notification repaints whatever is underneath
+        // when it clears, and that should already be the list this deletion returns to.
         *self.mode.lock().unwrap() = VaultMode::PhotoList;
+        self.notify(if failed { "DELETE FAILED" } else { "DELETED" });
     }
 
     /// Load the photo under the cursor if the grid has not already done so. The export and
@@ -2177,41 +2178,34 @@ impl VaultUi {
                     // LEFT is back on every screen; the menu already reaches 2fa digits
                     // directly, so the old left-types / right-switches pair is retired.
                     '←' => return self.to_menu(),
-                    '🔥' => {
-                        // Consumed here. This arm falls through to `Some(k)`, and the main
-                        // loop reads a stray middle button as "open the camera" - so handling
-                        // the key without also swallowing it opened the actions menu and the
-                        // camera at once.
+                    // Consumed here. This arm falls through to `Some(k)`, and the main loop
+                    // reads a stray middle button as "open the camera" - so handling the key
+                    // without also swallowing it opened the actions menu and the camera at
+                    // once. The jog press goes the same way: leaked, the main loop opens the
+                    // record actions itself, which is the right menu here only by luck and
+                    // the wrong one on the screens next door.
+                    '🔥' | '∴' => {
                         self.open_record_actions();
                         return None;
                     }
                     '→' => {
                         if let Some(item) = self.get_selected_item() {
-                            // print any errors within this function as a panic at this line
-                            self.handle_autotype(item.guid, false).unwrap();
+                            // Report it, do not panic on it. This process is the whole UI, so
+                            // an unwrap here takes the screen down - the same shape as the CTAP
+                            // storage unwrap that read as an unexplained boot loop. The error
+                            // is reachable in normal use: handle_autotype re-fetches from the
+                            // PDDB, which fails if a basis has been unmounted since the list
+                            // was drawn.
+                            if let Err(e) = self.handle_autotype(item.guid, false) {
+                                log::warn!("autotype failed: {}", e);
+                                self.notify("AUTOTYPE FAILED");
+                            }
                         }
                     }
-                    '\u{0}' => {
-                        {
-                            *self.mode.lock().unwrap() = VaultMode::Totp;
-                        }
-                        // reload DB on mode switch
-                        xous::send_message(
-                            self.actions_conn,
-                            xous::Message::new_blocking_scalar(
-                                ActionOp::ReloadDb.to_usize().unwrap(),
-                                0,
-                                0,
-                                0,
-                                0,
-                            ),
-                        )
-                        .ok();
-                        self.refresh_draw_list();
-                    }
-                    _ => {
-                        // log::warn!("Password unhandled char: {}", k)
-                    }
+                    // A '\u{0}' arm used to swap this screen for the 2fa one and back. Nothing
+                    // sends that char - it is NUL, which the main loop also uses as its own
+                    // "no key" sentinel - and the menu reaches both screens directly now.
+                    _ => {}
                 }
                 Some(k)
             }
@@ -2224,11 +2218,9 @@ impl VaultUi {
                         self.display_list.key_action('↓');
                     }
                     '←' => return self.to_menu(),
-                    '🔥' => {
-                        // Consumed here. This arm falls through to `Some(k)`, and the main
-                        // loop reads a stray middle button as "open the camera" - so handling
-                        // the key without also swallowing it opened the actions menu and the
-                        // camera at once.
+                    // see the Password arm: both the middle button and the jog press have to
+                    // be consumed here rather than left to the main loop
+                    '🔥' | '∴' => {
                         self.open_record_actions();
                         return None;
                     }
@@ -2238,28 +2230,8 @@ impl VaultUi {
                             self.usb_dev.send_str(&code).ok();
                         }
                     }
-                    '\u{0}' => {
-                        {
-                            // lock needs to go out of scope so we don't hang the later ops
-                            *self.mode.lock().unwrap() = VaultMode::Password;
-                        }
-                        // reload DB on mode switch
-                        xous::send_message(
-                            self.actions_conn,
-                            xous::Message::new_blocking_scalar(
-                                ActionOp::ReloadDb.to_usize().unwrap(),
-                                0,
-                                0,
-                                0,
-                                0,
-                            ),
-                        )
-                        .ok();
-                        self.refresh_draw_list();
-                    }
-                    _ => {
-                        // log::warn!("TOTP unhandled char: {}", k)
-                    }
+                    // see the Password arm: the '\u{0}' screen swap that sat here was dead
+                    _ => {}
                 }
                 self.totp_code = None;
                 Some(k)
@@ -2274,7 +2246,14 @@ impl VaultUi {
                     '←' => leaving = true,
                     // Delete moved into the actions menu. As a bare button it removed a
                     // credential on one press with nothing to confirm it.
-                    '🔥' => self.open_record_actions(),
+                    // Gated on there being something to act on: the label bar hides "more"
+                    // when the list is empty, so opening the menu anyway made the middle
+                    // button an unlabelled control onto entries that could not do anything.
+                    '🔥' | '∴' => {
+                        if !self.passkey_cache.is_empty() {
+                            self.open_record_actions();
+                        }
+                    }
                     _ => {}
                 }
                 if leaving {
@@ -2291,8 +2270,18 @@ impl VaultUi {
                             step_cursor(self.photo_cursor, self.photo_cache.len(), k == '↑')
                     }
                     '←' => leaving = true,
-                    '🔥' => self.open_photo_actions(),
-                    '→' => self.show_selected_photo(),
+                    // Gated on there being a photo: the label bar hides "more" and "view"
+                    // on an empty list, so acting anyway made them unlabelled controls.
+                    '🔥' | '∴' => {
+                        if !self.photo_cache.is_empty() {
+                            self.open_photo_actions();
+                        }
+                    }
+                    '→' => {
+                        if !self.photo_cache.is_empty() {
+                            self.show_selected_photo();
+                        }
+                    }
                     _ => {}
                 }
                 if leaving {
@@ -2345,7 +2334,9 @@ impl VaultUi {
                     }
                     // Middle opens the actions menu on both screens. Everything destructive
                     // or persistent lives in there, so no single press changes anything.
-                    '🔥' => self.open_photo_actions(),
+                    // The jog press does the same rather than falling through to the main
+                    // loop, which would offer the password-record actions instead.
+                    '🔥' | '∴' => self.open_photo_actions(),
                     _ => {}
                 }
                 self.redraw();
@@ -2426,6 +2417,18 @@ impl VaultUi {
                     if let Some(config) = self.global_config.as_ref() {
                         config.lock().unwrap().set_led_pattern(self.led_pattern);
                     }
+                    // Persist it, and move the settings cursor with it. Cycling from standby
+                    // used to change the ring for this boot only, while picking the very same
+                    // pattern under settings > blinky kept it - so the two controls disagreed,
+                    // and the settings list went on marking a pattern that was no longer on.
+                    // No notification: the ring itself is the feedback, and a 1.2s modal
+                    // between presses would make cycling unusable.
+                    self.blinky_cursor = self.led_pattern;
+                    if let Err(e) =
+                        crate::storage::set_blinky_choice(&self.pddb.borrow(), self.led_pattern)
+                    {
+                        log::warn!("could not persist LED pattern: {:?}", e);
+                    }
                     None
                 }
                 _ => Some(k),
@@ -2444,12 +2447,17 @@ impl VaultUi {
                         // back to the menu this was opened from, not past it to standby
                         return self.to_menu();
                     }
-                    '🔥' => {
-                        // Consumed here. This arm falls through to `Some(k)`, and the main
-                        // loop reads a stray middle button as "open the camera" - so handling
-                        // the key without also swallowing it opened the actions menu and the
-                        // camera at once.
-                        self.open_bookmark_actions();
+                    // Consumed here. This arm falls through to `Some(k)`, and the main loop
+                    // reads a stray middle button as "open the camera" - so handling the key
+                    // without also swallowing it opened the actions menu and the camera at
+                    // once. The jog press has to be swallowed for a different reason: unhandled
+                    // it reached the main loop, which reads a bare '∴' as "open the record
+                    // actions" and offered new/edit/delete/filter for a PASSWORD record on a
+                    // screen full of URLs.
+                    '🔥' | '∴' => {
+                        if !self.bookmark_cache.is_empty() {
+                            self.open_bookmark_actions();
+                        }
                         return None;
                     }
                     '→' => {
@@ -2474,7 +2482,13 @@ impl VaultUi {
             }
             // Any key leaves About. Without this arm it fell through to the catch-all,
             // which returns the key without changing mode - the screen had no exit at all.
-            VaultMode::AboutQr { quantum: _ } => self.to_menu(),
+            // Drop the code on the way out: it is shared with the saved-QR screen, and a
+            // stale one left behind is what that screen would show if its own render failed.
+            VaultMode::AboutQr { quantum: _ } => {
+                self.qr_override = None;
+                self.qr_caption = None;
+                self.to_menu()
+            }
             VaultMode::ShowBookmarkQr { quantum: _ } => {
                 match k {
                     // browse the collection without going back to the list first
@@ -2524,10 +2538,20 @@ impl VaultUi {
                     '→' => {
                         if let Some(ref url_str) = self.show_url.clone() {
                             let ipc = crate::IpcString { s: url_str.clone() };
-                            let buf = xous_ipc::Buffer::into_buf(ipc).expect("IpcString buf");
-                            // ActionManager reports success or failure itself
-                            buf.lend(self.actions_conn, ActionOp::SaveBookmark.to_u32().unwrap())
-                                .ok();
+                            // Not an expect. A failed allocation here would take down the
+                            // whole UI process rather than lose one save, and the screen
+                            // this button leads to can report the failure instead.
+                            match xous_ipc::Buffer::into_buf(ipc) {
+                                // ActionManager reports success or failure itself
+                                Ok(buf) => {
+                                    buf.lend(
+                                        self.actions_conn,
+                                        ActionOp::SaveBookmark.to_u32().unwrap(),
+                                    )
+                                    .ok();
+                                }
+                                Err(e) => log::error!("save bookmark: IPC buffer error: {:?}", e),
+                            }
                         }
                         self.show_url = None;
                         *self.mode.lock().unwrap() = VaultMode::BookmarkList;
@@ -2541,8 +2565,9 @@ impl VaultUi {
                 self.redraw();
                 None
             }
-            // catch-all for now
-            _ => Some(k),
+            // No catch-all. Every VaultMode is named above, so the one that used to sit here
+            // could never run - and without it the compiler now refuses a new screen that
+            // has no key handling, which is how About ended up with no way out of it.
         };
         self.animate.store(self.mode.lock().unwrap().should_animate(), Ordering::SeqCst);
         // don't redraw if menu is being raised

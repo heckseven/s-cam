@@ -238,6 +238,13 @@ pub fn list(
         ListStyle::Select { .. } => GUTTER_W,
     };
 
+    // Give the bar its own strip when the list overflows, so it is never drawn over a row's
+    // last character. A list that fits keeps the full width and shows no bar at all - a
+    // scrollbar that is always present says nothing about whether there is more to see.
+    let overflows = items.len() > rows;
+    let bar_w = if overflows { SCROLLBAR_W } else { 0 };
+    let right = screen.x - bar_w;
+
     // scroll so the cursor stays on screen
     let first = if cursor >= rows { cursor + 1 - rows } else { 0 };
     for (n, item) in items.iter().skip(first).take(rows).enumerate() {
@@ -246,13 +253,13 @@ pub fn list(
             continue;
         }
         let y = top + (n as isize) * row_h;
-        let row = Rectangle::new(Point::new(0, y), Point::new(screen.x, y + row_h));
+        let row = Rectangle::new(Point::new(0, y), Point::new(right, y + row_h));
 
         let mut tv = TextView::new(
             Gid::dummy(),
             TextBounds::BoundingBox(Rectangle::new(
                 Point::new(gutter, y),
-                Point::new(screen.x, y + row_h),
+                Point::new(right, y + row_h),
             )),
         );
         tv.style = FONT;
@@ -271,7 +278,7 @@ pub fn list(
         tv.invert = true;
         // Hold back one cell: the server insets by its own margins as well as ours, and one
         // spare column costs a character while an overrun costs the whole row.
-        let usable = screen.x - gutter - tv.margin.x * 2;
+        let usable = right - gutter - tv.margin.x * 2;
         let cols = ((usable / ux_api::widgets::cell_width(gfx, FONT)).max(1) as usize).saturating_sub(1).max(1);
         match style {
             ListStyle::Numbered => {
@@ -305,4 +312,59 @@ pub fn list(
             ux_api::widgets::scroll::draw_corner_brackets(gfx, around);
         }
     }
+
+    // Only on a full repaint. A focused-row repaint deliberately touches one row and nothing
+    // else, and every screen resets to a full repaint when the cursor moves - which is the
+    // only time the thumb needs to move.
+    if overflows && repaint == Repaint::All {
+        scrollbar(gfx, screen.x, top, bottom, first, rows, items.len());
+    }
+}
+
+/// Width of the strip reserved for the scrollbar on a list that does not fit.
+const SCROLLBAR_W: isize = 3;
+
+/// Draw the vertical position indicator for a list showing `rows` of `total` from `first`.
+///
+/// A white track with a black thumb, the same way `ScrollableList` draws its own - the two
+/// list widgets sit on adjacent screens and should not disagree about what a scrollbar is.
+/// Without one, a full screen of rows and a partial one are indistinguishable on a panel
+/// this short, and the collection just looks like whatever six entries happen to be in view.
+pub fn scrollbar(
+    gfx: &ux_api::service::gfx::Gfx,
+    screen_w: isize,
+    top: isize,
+    bottom: isize,
+    first: usize,
+    rows: usize,
+    total: usize,
+) {
+    let height = bottom - top;
+    // Integer maths throughout: this runs on a target without hardware float, and the
+    // rounding a scrollbar needs is one pixel of thumb, not a fraction of one.
+    let thumb_h = ((rows as isize * height) / total as isize).max(2);
+    let thumb_y = top + (first as isize * height) / total as isize;
+    // Keep the thumb inside the track when the last page is short.
+    let thumb_y = thumb_y.min(bottom - thumb_h);
+
+    let mut track = Rectangle::new(
+        Point::new(screen_w - SCROLLBAR_W, top),
+        Point::new(screen_w, bottom),
+    );
+    track.style = DrawStyle::new(PixelColor::Light, PixelColor::Light, 1);
+    let thumb = Line::new_with_style(
+        Point::new(screen_w - SCROLLBAR_W + 1, thumb_y),
+        Point::new(screen_w - SCROLLBAR_W + 1, thumb_y + thumb_h),
+        DrawStyle::new(PixelColor::Dark, PixelColor::Dark, 1),
+    );
+
+    let mut ol = ObjectList::new();
+    // A dropped object would leave a track with no thumb, which reads as a position rather
+    // than as a missing draw - so do not ignore the push result.
+    if ol.push(ClipObjectType::Rect(track)).is_err() || ol.push(ClipObjectType::Line(thumb)).is_err()
+    {
+        log::warn!("scrollbar did not fit in an object list");
+        return;
+    }
+    gfx.draw_object_list(ol).ok();
 }
