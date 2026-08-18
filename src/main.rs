@@ -820,7 +820,6 @@ fn main() -> ! {
                             idle_menu_mgr.redraw();
                         }
                         '🔥' => {
-                            skip_key_until = Some(tt.elapsed_ms() + SKIP_KEY_WINDOW_MS);
                             run_camera_scan(
                                 actions_conn,
                                 &mut vault_ui,
@@ -828,6 +827,13 @@ fn main() -> ! {
                                 &global_config,
                                 &tt,
                             );
+                            // Armed AFTER the scan, not before. run_camera_scan blocks for
+                            // the whole camera session - as long as it takes to frame a shot -
+                            // so a deadline set beforehand had always expired by the time the
+                            // press that ended the session arrived. That press then landed on
+                            // the preview screen, where RIGHT means save, and every photo went
+                            // straight to storage without being offered keep/retake/discard.
+                            skip_key_until = Some(tt.elapsed_ms() + SKIP_KEY_WINDOW_MS);
 
                             if mode_now == VaultMode::Totp || mode_now == VaultMode::Password {
                                 // reload DB to pickup the new data
@@ -1275,8 +1281,9 @@ fn main() -> ! {
                 vault_ui.redraw();
             }
             Some(VaultOp::ScanUrl) => {
-                skip_key_until = Some(tt.elapsed_ms() + SKIP_KEY_WINDOW_MS);
                 run_camera_scan(actions_conn, &mut vault_ui, &animate, &global_config, &tt);
+                // see the '🔥' arm: the press to swallow arrives as the camera closes
+                skip_key_until = Some(tt.elapsed_ms() + SKIP_KEY_WINDOW_MS);
             }
             Some(VaultOp::ListPasswords) => {
                 // The menu widget closes on select, so the flag it set must drop here too.
