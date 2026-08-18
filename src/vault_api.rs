@@ -155,6 +155,9 @@ pub(crate) enum VaultOp {
     /// send photo N over serial. arg0 = index, arg1 = 1 for ascii art, 0 for base64.
     /// Blocking, returning 1 on success and 0 if there is no such photo.
     SerialPhotoGet = 1050,
+    /// save a QR code from the console. The URL arrives as an IpcString and the same
+    /// IpcString is replaced with the result, so the caller learns whether it took.
+    SerialQrAdd = 1051,
 }
 
 // Compile-time guard on the VaultOp wire contract.
@@ -197,6 +200,7 @@ const _: () = assert!(VaultOp::Notify as isize == 1048);
 // dc34-console sends these by literal number - see its cmds/photo.rs
 const _: () = assert!(VaultOp::SerialPhotoCount as isize == 1049);
 const _: () = assert!(VaultOp::SerialPhotoGet as isize == 1050);
+const _: () = assert!(VaultOp::SerialQrAdd as isize == 1051);
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct IpcString {

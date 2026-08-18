@@ -405,7 +405,9 @@ fn main() -> ! {
     let mut skip_one_key = false;
     loop {
         global_config.lock().unwrap().update_power_state(mode.lock().unwrap().clone());
-        let msg = xous::receive_message(sid).unwrap();
+        // mut: SerialQrAdd answers through the caller's own buffer, which needs the memory
+        // message mutably. Every other handler here only reads.
+        let mut msg = xous::receive_message(sid).unwrap();
         log::trace!("Got message: {:?}", msg.body.id());
         match FromPrimitive::from_usize(msg.body.id()) {
             Some(VaultOp::Redraw) => {
@@ -499,6 +501,35 @@ fn main() -> ! {
                     xous::return_scalar(msg.sender, if ok { 1 } else { 0 }).ok();
                 }
             ),
+            Some(VaultOp::SerialQrAdd) => {
+                // Hand the URL to the actions thread rather than saving it here: that is
+                // where the validation and the key counter live, and a second copy of either
+                // is a second thing to keep in step.
+                let mut buffer = unsafe {
+                    Buffer::from_memory_message_mut(msg.body.memory_message_mut().unwrap())
+                };
+                let incoming: IpcString = buffer.to_original::<IpcString, _>().unwrap();
+                let status = match SanitizedUrl::new(&incoming.s, CAP_BOOKMARK_URL) {
+                    Ok(url) => {
+                        let msg = IpcString { s: url.as_str().to_owned() };
+                        match Buffer::into_buf(msg) {
+                            Ok(fwd) => {
+                                match fwd.lend(
+                                    actions_conn,
+                                    ActionOp::SaveBookmark.to_u32().unwrap(),
+                                ) {
+                                    Ok(_) => String::from("SUCCESS"),
+                                    Err(e) => format!("ERR save failed: {:?}", e),
+                                }
+                            }
+                            Err(e) => format!("ERR ipc: {:?}", e),
+                        }
+                    }
+                    Err(_) => String::from("ERR not a usable URL"),
+                };
+                vault_ui.load_bookmarks();
+                buffer.replace(IpcString { s: status }).ok();
+            }
             Some(VaultOp::MenuBookmarkActions) => {
                 active_menu = ActiveMenu::RecordActions;
                 menu_just_opened = true;
