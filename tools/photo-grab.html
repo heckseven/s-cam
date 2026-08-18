@@ -198,8 +198,17 @@ async function pump() {
   }
 }
 
-// Type a command a character at a time. Blasting a whole line at once produced a repeated
-// first character once during testing; pacing it has never done so.
+// Send the whole command in one write.
+//
+// This used to type a character at a time, which corrupts the command: the badge's CDC
+// receive path duplicates and substitutes bytes when they arrive as separate one-byte
+// packets, and it gets worse the faster they come. Measured against the badge, four trials
+// each: one write per line was 4/4 intact, one byte every 30ms was 3/4, and one byte every
+// 12ms - what this page did - was 0/4. "photo list" arrived as "phot  lss", the console did
+// not recognise it, and the page waited for a reply to a command that was never issued.
+//
+// Typing by hand in a terminal is slow and irregular enough to mostly survive this, which is
+// why the REPL feels fine to use.
 async function send(cmd) {
   // Let anything still streaming finish first. Typing into a reply that is still arriving is
   // what broke the first version of this: the connect probe pressed Enter, which makes the
@@ -208,10 +217,7 @@ async function send(cmd) {
   lines = [];
   pending = "";
   log("tx", JSON.stringify(cmd + "\\r"));
-  for (const ch of cmd + "\r") {
-    await writer.write(enc.encode(ch));
-    await new Promise((r) => setTimeout(r, 12));
-  }
+  await writer.write(enc.encode(cmd + "\r"));
 }
 
 /** Read reply lines until `done(line)` returns true. Returns everything collected. */
@@ -225,12 +231,25 @@ async function reply(done, timeoutMs = 15000) {
   }
 }
 
-async function photoCount() {
-  await send("photo list");
-  const got = await reply((l) => /\d+\s+photo\(s\)/.test(l) || /^SUCCESS$/.test(l));
-  const m = got.join("\n").match(/(\d+)\s+photo\(s\)/);
-  if (!m) throw new Error("could not read the photo count");
-  return parseInt(m[1], 10);
+async function photoCount(attempts = 3) {
+  let last = "";
+  for (let a = 0; a < attempts; a++) {
+    try {
+      await send("photo list");
+      const got = await reply(
+        (l) => /\d+\s+photo\(s\)/.test(l) || /^Commands:/.test(l),
+        8000,
+      );
+      const m = got.join("\n").match(/(\d+)\s+photo\(s\)/);
+      if (m) return parseInt(m[1], 10);
+      // "Commands:" means the console did not recognise what reached it - a mangled command.
+      last = "the badge did not receive the command intact";
+    } catch (e) {
+      last = e.message;
+    }
+    if (a < attempts - 1) say(`Retrying (${last})…`);
+  }
+  throw new Error(last || "could not read the photo count");
 }
 
 const BMP_BYTES = 14 + 40 + 8 + 2048;   // header + palette + 128x128 at 1bpp
