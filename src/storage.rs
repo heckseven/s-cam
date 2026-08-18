@@ -1145,7 +1145,12 @@ pub(crate) fn passkey_list(pddb: &pddb::Pddb) -> Vec<Passkey> {
     for key in keys {
         let name = read_passkey_name(pddb, &key)
             // an unnamed credential still deserves a stable label rather than a blank row
-            .unwrap_or_else(|| format!("({}…)", &key[..key.len().min(8)]));
+            // chars(), not a byte slice. `key.len().min(8)` bounds the length but not the
+            // UTF-8 boundary, so a key whose 8th byte lands mid-character panics - and this
+            // process is the whole UI. Passkey keys are hex app ids in practice, but they come
+            // from whatever is in the dictionary, which is exactly the assumption the upstream
+            // QR fix was about.
+            .unwrap_or_else(|| format!("({}…)", key.chars().take(8).collect::<String>()));
         out.push(Passkey { key, name });
     }
     out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
