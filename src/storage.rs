@@ -1169,12 +1169,11 @@ fn read_passkey_name(pddb: &pddb::Pddb, key: &str) -> Option<String> {
 // badge's compiled-in bitmaps. That means a photo can be rendered through the existing bitmap
 // path and can be chosen as the standby image without any conversion.
 
-pub(crate) const VAULT_PHOTOS_DICT: &str = "vault.photos";
+// The cap and the photo geometry are shared with dc34-console through dc34-api, so the
+// badge and the REPL cannot disagree about how many photos fit.
+pub(crate) use dc34_api::{PHOTO_BYTES, PHOTO_CAP, VAULT_PHOTOS_DICT};
 pub(crate) const SETTING_STANDBY: &str = "standby_image";
 pub(crate) const SETTING_BLINKY: &str = "blinky_pattern";
-/// Cap chosen to bound the browsing UI, not storage: 27 photos is ~1.3% of the 4 MiB PDDB.
-pub(crate) const PHOTO_CAP: usize = 27;
-pub(crate) const PHOTO_BYTES: usize = 2048;
 
 pub(crate) fn photo_list(pddb: &pddb::Pddb) -> Vec<String> {
     let mut keys = pddb.list_keys(VAULT_PHOTOS_DICT, None).unwrap_or_default();
