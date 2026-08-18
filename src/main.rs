@@ -354,6 +354,17 @@ fn main() -> ! {
     // gfx.flush().ok(); // i don't think this is necessary
     gfx.dry_run(false).ok();
 
+    // Paint the real standby screen now, over the warm-up's leftovers, before anything else
+    // gets a chance to flush them. The line above leaves the S-CAM logo in the back buffer
+    // whatever the user actually chose, and something between here and the first pass of the
+    // main loop pushes it to the panel - which is the flash of the wrong bling image between
+    // the splash and standby.
+    //
+    // This goes through redraw() on purpose. The Idle screen paints with bitmap_diffusion,
+    // which is the guarded path; changing the line above to pick the right image instead put
+    // a runtime choice on the unguarded `bitmap` path and boot-looped the badge.
+    vault_ui.redraw();
+
     {
         // check/trigger swap encryption before starting the main loop
         let xns = xous_names::XousNames::new().unwrap();
