@@ -1,0 +1,403 @@
+<title>S-CAM Photo Grab</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #faf9f7; --fg: #1a1a1a; --dim: #6b6b6b; --line: #dcd9d4;
+    --accent: #1a1a1a; --accent-fg: #fff; --panel: #fff; --bad: #a01b1b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16171a; --fg: #e8e6e3; --dim: #9b9995; --line: #32343a;
+      --accent: #e8e6e3; --accent-fg: #16171a; --panel: #1e2024; --bad: #ff6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1.25rem 4rem; background: var(--bg); color: var(--fg);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 60rem; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  .sub { color: var(--dim); margin: 0 0 1.75rem; }
+  .bar { display: flex; gap: .625rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.25rem; }
+  button {
+    font: inherit; font-weight: 600; padding: .55rem 1.1rem; border-radius: .5rem;
+    border: 1px solid var(--accent); background: var(--accent); color: var(--accent-fg);
+    cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--fg); border-color: var(--line); }
+  button[disabled] { opacity: .4; cursor: not-allowed; }
+  #status { color: var(--dim); min-height: 1.55em; }
+  #status.bad { color: var(--bad); }
+  progress { width: 100%; height: .4rem; margin: .5rem 0 1rem; display: none; }
+  #grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+    gap: .75rem; margin-top: 1.5rem;
+  }
+  figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: .5rem; padding: .5rem; }
+  figure img { width: 100%; image-rendering: pixelated; display: block; border-radius: .25rem; }
+  figcaption { font: 500 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--dim); padding-top: .4rem; }
+  details { margin-top: 2rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+  summary { cursor: pointer; color: var(--dim); }
+  details div { color: var(--dim); font-size: 14px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel);
+         border: 1px solid var(--line); border-radius: .25rem; padding: .05em .35em; }
+  .note { color: var(--dim); font-size: 13.5px; margin-top: .75rem; }
+</style>
+
+<main>
+  <h1>S-CAM Photo Grab</h1>
+  <p class="sub">Pulls every photo off the badge over USB serial and saves them as PNGs in one zip.</p>
+
+  <div class="bar">
+    <button id="connect">Connect badge</button>
+    <button id="grab" class="ghost" disabled>Download all</button>
+    <button id="disconnect" class="ghost" disabled>Disconnect</button>
+  </div>
+  <progress id="bar" max="100" value="0"></progress>
+  <p id="status">Not connected.</p>
+
+  <div id="grid"></div>
+
+  <details>
+    <summary>If it does not connect</summary>
+    <div>
+      <p>This needs Chrome or Edge — Firefox and Safari do not implement Web Serial.</p>
+      <p>Close anything else holding the port first. <code>tio</code> and this page cannot both
+         read it: a serial port hands each byte to exactly one reader, so they would split the
+         transfer between them and both get a corrupt fraction.</p>
+      <p>Pick the badge's first serial port. It presents several; the console REPL is on the
+         lowest-numbered one.</p>
+      <p>If the browser refuses because the page is not a secure context, serve it from
+         localhost instead of opening the file directly:
+         <code>python3 -m http.server</code> in this directory, then open
+         <code>http://localhost:8000/photo-grab.html</code>.</p>
+    </div>
+  </details>
+</main>
+
+<script>
+// Talks to the badge's console REPL, which frames every command the same way:
+//
+//     photo get 0            <- the badge echoes what we type
+//     [console] photo get 0  <- the console announces the command
+//     data:image/bmp;base64,…
+//     SUCCESS                <- the command's result line
+//
+// so a reply is "everything up to SUCCESS or an ERR line". `photo list` is the exception: its
+// result line is the count itself, which is what we wait for.
+
+const $ = (id) => document.getElementById(id);
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+let port = null, reader = null, writer = null;
+let pending = "";          // bytes read but not yet split into lines
+let lines = [];            // complete lines waiting to be consumed
+let waiters = [];          // resolvers parked on the next line
+let readLoop = null;
+
+function say(msg, bad = false) {
+  const el = $("status");
+  el.textContent = msg;
+  el.classList.toggle("bad", bad);
+}
+
+function pushLine(line) {
+  if (waiters.length) waiters.shift()(line);
+  else lines.push(line);
+}
+
+function nextLine(timeoutMs) {
+  if (lines.length) return Promise.resolve(lines.shift());
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => {
+      waiters = waiters.filter((w) => w !== onLine);
+      reject(new Error("timed out waiting for the badge"));
+    }, timeoutMs);
+    const onLine = (line) => { clearTimeout(t); resolve(line); };
+    waiters.push(onLine);
+  });
+}
+
+async function pump() {
+  try {
+    while (port && port.readable) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      pending += dec.decode(value, { stream: true });
+      // The badge sends CRLF, but tolerate a bare LF so this keeps working if that changes.
+      let i;
+      while ((i = pending.search(/\r\n|\n/)) !== -1) {
+        const line = pending.slice(0, i);
+        pending = pending.slice(i + (pending[i] === "\r" ? 2 : 1));
+        pushLine(line);
+      }
+    }
+  } catch (e) {
+    if (port) say("Read failed: " + e.message, true);
+  }
+}
+
+// Type a command a character at a time. Blasting a whole line at once produced a repeated
+// first character once during testing; pacing it has never done so.
+async function send(cmd) {
+  lines = [];
+  pending = "";
+  for (const ch of cmd + "\r") {
+    await writer.write(enc.encode(ch));
+    await new Promise((r) => setTimeout(r, 12));
+  }
+}
+
+/** Read reply lines until `done(line)` returns true. Returns everything collected. */
+async function reply(done, timeoutMs = 15000) {
+  const out = [];
+  for (;;) {
+    const line = await nextLine(timeoutMs);
+    if (/^ERR\b/.test(line)) throw new Error(line);
+    out.push(line);
+    if (done(line)) return out;
+  }
+}
+
+async function photoCount() {
+  await send("photo list");
+  const got = await reply((l) => /\d+\s+photo\(s\)/.test(l) || /^SUCCESS$/.test(l));
+  const m = got.join("\n").match(/(\d+)\s+photo\(s\)/);
+  if (!m) throw new Error("could not read the photo count");
+  return parseInt(m[1], 10);
+}
+
+const BMP_BYTES = 14 + 40 + 8 + 2048;   // header + palette + 128x128 at 1bpp
+
+/** A photo is only accepted if it is a BMP of exactly the shape the badge writes. */
+function validate(bytes) {
+  if (bytes.length !== BMP_BYTES) return `expected ${BMP_BYTES} bytes, got ${bytes.length}`;
+  if (bytes[0] !== 0x42 || bytes[1] !== 0x4d) return "not a BMP";
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (dv.getInt32(18, true) !== 128 || Math.abs(dv.getInt32(22, true)) !== 128)
+    return "wrong dimensions";
+  return null;
+}
+
+async function fetchOnce(index) {
+  await send("photo get " + index);
+  const got = await reply((l) => /^SUCCESS$/.test(l), 25000);
+  const uri = got.find((l) => l.startsWith("data:image/bmp;base64,"));
+  if (!uri) throw new Error("no image data");
+  const b64 = uri.slice("data:image/bmp;base64,".length).trim();
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+// Retry on a corrupt read rather than saving a broken photo.
+//
+// The badge quiets its own log while exporting, but log::set_max_level is per-process and the
+// display and camera servers are separate processes - their lines still arrive, and one of
+// them landing inside the base64 would corrupt the image. Observed on hardware: a spim
+// timeout warning from bao1x-hal spliced into the middle of a reply. It hit the echo that
+// time, which is harmless; hitting the payload would not be, and a log line injected mid-line
+// cannot be filtered out afterwards because neither half still looks like a log line.
+async function photoBmp(index, attempts = 3) {
+  let last = "";
+  for (let a = 0; a < attempts; a++) {
+    try {
+      const bytes = await fetchOnce(index);
+      const bad = validate(bytes);
+      if (!bad) return bytes;
+      last = bad;
+    } catch (e) {
+      last = e.message;
+    }
+    if (a < attempts - 1) say(`Photo ${index} came back corrupt (${last}); retrying…`);
+  }
+  throw new Error(`photo ${index} failed after ${attempts} tries: ${last}`);
+}
+
+// The badge writes a 1-bit BMP, 128x128, top-down, palette index 0 white and 1 black. Browsers
+// are unreliable about 1bpp BMP, so unpack it rather than handing it to an <img>.
+function bmpToCanvas(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (dv.getUint8(0) !== 0x42 || dv.getUint8(1) !== 0x4d) throw new Error("not a BMP");
+  const offset = dv.getUint32(10, true);
+  const w = dv.getInt32(18, true);
+  const rawH = dv.getInt32(22, true);
+  const topDown = rawH < 0;
+  const h = Math.abs(rawH);
+  const stride = ((w + 31) >> 5) << 2;      // 1bpp rows are padded to 4 bytes
+
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext("2d");
+  const img = ctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    const srcRow = offset + (topDown ? y : h - 1 - y) * stride;
+    for (let x = 0; x < w; x++) {
+      const bit = (bytes[srcRow + (x >> 3)] >> (7 - (x & 7))) & 1;
+      const v = bit ? 0 : 255;              // index 1 is black
+      const p = (y * w + x) * 4;
+      img.data[p] = img.data[p + 1] = img.data[p + 2] = v;
+      img.data[p + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+
+const canvasToPng = (cv) => new Promise((r) => cv.toBlob(r, "image/png"));
+
+// --- minimal stored (uncompressed) zip, so 64 photos arrive as one file ---
+// Chrome blocks a burst of automatic downloads, and 64 separate save prompts would be worse
+// than the problem this page exists to solve.
+const CRC = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = CRC[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function zip(files) {
+  const chunks = [], central = [];
+  let offset = 0;
+  const nameBytes = (s) => enc.encode(s);
+  for (const f of files) {
+    const name = nameBytes(f.name);
+    const crc = crc32(f.data);
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);
+    local.setUint16(4, 20, true);            // version needed
+    local.setUint16(6, 0, true);             // flags
+    local.setUint16(8, 0, true);             // stored
+    local.setUint16(10, 0, true);            // time
+    local.setUint16(12, 0x21, true);         // date, arbitrary but valid
+    local.setUint32(14, crc, true);
+    local.setUint32(18, f.data.length, true);
+    local.setUint32(22, f.data.length, true);
+    local.setUint16(26, name.length, true);
+    local.setUint16(28, 0, true);
+    chunks.push(new Uint8Array(local.buffer), name, f.data);
+
+    const dir = new DataView(new ArrayBuffer(46));
+    dir.setUint32(0, 0x02014b50, true);
+    dir.setUint16(4, 20, true);
+    dir.setUint16(6, 20, true);
+    dir.setUint16(8, 0, true);
+    dir.setUint16(10, 0, true);
+    dir.setUint16(12, 0, true);
+    dir.setUint16(14, 0x21, true);
+    dir.setUint32(16, crc, true);
+    dir.setUint32(20, f.data.length, true);
+    dir.setUint32(24, f.data.length, true);
+    dir.setUint16(28, name.length, true);
+    dir.setUint32(42, offset, true);
+    central.push(new Uint8Array(dir.buffer), name);
+    offset += 30 + name.length + f.data.length;
+  }
+  let centralSize = 0;
+  for (const c of central) centralSize += c.length;
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, files.length, true);
+  end.setUint16(10, files.length, true);
+  end.setUint32(12, centralSize, true);
+  end.setUint32(16, offset, true);
+  return new Blob([...chunks, ...central, new Uint8Array(end.buffer)], { type: "application/zip" });
+}
+
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+async function connect() {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    reader = port.readable.getReader();
+    writer = port.writable.getWriter();
+    readLoop = pump();
+    $("connect").disabled = true;
+    $("disconnect").disabled = false;
+    say("Connected. Asking the badge what it has…");
+    const n = await photoCount();
+    $("grab").disabled = n === 0;
+    say(n === 0 ? "Connected. No photos on the badge." : `Connected. ${n} photo${n === 1 ? "" : "s"} on the badge.`);
+  } catch (e) {
+    say(e.message.includes("No port selected") ? "No port chosen." : "Could not connect: " + e.message, true);
+    await disconnect();
+  }
+}
+
+async function disconnect() {
+  $("grab").disabled = true;
+  $("disconnect").disabled = true;
+  $("connect").disabled = false;
+  try { if (reader) { await reader.cancel(); reader.releaseLock(); } } catch {}
+  try { if (writer) writer.releaseLock(); } catch {}
+  try { if (port) await port.close(); } catch {}
+  reader = writer = port = null;
+  lines = []; pending = ""; waiters = [];
+  if ($("status").textContent.startsWith("Connected")) say("Disconnected.");
+}
+
+async function grabAll() {
+  $("grab").disabled = true;
+  $("grid").innerHTML = "";
+  const bar = $("bar");
+  bar.style.display = "block";
+  bar.value = 0;
+  const files = [];
+  try {
+    const n = await photoCount();
+    for (let i = 0; i < n; i++) {
+      say(`Fetching photo ${i + 1} of ${n}…`);
+      const cv = bmpToCanvas(await photoBmp(i));
+      const png = await canvasToPng(cv);
+      const name = `photo_${String(i).padStart(4, "0")}.png`;
+      files.push({ name, data: new Uint8Array(await png.arrayBuffer()) });
+
+      const fig = document.createElement("figure");
+      const img = document.createElement("img");
+      img.src = cv.toDataURL();
+      img.alt = name;
+      const cap = document.createElement("figcaption");
+      cap.textContent = name;
+      fig.append(img, cap);
+      $("grid").append(fig);
+      bar.value = ((i + 1) / n) * 100;
+    }
+    if (!files.length) { say("Nothing to download."); return; }
+    saveBlob(zip(files), "scam-photos.zip");
+    say(`Saved ${files.length} photo${files.length === 1 ? "" : "s"} to scam-photos.zip.`);
+  } catch (e) {
+    say("Stopped after " + files.length + " photo(s): " + e.message, true);
+    if (files.length) saveBlob(zip(files), "scam-photos-partial.zip");
+  } finally {
+    bar.style.display = "none";
+    $("grab").disabled = false;
+  }
+}
+
+if (!("serial" in navigator)) {
+  say("This browser has no Web Serial. Use Chrome or Edge.", true);
+  $("connect").disabled = true;
+} else {
+  $("connect").onclick = connect;
+  $("grab").onclick = grabAll;
+  $("disconnect").onclick = disconnect;
+  navigator.serial.addEventListener("disconnect", () => { if (port) disconnect(); });
+}
+</script>
