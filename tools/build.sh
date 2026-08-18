@@ -13,7 +13,7 @@ set -euo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 vault=$(dirname -- "$here")
 root=$(dirname -- "$vault")
-console="$root/dc34-console"
+console="$root/s-cam-console"
 core="$root/xous-core"
 target=riscv32imac-unknown-xous-elf
 
