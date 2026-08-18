@@ -138,9 +138,23 @@ function say(msg, bad = false) {
   el.classList.toggle("bad", bad);
 }
 
+let lastLineAt = 0;
+
 function pushLine(line) {
+  lastLineAt = Date.now();
   if (waiters.length) waiters.shift()(line);
   else lines.push(line);
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Resolve once nothing has arrived for `ms`, so we never type into a reply in progress. */
+async function quiet(ms = 400, maxWait = 8000) {
+  const start = Date.now();
+  while (Date.now() - start < maxWait) {
+    if (Date.now() - lastLineAt >= ms) return;
+    await sleep(60);
+  }
 }
 
 function nextLine(timeoutMs) {
@@ -187,6 +201,10 @@ async function pump() {
 // Type a command a character at a time. Blasting a whole line at once produced a repeated
 // first character once during testing; pacing it has never done so.
 async function send(cmd) {
+  // Let anything still streaming finish first. Typing into a reply that is still arriving is
+  // what broke the first version of this: the connect probe pressed Enter, which makes the
+  // REPL print its whole help listing, and the next command went out into the middle of it.
+  await quiet();
   lines = [];
   pending = "";
   log("tx", JSON.stringify(cmd + "\\r"));
@@ -392,25 +410,21 @@ async function connect() {
     $("connect").disabled = true;
     $("disconnect").disabled = false;
 
-    // Prove something is listening before asking it anything real. Enter on an empty line
-    // makes the REPL print its help, so any reply at all means this is the console interface.
-    // The badge presents several CDC interfaces and only one of them is the REPL; picking a
-    // different one looks exactly like a dead badge otherwise.
+    // No liveness probe. Pressing Enter was the obvious one, but Enter on an empty line makes
+    // the REPL print its entire help listing, and typing the next command into the middle of
+    // that is worse than having no probe at all. `photo list` answers the same question.
     document.getElementById("logbox").open = true;
-    say("Connected. Checking this is the console interface…");
+    say("Connected. Asking the badge what it has…");
+    lastLineAt = Date.now();      // treat the moment of opening as "just spoke", so quiet() waits
+    let n;
     try {
-      await send("");
-      await reply(() => true, 4000);
-    } catch {
+      n = await photoCount();
+    } catch (e) {
       throw new Error(
-        "no response on this port. The badge presents several serial interfaces and only one " +
-        "is the console - try the next one in the list. If none answer, check nothing else " +
-        "(tio, a capture script) has the port open."
+        e.message + " — if this port never answers, it may not be the console interface, or " +
+        "something else (tio, a capture script) may still have it open."
       );
     }
-
-    say("Connected. Asking the badge what it has…");
-    const n = await photoCount();
     $("grab").disabled = n === 0;
     say(n === 0 ? "Connected. No photos on the badge." : `Connected. ${n} photo${n === 1 ? "" : "s"} on the badge.`);
   } catch (e) {
