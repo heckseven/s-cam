@@ -101,6 +101,12 @@
 // so a reply is "everything up to SUCCESS or an ERR line". `photo list` is the exception: its
 // result line is the count itself, which is what we wait for.
 
+// A line the badge logged, rather than a reply to a command. The level is padded to four
+// characters by xous-log - "ERR ", "WARN", "INFO", "DBG ", "TRCE" - and is followed by the
+// module path, so the colon after the level is what distinguishes these from a command's own
+// "ERR no photo 3".
+const LOG_LINE = /^(ERR|WARN|INFO|DBG|TRCE|UNKNOWN)\s*:/;
+
 const $ = (id) => document.getElementById(id);
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -161,6 +167,14 @@ async function pump() {
       while ((i = pending.search(/\r\n|\n/)) !== -1) {
         const line = pending.slice(0, i);
         pending = pending.slice(i + (pending[i] === "\r" ? 2 : 1));
+        if (LOG_LINE.test(line)) {
+          // The badge's own log, not a reply. xous-log pads the level to four characters and
+          // follows it with the module path, so an error reads "ERR :bao1x_hal::sh1107: …".
+          // That leading "ERR " was being taken for a command error - the badge was answering
+          // perfectly and the page was reporting its log back as a failure.
+          log("", "log: " + line);
+          continue;
+        }
         log("rx", JSON.stringify(line));
         pushLine(line);
       }
