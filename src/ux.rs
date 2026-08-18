@@ -1656,62 +1656,16 @@ impl VaultUi {
         } else {
             format!("data:image/bmp;base64,{}\n", Self::base64(&Self::photo_to_bmp(&bits)))
         };
-
-        // Over the CDC serial port, not the keyboard.
-        //
-        // Typing it was never going to work. The HID path turns each character into keycodes,
-        // and a report the endpoint is not ready for used to be discarded outright - which
-        // lost characters and, when the lost report was a key-up, left the host repeating a
-        // key. Measured at seven different delays, including 50ms, every run came back
-        // incomplete and identical, so no amount of pacing was going to fix it.
-        //
-        // Serial carries bytes. It reports how many were accepted, so a short write can be
-        // retried rather than silently dropped, and there is no keymap in the path at all.
-        // Hand over at most one buffer's worth at a time. serial_send clamps the length it
-        // *reports* to SERIAL_BINARY_BUFLEN but copies whatever it is given into a single
-        // page, and then panics on the failure rather than returning it - on the main thread,
-        // which takes the whole app down. Base64 of a photo fits in a page and ASCII art does
-        // not, which is why one worked and the other crashed the badge.
-        const CHUNK: usize = 3840; // usb-bao1x SERIAL_BINARY_BUFLEN, not re-exported
-
-        // Quiet the log for the duration. The log and this export share a CDC interface, so
-        // anything logged while the transfer is running is spliced into the middle of the
-        // image - a menu selection logged mid-export put 770 bytes of "INFO:ux_api::menu"
-        // through the middle of a photo. The receiver drops whole log lines, but one injected
-        // mid-line splits a row of data and neither half looks like a log line any more.
-        let prior_level = log::max_level();
-        log::set_max_level(log::LevelFilter::Warn);
-
-        let data = text.as_bytes();
-        let mut sent = 0;
-        while sent < data.len() {
-            let end = (sent + CHUNK).min(data.len());
-            match self.usb_dev.serial_send(&data[sent..end]) {
-                Ok(0) => {
-                    self.notify("NO USB HOST - NOTHING SENT");
-                    log::set_max_level(prior_level);
-                    return;
-                }
-                Ok(n) => {
-                    sent += n;
-                    // Push each chunk out rather than leaving it in the CDC transmit buffer.
-                    // serial_send only writes into that buffer; without a flush the bytes sit
-                    // there until some unrelated USB traffic happens to move them, which is
-                    // why the port existed and nothing ever arrived.
-                    self.usb_dev.serial_flush().ok();
-                }
-                Err(e) => {
-                    log::warn!("serial export failed after {} bytes: {:?}", sent, e);
-                    self.notify("EXPORT FAILED");
-                    log::set_max_level(prior_level);
-                    return;
-                }
-            }
+        // Through serial_out, the same as the console's `photo ascii`. This used to carry its
+        // own copy of the send loop, and the two drifted the moment one of them was fixed: the
+        // CRLF a terminal needs went into serial_out, so an export started from the badge still
+        // arrived as a staircase while the identical export asked for over the REPL came out
+        // square. One path, one behaviour.
+        if self.serial_out(&text) {
+            self.notify("EXPORT DONE");
+        } else {
+            self.notify("NO USB HOST - NOTHING SENT");
         }
-        self.usb_dev.serial_flush().ok();
-        // the notification itself logs, so restore only once the bytes are out
-        log::set_max_level(prior_level);
-        self.notify("EXPORT DONE");
     }
 
     /// Ask main to open the photo actions menu. Menus are owned by the main loop, so this

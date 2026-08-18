@@ -54,6 +54,7 @@ python3 "$here/check-jog-press.py"
 python3 "$here/check-menu-invalidate.py"
 python3 "$here/check-menu-just-opened.py"
 python3 "$here/check-standby-image.py"
+python3 "$here/check-serial-path.py"
 # Runs cargo again, but the vault was just built so this is a cache hit and costs seconds.
 (cd "$vault" && python3 "$here/check-dead-code.py")
 
