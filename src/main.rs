@@ -178,7 +178,11 @@ const SKIP_KEY_WINDOW_MS: u64 = 750;
 
 fn main() -> ! {
     log_server::init_wait().unwrap();
-    log::set_max_level(log::LevelFilter::Info);
+    // Warn, not Info. The log and the console REPL share one CDC interface, so every INFO
+    // line lands in the middle of whatever the user is typing - and simply walking the menus
+    // emits a burst of them from ux_api::menu, which is linked into this process. `debug log
+    // on` in the console turns it back up when something is actually being diagnosed.
+    log::set_max_level(log::LevelFilter::Warn);
     log::info!("dc34-vault PID is {}", xous::process::id());
 
     // Register the server with xous
@@ -538,6 +542,14 @@ fn main() -> ! {
                     xous::return_scalar(msg.sender, if ok { 1 } else { 0 }).ok();
                 }
             ),
+            Some(VaultOp::SetLogLevel) => xous::msg_scalar_unpack!(msg, verbose, _, _, _, {
+                log::set_max_level(if verbose != 0 {
+                    log::LevelFilter::Info
+                } else {
+                    log::LevelFilter::Warn
+                });
+                log::warn!("vault log level now {:?}", log::max_level());
+            }),
             Some(VaultOp::SerialQrAdd) => {
                 // Hand the URL to the actions thread rather than saving it here: that is
                 // where the validation and the key counter live, and a second copy of either

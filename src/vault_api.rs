@@ -158,6 +158,8 @@ pub(crate) enum VaultOp {
     /// save a QR code from the console. The URL arrives as an IpcString and the same
     /// IpcString is replaced with the result, so the caller learns whether it took.
     SerialQrAdd = 1051,
+    /// set the vault's log level from the console: 0 quiet (Warn), 1 verbose (Info)
+    SetLogLevel = 1052,
 }
 
 // Compile-time guard on the VaultOp wire contract.
@@ -201,6 +203,7 @@ const _: () = assert!(VaultOp::Notify as isize == 1048);
 const _: () = assert!(VaultOp::SerialPhotoCount as isize == 1049);
 const _: () = assert!(VaultOp::SerialPhotoGet as isize == 1050);
 const _: () = assert!(VaultOp::SerialQrAdd as isize == 1051);
+const _: () = assert!(VaultOp::SetLogLevel as isize == 1052);
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct IpcString {

@@ -1615,7 +1615,12 @@ impl VaultUi {
         const CHUNK: usize = 3840; // usb-bao1x SERIAL_BINARY_BUFLEN, not re-exported
         let prior_level = log::max_level();
         log::set_max_level(log::LevelFilter::Warn);
-        let data = text.as_bytes();
+        // CRLF, because the other end of this is a terminal. A bare LF moves the cursor down
+        // without returning it to column 0, so ASCII art came out as a staircase with each
+        // row starting where the last one ended. The art itself keeps plain LF - the HID
+        // path types it, where a stray CR would be a second Enter.
+        let crlf = text.replace('\n', "\r\n");
+        let data = crlf.as_bytes();
         let mut sent = 0;
         let mut ok = true;
         while sent < data.len() {
