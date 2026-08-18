@@ -169,6 +169,11 @@ enum Pending {
     ExportAscii,
 }
 
+/// How long a "swallow the next key" request stays valid. Long enough to cover a press that
+/// is already in flight when the camera closes, short enough that it cannot still be armed by
+/// the time the user reaches for a button on purpose.
+const SKIP_KEY_WINDOW_MS: u64 = 750;
+
 fn main() -> ! {
     log_server::init_wait().unwrap();
     log::set_max_level(log::LevelFilter::Info);
@@ -401,7 +406,8 @@ fn main() -> ! {
     let mut jig_ready_seen = false;
     let mut mutation_param: u8 = 0;
     let mut k_last = '\u{0000}';
-    let mut skip_one_key = false;
+    // Deadline, not a latch: see VaultOp::SkipKey.
+    let mut skip_key_until: Option<u64> = None;
     loop {
         global_config.lock().unwrap().update_power_state(mode.lock().unwrap().clone());
         // mut: SerialQrAdd answers through the caller's own buffer, which needs the memory
@@ -442,7 +448,12 @@ fn main() -> ! {
             // do not touch menu_origin: closing this menu returns to the photo, not to a menu.
             Some(VaultOp::MenuRecordActions) => {
                 active_menu = ActiveMenu::RecordActions;
-                menu_just_opened = true;
+                // No menu_just_opened here. That flag exists to swallow the stale MenuClosed
+                // that a menu sends as it closes on select - but this menu is opened by a
+                // button on a screen, with no menu open to send one. Setting it anyway meant
+                // the flag was still armed when the user pressed LEFT, so their own press was
+                // swallowed as if it were the stale one and the menu just sat there. Pressing
+                // again worked, which read as the screen being slow to wake up.
                 animate.store(false, Ordering::SeqCst);
                 scratch_items = idlemenu::fill(
                     &scratch_menu_mgr, &scratch_items, "record", &idlemenu::RECORD_ACTIONS, conn,
@@ -451,7 +462,12 @@ fn main() -> ! {
             }
             Some(VaultOp::MenuPhotoActions) => {
                 active_menu = ActiveMenu::PhotoActions;
-                menu_just_opened = true;
+                // No menu_just_opened here. That flag exists to swallow the stale MenuClosed
+                // that a menu sends as it closes on select - but this menu is opened by a
+                // button on a screen, with no menu open to send one. Setting it anyway meant
+                // the flag was still armed when the user pressed LEFT, so their own press was
+                // swallowed as if it were the stale one and the menu just sat there. Pressing
+                // again worked, which read as the screen being slow to wake up.
                 animate.store(false, Ordering::SeqCst);
                 scratch_items = idlemenu::fill(
                     &scratch_menu_mgr, &scratch_items, "photo", &idlemenu::PHOTO_ACTIONS, conn,
@@ -532,7 +548,12 @@ fn main() -> ! {
             }
             Some(VaultOp::MenuBookmarkActions) => {
                 active_menu = ActiveMenu::RecordActions;
-                menu_just_opened = true;
+                // No menu_just_opened here. That flag exists to swallow the stale MenuClosed
+                // that a menu sends as it closes on select - but this menu is opened by a
+                // button on a screen, with no menu open to send one. Setting it anyway meant
+                // the flag was still armed when the user pressed LEFT, so their own press was
+                // swallowed as if it were the stale one and the menu just sat there. Pressing
+                // again worked, which read as the screen being slow to wake up.
                 animate.store(false, Ordering::SeqCst);
                 scratch_items = idlemenu::fill(
                     &scratch_menu_mgr, &scratch_items, "qr code", &idlemenu::QR_ACTIONS, conn,
@@ -658,13 +679,21 @@ fn main() -> ! {
                 vault_ui.redraw();
             }
             Some(VaultOp::SkipKey) => {
-                skip_one_key = true;
+                // Swallow a press that is already on its way, not whatever arrives next.
+                // This used to be an unbounded latch, and two paths could leave it armed with
+                // no key ever following: a camera session that returned no QR code, and the
+                // console's power manager arming it on a wake the user did not press for.
+                // The next real press - possibly minutes later, on another screen - was then
+                // eaten, which is indistinguishable from the badge ignoring the button.
+                skip_key_until = Some(tt.elapsed_ms() + SKIP_KEY_WINDOW_MS);
             }
             Some(VaultOp::KeyPress) => xous::msg_scalar_unpack!(msg, k1, _k2, _k3, _k4, {
-                if skip_one_key {
-                    skip_one_key = false;
-                    vault_ui.redraw();
-                    continue;
+                if let Some(deadline) = skip_key_until.take() {
+                    if tt.elapsed_ms() <= deadline {
+                        vault_ui.redraw();
+                        continue;
+                    }
+                    // Armed too long ago to be the press it was meant for: let this one through.
                 }
                 let mode_now = *mode.lock().unwrap();
                 let k = char::from_u32(k1 as u32).unwrap_or('\u{0000}');
@@ -732,7 +761,9 @@ fn main() -> ! {
                                     // photo actions and the confirmations, so whatever ran last
                                     // is still in it - reopening without refilling would offer
                                     // the wrong screen's actions.
-                                    menu_just_opened = true;
+                                    // opened from a key press, so no stale MenuClosed is
+                                    // coming and menu_just_opened must not be armed - see
+                                    // VaultOp::MenuRecordActions above
                                     scratch_items = idlemenu::fill(
                                         &scratch_menu_mgr, &scratch_items, "record",
                                         &idlemenu::RECORD_ACTIONS, conn,
@@ -756,7 +787,7 @@ fn main() -> ! {
                             idle_menu_mgr.redraw();
                         }
                         '🔥' => {
-                            skip_one_key = true;
+                            skip_key_until = Some(tt.elapsed_ms() + SKIP_KEY_WINDOW_MS);
                             run_camera_scan(
                                 actions_conn,
                                 &mut vault_ui,
@@ -1014,7 +1045,7 @@ fn main() -> ! {
                 let buffer = unsafe { Buffer::from_memory_message(msg.body.memory_message().unwrap()) };
                 let s: IpcString = buffer.to_original::<IpcString, _>().unwrap();
                 log::info!("mode: {:?}, s: {}", mode_now, s.s);
-                skip_one_key = false;
+                skip_key_until = None;
 
                 match mode_now {
                     VaultMode::Idle => {
@@ -1211,7 +1242,7 @@ fn main() -> ! {
                 vault_ui.redraw();
             }
             Some(VaultOp::ScanUrl) => {
-                skip_one_key = true;
+                skip_key_until = Some(tt.elapsed_ms() + SKIP_KEY_WINDOW_MS);
                 run_camera_scan(actions_conn, &mut vault_ui, &animate, &global_config, &tt);
             }
             Some(VaultOp::ListPasswords) => {

@@ -1,0 +1,3 @@
+QR list: jog press shows the QR full screen (not the actions menu).
+Photo list: jog press opens the photo.
+QR item menu -> back: the whole list repaints, no half-menu left behind.
