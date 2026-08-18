@@ -2282,24 +2282,6 @@ impl VaultUi {
         filtered_k
     }
 
-    pub(crate) fn camera_transition(&mut self) {
-        self.gfx.clear().ok();
-        let mut tv = TextView::new(
-            Gid::dummy(),
-            TextBounds::CenteredTop(Rectangle::new(Point::new(0, 40), Point::new(127, 120))),
-        );
-        tv.invert = true;
-        tv.margin = Point::new(2, 2);
-        tv.style = crate::theme::FONT;
-        tv.draw_border = false;
-        // This splash is the only place the camera controls can be shown. Once the camera
-        // starts it owns the panel outright and this side is blocked inside the acquire call,
-        // so there is no later opportunity to label the buttons.
-        write!(tv, "starting camera\n\nright = photo\nany other = exit").ok();
-        self.gfx.draw_textview(&mut tv).ok();
-        self.redraw();
-    }
-
     pub(crate) fn filter(&mut self, criteria: &String) {
         self.filter = criteria.to_owned();
         // only filter passwords in this implementation

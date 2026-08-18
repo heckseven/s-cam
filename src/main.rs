@@ -116,7 +116,9 @@ fn run_camera_scan(
 ) {
     global_config.lock().unwrap().pause_accel(true);
     tt.sleep_ms(200).ok();
-    vault_ui.camera_transition();
+    // No transition splash. It explained the camera buttons on a screen that was gone before
+    // most people finished reading it, and going straight from whatever was on the panel to
+    // the viewfinder reads as the camera opening rather than as a screen being interrupted.
     let prior_animate = animate.swap(false, Ordering::SeqCst);
     let outcome = xous::send_message(
         actions_conn,
