@@ -991,7 +991,7 @@ impl VaultUi {
                     self.passkey_cache.iter().map(|p| p.name.clone()).collect();
                 crate::theme::list(
                     &self.gfx, self.screen_size, self.item_height,
-                    &rows, self.passkey_cursor, "NO PASSKEYS STORED",
+                    &rows, self.passkey_cursor, "no passkeys stored",
                     crate::theme::ListStyle::Ghost,
                     None,
                     crate::theme::Repaint::All,
@@ -1011,7 +1011,7 @@ impl VaultUi {
                     crate::theme::heading(&self.gfx, self.screen_size, "PHOTOS");
                     crate::theme::list(
                         &self.gfx, self.screen_size, self.item_height,
-                        &self.photo_cache, self.photo_cursor, "NO PHOTOS YET",
+                        &self.photo_cache, self.photo_cursor, "no photos yet",
                         crate::theme::ListStyle::Numbered,
                         None,
                         crate::theme::Repaint::All,
@@ -1061,7 +1061,7 @@ impl VaultUi {
                     BUILTIN_IMAGES.iter().map(|s| s.to_string()).collect();
                 crate::theme::list(
                     &self.gfx, self.screen_size, self.item_height,
-                    &rows, self.bling_cursor, "NO IMAGES",
+                    &rows, self.bling_cursor, "no images",
                     crate::theme::ListStyle::Select { marked: Some(self.standby_choice) },
                     None,
                     crate::theme::Repaint::All,
@@ -1078,7 +1078,7 @@ impl VaultUi {
                     BLINKY_CHOICES.iter().map(|s| s.to_string()).collect();
                 crate::theme::list(
                     &self.gfx, self.screen_size, self.item_height,
-                    &rows, self.blinky_cursor, "NO PATTERNS",
+                    &rows, self.blinky_cursor, "no patterns",
                     crate::theme::ListStyle::Select { marked: Some(self.led_pattern) },
                     None,
                     crate::theme::Repaint::All,
@@ -1475,7 +1475,7 @@ impl VaultUi {
                     self.bookmark_cache.iter().map(|(_, url, _)| url.clone()).collect();
                 crate::theme::list(
                     &self.gfx, self.screen_size, self.item_height,
-                    &rows, self.bookmark_cursor, "NO BOOKMARKS YET",
+                    &rows, self.bookmark_cursor, "no codes yet",
                     crate::theme::ListStyle::Numbered,
                     Some(self.tt.elapsed_ms().saturating_sub(self.list_focus_ms)),
                     if full { crate::theme::Repaint::All } else { crate::theme::Repaint::FocusedRow },
@@ -2590,7 +2590,7 @@ impl VaultUi {
         // This splash is the only place the camera controls can be shown. Once the camera
         // starts it owns the panel outright and this side is blocked inside the acquire call,
         // so there is no later opportunity to label the buttons.
-        write!(tv, "STARTING CAMERA\n\nRIGHT = PHOTO\nANY OTHER = EXIT").ok();
+        write!(tv, "starting camera\n\nright = photo\nany other = exit").ok();
         self.gfx.draw_textview(&mut tv).ok();
         self.redraw();
     }

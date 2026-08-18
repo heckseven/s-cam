@@ -446,7 +446,7 @@ fn main() -> ! {
                 menu_just_opened = true;
                 animate.store(false, Ordering::SeqCst);
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "RECORD", &idlemenu::RECORD_ACTIONS, conn,
+                    &scratch_menu_mgr, &scratch_items, "record", &idlemenu::RECORD_ACTIONS, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -455,7 +455,7 @@ fn main() -> ! {
                 menu_just_opened = true;
                 animate.store(false, Ordering::SeqCst);
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "PHOTO", &idlemenu::PHOTO_ACTIONS, conn,
+                    &scratch_menu_mgr, &scratch_items, "photo", &idlemenu::PHOTO_ACTIONS, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -472,7 +472,7 @@ fn main() -> ! {
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "EXPORT B64?", &idlemenu::CONFIRM, conn,
+                    &scratch_menu_mgr, &scratch_items, "export B64?", &idlemenu::CONFIRM, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -481,7 +481,7 @@ fn main() -> ! {
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "EXPORT ASCII?", &idlemenu::CONFIRM, conn,
+                    &scratch_menu_mgr, &scratch_items, "export ASCII?", &idlemenu::CONFIRM, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -535,7 +535,7 @@ fn main() -> ! {
                 menu_just_opened = true;
                 animate.store(false, Ordering::SeqCst);
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "QR CODE", &idlemenu::QR_ACTIONS, conn,
+                    &scratch_menu_mgr, &scratch_items, "qr code", &idlemenu::QR_ACTIONS, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -549,7 +549,7 @@ fn main() -> ! {
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "DELETE QR?", &idlemenu::CONFIRM, conn,
+                    &scratch_menu_mgr, &scratch_items, "delete QR?", &idlemenu::CONFIRM, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -560,7 +560,7 @@ fn main() -> ! {
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "TYPE B64?", &idlemenu::CONFIRM, conn,
+                    &scratch_menu_mgr, &scratch_items, "type B64?", &idlemenu::CONFIRM, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -569,7 +569,7 @@ fn main() -> ! {
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "TYPE ASCII?", &idlemenu::CONFIRM, conn,
+                    &scratch_menu_mgr, &scratch_items, "type ASCII?", &idlemenu::CONFIRM, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -578,7 +578,7 @@ fn main() -> ! {
                 active_menu = ActiveMenu::Confirm;
                 menu_just_opened = true;
                 scratch_items = idlemenu::fill(
-                    &scratch_menu_mgr, &scratch_items, "DELETE PHOTO?", &idlemenu::CONFIRM, conn,
+                    &scratch_menu_mgr, &scratch_items, "delete photo?", &idlemenu::CONFIRM, conn,
                 );
                 scratch_menu_mgr.redraw();
             }
@@ -729,7 +729,7 @@ fn main() -> ! {
                                     // the wrong screen's actions.
                                     menu_just_opened = true;
                                     scratch_items = idlemenu::fill(
-                                        &scratch_menu_mgr, &scratch_items, "RECORD",
+                                        &scratch_menu_mgr, &scratch_items, "record",
                                         &idlemenu::RECORD_ACTIONS, conn,
                                     );
                                     scratch_menu_mgr.redraw();

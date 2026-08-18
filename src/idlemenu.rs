@@ -60,7 +60,7 @@ pub fn create_root(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
 /// a passkey is not a password, and the old tree named only two of the three.
 pub fn create_login(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
     build(
-        "LOGIN DEETS",
+        "login deets",
         &[
             ("2fa digits", VaultOp::List2faDigits),
             ("passkeys", VaultOp::ListPasskeys),
@@ -75,7 +75,7 @@ pub fn create_login(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
 
 pub fn create_settings(vault_conn: xous::CID, menu_mgr: xous::SID) -> MenuMatic {
     build(
-        "SETTINGS",
+        "settings",
         &[
             ("bling", VaultOp::SettingsBling),
             ("blinky", VaultOp::SettingsBlinky),
