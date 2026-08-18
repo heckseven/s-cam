@@ -105,3 +105,6 @@ zig-out/
 
 # agent worktrees are separate checkouts, not part of this repo
 .claude/worktrees/
+
+# Staged firmware images for tools/flash-queue.sh. Build artifacts, ~8MB a set.
+flash-queue/

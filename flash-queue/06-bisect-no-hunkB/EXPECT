@@ -1,3 +1,0 @@
-Boots  -> the warm-up standby draw was the cause; the flash returns.
-Hangs  -> the cause is the ux.rs accessor or the menu label, neither of
-          which runs at boot, which would point at layout/paging.
