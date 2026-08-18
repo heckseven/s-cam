@@ -4,3 +4,6 @@
 === session 2026-08-18T03:42:45Z  queue=flash-queue  builds=1 ===
 02-jog-and-repaint: WRITTEN (verdict pending) - jog opens the focused item; menus repaint the screen behind them (c649ac3)
     ^ record the observed result with: flash-queue-verdict.sh "/home/heckseven/projects/qr-cam/.claude/worktrees/dc34-vault/.claude/worktrees/ux-audit-fixes/flash-queue" "02-jog-and-repaint" pass|fail "notes"
+=== session 2026-08-18T03:52:43Z  queue=flash-queue  builds=1 ===
+03-key-swallow: WRITTEN (verdict pending) - stop menu_just_opened and skip_one_key eating key presses (d69804d)
+    ^ record the observed result with: flash-queue-verdict.sh "/home/heckseven/projects/qr-cam/.claude/worktrees/dc34-vault/.claude/worktrees/ux-audit-fixes/flash-queue" "03-key-swallow" pass|fail "notes"

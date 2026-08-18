@@ -341,8 +341,10 @@ fn main() -> ! {
     gfx.dry_run(true).ok();
     idle_menu_mgr.redraw();
     idle_menu_mgr.key_press('↑');
-    // restore the logo so that the back buffer is in a consistent state
-    gfx.bitmap(&bitmaps::scam_logo::BITMAP, None, None).ok();
+    // Restore the back buffer to whatever the standby screen is about to show. This drew the
+    // S-CAM logo unconditionally, so a badge set to the DEFCON image came up as splash, a
+    // flash of S-CAM bling, then DEFCON. The choice was already restored above, so ask for it.
+    gfx.bitmap(vault_ui.standby_bitmap(), None, None).ok();
     // gfx.flush().ok(); // i don't think this is necessary
     gfx.dry_run(false).ok();
 

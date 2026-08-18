@@ -328,6 +328,22 @@ impl VaultUi {
     ///
     /// A captured photo is already in the badge's bitmap format, so "use this photo as the
     /// standby image" is a straight copy into user_bitmap with no conversion.
+    /// The image the standby screen should be showing, for the current choice.
+    ///
+    /// Anything that paints the standby screen has to go through this. The boot-time menu
+    /// warm-up used to restore the back buffer with the S-CAM logo whatever the user had
+    /// picked, so a badge set to the DEFCON image showed the splash, then a flash of S-CAM
+    /// bling, then DEFCON.
+    pub(crate) fn standby_bitmap(&self) -> &[u32; 512] {
+        if self.standby_choice == DEFCON_IMAGE {
+            &bitmaps::dc_logo::BITMAP
+        } else if let Some(bitmap) = self.user_bitmap.as_ref() {
+            bitmap
+        } else {
+            &bitmaps::scam_logo::BITMAP
+        }
+    }
+
     pub(crate) fn apply_standby_choice(&mut self, choice: usize) {
         match choice {
             // Both built-ins are drawn from flash, not from user_bitmap; the idle draw picks
@@ -811,13 +827,8 @@ impl VaultUi {
                     // bao-video without the display timeout guard that the diffuse path has,
                     // and swapping the stored-image draw onto it is what stopped the badge
                     // booting. The diffuse call is the one this screen has always used.
-                    if self.standby_choice == DEFCON_IMAGE {
-                        self.gfx.bitmap_diffusion(&bitmaps::dc_logo::BITMAP, None, None).ok();
-                    } else if let Some(bitmap) = self.user_bitmap.as_ref() {
-                        self.gfx.bitmap_diffusion(bitmap, None, None).ok();
-                    } else {
-                        self.gfx.bitmap_diffusion(&bitmaps::scam_logo::BITMAP, None, None).ok();
-                    }
+                    let chosen = self.standby_bitmap();
+                    self.gfx.bitmap_diffusion(chosen, None, None).ok();
                     self.edge = edge;
                     self.standby_drawn = Some(standby_now);
                 }

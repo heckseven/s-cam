@@ -129,7 +129,7 @@ fn build_payload(
 /// of them made the badge noticeably less stable - it is a swap-resident app with a real
 /// memory budget. One manager, retitled and refilled before it opens, costs a fraction of that.
 pub const PHOTO_ACTIONS: [(&str, VaultOp, u32); 7] = [
-    ("set wallpaper", VaultOp::PhotoSetWallpaper, 0),
+    ("set bling", VaultOp::PhotoSetWallpaper, 0),
     ("export b64", VaultOp::PhotoExportB64, 0),
     ("export ascii", VaultOp::PhotoExportAscii, 0),
     ("type b64", VaultOp::PhotoTypeB64, 0),
