@@ -341,10 +341,16 @@ fn main() -> ! {
     gfx.dry_run(true).ok();
     idle_menu_mgr.redraw();
     idle_menu_mgr.key_press('↑');
-    // Restore the back buffer to whatever the standby screen is about to show. This drew the
-    // S-CAM logo unconditionally, so a badge set to the DEFCON image came up as splash, a
-    // flash of S-CAM bling, then DEFCON. The choice was already restored above, so ask for it.
-    gfx.bitmap(vault_ui.standby_bitmap(), None, None).ok();
+    // DO NOT make this follow the user's standby choice. Tried, and it boot-looped the badge:
+    // bisected on hardware, this line and nothing else. The plain `bitmap` path is handled in
+    // bao-video without the display timeout guard that `bitmap_diffusion` has, and this call
+    // runs inside a dry_run while the app is still paging itself in - the same trap that is
+    // recorded against the standby draw. Drawing a fixed compiled-in constant here is safe;
+    // selecting one at runtime is not.
+    //
+    // The cost is cosmetic: a badge set to the DEFCON image shows a frame of S-CAM bling
+    // between the splash and standby. That is worth strictly less than a badge that boots.
+    gfx.bitmap(&bitmaps::scam_logo::BITMAP, None, None).ok();
     // gfx.flush().ok(); // i don't think this is necessary
     gfx.dry_run(false).ok();
 

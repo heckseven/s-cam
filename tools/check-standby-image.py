@@ -65,6 +65,13 @@ def main():
                     continue
                 found += 1
                 inside = path == "src/ux.rs" and span[0] <= i <= span[1]
+                # The boot warm-up is exempt, and must stay exempt. Making it follow the
+                # user's choice boot-looped the badge - bisected on hardware to this one line.
+                # It runs inside a dry_run while the app is still paging itself in, on the
+                # plain `bitmap` path that has no display timeout guard, so it draws a fixed
+                # constant. The exemption is the whole point, not an oversight.
+                if path == "src/main.rs" and "dry_run" in "\n".join(lines[max(0, i - 8):i]):
+                    continue
                 if not inside:
                     problems.append(
                         f"{path}:{i + 1}: names {name}::BITMAP directly instead of calling "

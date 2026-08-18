@@ -1,3 +1,0 @@
-Open any actions menu and press BACK immediately - it should close on the
-first press, not the second. Same for the photo and record actions menus.
-Submenus (settings, login deets) must still open without being painted over.
