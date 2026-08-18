@@ -167,3 +167,63 @@ about 500MWh of energy - about $25k-$50k in energy alone, not to mention the clo
 Within the range of a very rich organization doing it just to show off their capability, but unlikely.
 
 Breaking at 96 bits strength would require disclosure of as of yet unknown technology or techniques.
+
+---
+
+# URL Handling (Tier 1 Extension)
+
+Tier 1 adds support for two new QR payload schemes alongside the existing gene exchange protocol.
+None of the gene exchange paths, key derivation, or PDDB gene storage are modified.
+
+## Recognized URL schemes
+
+The following scheme prefixes are recognized as plain URLs and routed to the URL display path:
+
+- `http://`
+- `https://`
+
+Any QR code whose decoded content begins with either of these prefixes is treated as a URL. No
+other schemes are handled as plain URLs; everything else follows the existing dispatch chain
+(scheme checks, then base45 gene decode).
+
+## URL recognition precedes base45 decode
+
+URL recognition is the first check in the `VaultMode::Idle` QR dispatch path, before any
+`base45::decode` attempt. This ordering is required because uppercase ASCII URLs (e.g.
+`HTTPS://EXAMPLE.COM`) are valid base45 strings; decoding them as base45 first would silently
+discard them as malformed gene data.
+
+The gene-exchange modes (`GeneScan`, `ResponseGene`, `ShowKey`) are unaffected: scans in those
+modes bypass the URL check and go directly to base45 decode, as before.
+
+## SanitizedUrl and its role
+
+A raw scanned string is never passed directly to URL display or HID type-out code. Instead, it is
+first wrapped in a `SanitizedUrl` value (defined in `dc34-vault/src/sanitize.rs`). The
+`SanitizedUrl` constructor rejects the string if it contains control characters, characters
+unmapped in the US-101 HID table, or a byte length exceeding `CAP_URL_DISPLAY` (for display/
+type-out) or `CAP_BOOKMARK_URL` (for bookmark storage and QR re-render).
+
+All URL data that crosses task or module boundaries is typed as `SanitizedUrl`, never as a raw
+`&str` from scanned input.
+
+## Unaffected schemes
+
+The following schemes are handled exclusively by the existing dispatch paths and are not touched
+by Tier 1:
+
+- `dc34://` and `gene://` — gene exchange path only; `save_light_gene()` is never called from
+  URL or bookmark code paths.
+- `otpauth://` — TOTP enrollment, unchanged.
+- `pwauth://` — password autotype and creation, unchanged.
+- `time://` — RTC set, unchanged.
+- `search://` — search, unchanged.
+- `test://` and `factory://` — test modes, unchanged.
+
+## Revert
+
+To revert all Tier 1 URL handling changes, reflash the original DEFCON dc34-vault build. PDDB
+data (gene data, passwords, TOTP) survives any UF2 flash and does not need to be cleared.
+Bookmarks stored in `vault.bookmarks` also persist on-device but are not accessible from stock
+firmware; reinstalling Tier 1 firmware restores access to them. Developer mode must never be
+enabled — it erases Ko (the gene exchange key) and is a one-way door.
