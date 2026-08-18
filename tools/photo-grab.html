@@ -43,6 +43,14 @@
   code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel);
          border: 1px solid var(--line); border-radius: .25rem; padding: .05em .35em; }
   .note { color: var(--dim); font-size: 13.5px; margin-top: .75rem; }
+  #log {
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line); border-radius: .375rem;
+    padding: .625rem; max-height: 18rem; overflow: auto; white-space: pre-wrap;
+    word-break: break-all; margin: .5rem 0 0;
+  }
+  #log .tx { color: var(--dim); }
+  #log .err { color: var(--bad); }
 </style>
 
 <main>
@@ -59,6 +67,11 @@
 
   <div id="grid"></div>
 
+  <details id="logbox">
+    <summary>Connection log</summary>
+    <pre id="log"></pre>
+  </details>
+
   <details>
     <summary>If it does not connect</summary>
     <div>
@@ -66,8 +79,9 @@
       <p>Close anything else holding the port first. <code>tio</code> and this page cannot both
          read it: a serial port hands each byte to exactly one reader, so they would split the
          transfer between them and both get a corrupt fraction.</p>
-      <p>Pick the badge's first serial port. It presents several; the console REPL is on the
-         lowest-numbered one.</p>
+      <p>Pick the right interface. The badge presents several serial ports and only one is the
+         console REPL - usually the lowest-numbered. If the page says nothing answered, come
+         back and try the next one.</p>
       <p>If the browser refuses because the page is not a secure context, serve it from
          localhost instead of opening the file directly:
          <code>python3 -m http.server</code> in this directory, then open
@@ -97,7 +111,22 @@ let lines = [];            // complete lines waiting to be consumed
 let waiters = [];          // resolvers parked on the next line
 let readLoop = null;
 
+// Every byte in and out, so a failure can be read off instead of guessed at. Four separate
+// theories about why this timed out - DTR, the wrong interface, a slow reader, the terminal
+// width - were all wrong on hardware. Instrumentation beats another hypothesis.
+function log(kind, text) {
+  const el = document.getElementById("log");
+  if (!el) return;
+  const line = document.createElement("div");
+  if (kind) line.className = kind;
+  const stamp = new Date().toISOString().slice(11, 23);
+  line.textContent = `${stamp}  ${kind === "tx" ? "\u2192" : kind === "err" ? "!" : "\u2190"} ${text}`;
+  el.append(line);
+  el.scrollTop = el.scrollHeight;
+}
+
 function say(msg, bad = false) {
+  if (bad) log("err", msg);
   const el = $("status");
   el.textContent = msg;
   el.classList.toggle("bad", bad);
@@ -125,12 +154,14 @@ async function pump() {
     while (port && port.readable) {
       const { value, done } = await reader.read();
       if (done) break;
+      if (value && value.length) log("rx", `[${value.length} bytes]`);
       pending += dec.decode(value, { stream: true });
       // The badge sends CRLF, but tolerate a bare LF so this keeps working if that changes.
       let i;
       while ((i = pending.search(/\r\n|\n/)) !== -1) {
         const line = pending.slice(0, i);
         pending = pending.slice(i + (pending[i] === "\r" ? 2 : 1));
+        log("rx", JSON.stringify(line));
         pushLine(line);
       }
     }
@@ -144,6 +175,7 @@ async function pump() {
 async function send(cmd) {
   lines = [];
   pending = "";
+  log("tx", JSON.stringify(cmd + "\\r"));
   for (const ch of cmd + "\r") {
     await writer.write(enc.encode(ch));
     await new Promise((r) => setTimeout(r, 12));
@@ -324,13 +356,45 @@ function saveBlob(blob, name) {
 
 async function connect() {
   try {
-    port = await navigator.serial.requestPort();
+    // Only offer the badge. It is USB 1d50:6198, or 6197 on the other board variant, so
+    // filter on the vendor and let either through. Without this the picker also lists
+    // whatever else is plugged in - on this machine an LED matrix module appeared as two
+    // more ACM ports, and choosing one looks exactly like a badge that will not answer.
+    port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x1d50 }] });
     await port.open({ baudRate: 115200 });
+    // Assert DTR and RTS. Opening a tty on Linux raises these automatically, which is why
+    // `tio` and a plain Python open both work without thinking about it - Web Serial does
+    // not, and a CDC device that waits for DTR will sit there sending nothing. This was the
+    // difference between the page timing out and the same commands working from a terminal.
+    try {
+      await port.setSignals({ dataTerminalReady: true, requestToSend: true });
+    } catch (e) {
+      // Not fatal: some platforms refuse the call but still carry data.
+      console.warn("setSignals failed:", e);
+    }
     reader = port.readable.getReader();
     writer = port.writable.getWriter();
     readLoop = pump();
     $("connect").disabled = true;
     $("disconnect").disabled = false;
+
+    // Prove something is listening before asking it anything real. Enter on an empty line
+    // makes the REPL print its help, so any reply at all means this is the console interface.
+    // The badge presents several CDC interfaces and only one of them is the REPL; picking a
+    // different one looks exactly like a dead badge otherwise.
+    document.getElementById("logbox").open = true;
+    say("Connected. Checking this is the console interface…");
+    try {
+      await send("");
+      await reply(() => true, 4000);
+    } catch {
+      throw new Error(
+        "no response on this port. The badge presents several serial interfaces and only one " +
+        "is the console - try the next one in the list. If none answer, check nothing else " +
+        "(tio, a capture script) has the port open."
+      );
+    }
+
     say("Connected. Asking the badge what it has…");
     const n = await photoCount();
     $("grab").disabled = n === 0;
