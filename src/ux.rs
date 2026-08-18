@@ -27,7 +27,6 @@ const KEYUP_DELAY_MS: u64 = 100;
 const PAGE_INCREMENT: usize = 6;
 
 const FACTORY_QR_STRING: &'static str = "test://factory-test-data-lorem-ipsum-data-data";
-const FACTORY_TIMEOUT_S: u64 = 90;
 const JIG_TIMEOUT: u64 = 35;
 // full string on QR code needs to be factory://factory-aae949f6969-lorem-ipsum-data
 pub const FACTORY_STANDALONE_STRING: &'static str = "factory-aae949f6969-lorem-ipsum-data";
@@ -44,7 +43,6 @@ const LOWBATT_TIMEOUT_S: u64 = 90;
 const LOWBATT_TIMEOUT_S: u64 = 180;
 
 pub const DEFAULT_FONT: GlyphStyle = crate::theme::FONT;
-pub const FONT_LIST: [&'static str; 6] = ["regular", "tall", "mono", "bold", "large", "small"];
 pub fn name_to_style(name: &str) -> Option<GlyphStyle> {
     match name {
         "regular" => Some(GlyphStyle::Regular),
@@ -57,18 +55,6 @@ pub fn name_to_style(name: &str) -> Option<GlyphStyle> {
         _ => None,
     }
 }
-fn style_to_name(style: &GlyphStyle) -> String {
-    match style {
-        GlyphStyle::Regular => "regular".to_string(),
-        GlyphStyle::Monospace => "mono".to_string(),
-        GlyphStyle::Cjk => "cjk".to_string(),
-        GlyphStyle::Bold => "bold".to_string(),
-        GlyphStyle::Large => "large".to_string(),
-        GlyphStyle::Small => "small".to_string(),
-        GlyphStyle::Tall => "tall".to_string(),
-        _ => "regular".to_string(),
-    }
-}
 const VAULT_CONFIG_DICT: &'static str = "vault.config";
 const VAULT_CONFIG_KEY_FONT: &'static str = "fontstyle";
 
@@ -76,93 +62,6 @@ const VAULT_CONFIG_KEY_FONT: &'static str = "fontstyle";
 enum DisplayOrientation {
     Normal,
     UpsideDown,
-}
-
-/// This test doesn't have a "scan" state because to enter it, you need to scan.
-enum StandAloneTestState {
-    JogPress { seen_press: bool },
-    Up { seen_up: bool },
-    Down { seen_down: bool },
-    Left { seen_left: bool },
-    Right { seen_right: bool },
-    Flip { orientation_changed: bool },
-    Finish { seen_button: bool },
-    Exit,
-    Error(String),
-}
-
-impl StandAloneTestState {
-    fn handle_input(self, k: Option<char>, err: Option<String>) -> Self {
-        if let Some(e) = err {
-            Self::Error(e)
-        } else {
-            match self {
-                Self::JogPress { seen_press } => {
-                    let seen_press = seen_press || k.unwrap_or('\0') == '∴';
-                    if seen_press { Self::Up { seen_up: false } } else { Self::JogPress { seen_press } }
-                }
-
-                Self::Up { seen_up } => {
-                    let seen_up = seen_up || k.unwrap_or('\0') == '↑';
-
-                    if seen_up { Self::Down { seen_down: false } } else { Self::Up { seen_up } }
-                }
-
-                Self::Down { seen_down } => {
-                    let seen_down = seen_down || k.unwrap_or('\0') == '↓';
-
-                    if seen_down { Self::Left { seen_left: false } } else { Self::Down { seen_down } }
-                }
-
-                Self::Left { seen_left } => {
-                    let seen_left = seen_left || k.unwrap_or('\0') == '←';
-
-                    if seen_left { Self::Right { seen_right: false } } else { Self::Left { seen_left } }
-                }
-
-                Self::Right { seen_right } => {
-                    let seen_right = seen_right || k.unwrap_or('\0') == '→';
-
-                    if seen_right {
-                        Self::Flip { orientation_changed: false }
-                    } else {
-                        Self::Right { seen_right }
-                    }
-                }
-
-                Self::Flip { orientation_changed } => {
-                    let orientation_changed =
-                        orientation_changed || k.unwrap_or('\0') == '🔽' || k.unwrap_or('\0') == '🔼';
-
-                    if orientation_changed {
-                        log::info!("Resetting tour state...");
-                        let pddb = Pddb::new();
-                        let mut key = pddb
-                            .get(DC34_DICT, DC34_TOUR, None, true, true, Some(1), None::<fn()>)
-                            .expect("couldn't get PDDB key");
-                        key.write(&[0]).ok();
-                        pddb.sync().ok();
-                        log::info!("...done!");
-                        Self::Finish { seen_button: false }
-                    } else {
-                        Self::Flip { orientation_changed }
-                    }
-                }
-
-                Self::Finish { seen_button } => {
-                    let seen_button = seen_button
-                        || k.unwrap_or('\0') == '←'
-                        || k.unwrap_or('\0') == '→'
-                        || k.unwrap_or('\0') == '🔥';
-                    if seen_button { Self::Exit } else { Self::Finish { seen_button } }
-                }
-
-                other => other,
-            }
-        }
-    }
-
-    fn is_terminal(&self) -> bool { matches!(self, StandAloneTestState::Exit) }
 }
 
 enum FactoryTestState {
@@ -263,184 +162,12 @@ impl FactoryTestState {
     }
 }
 
-macro_rules! tour_advance {
-    ($self:expr, $k:expr;
-     auto { $($from:ident => $to:ident),* $(,)? }
-     custom { $($pat:pat => $body:expr),* $(,)? }
-    ) => {
-        match $self {
-            $(
-                Self::$from { seen_press } => {
-                    if seen_press || is_tour_advance_key($k) {
-                        Self::$to { seen_press: false }
-                    } else {
-                        Self::$from { seen_press }
-                    }
-                }
-            )*
-            $(
-                $pat => $body,
-            )*
-        }
-    }
-}
-
-fn is_tour_advance_key(k: char) -> bool {
-    // up/down not used to advance because it's too easy to fat-finger with menu raising
-    k == '←' || k == '→' || k == '🔥' // || k == '↑' || k == '↓'
-}
-
-enum TourState {
-    Welcome { seen_press: bool },
-    LightGeneExplainer1 { seen_press: bool },
-    LightGeneExplainer2 { seen_press: bool },
-    Breeding1 { seen_press: bool },
-    Breeding2 { seen_press: bool },
-    Breeding3 { seen_press: bool },
-    Breeding4 { seen_press: bool },
-    BadgeRecap { seen_press: bool },
-    TokenIntro1 { seen_press: bool },
-    TokenIntro2 { seen_press: bool },
-    TokenIntro3 { seen_press: bool },
-    InfoScreen { seen_press: bool },
-    End { seen_press: bool },
-    Error(String),
-}
-
-impl TourState {
-    fn handle_input(self, k: char) -> Self {
-        tour_advance!(self, k;
-            auto {
-                LightGeneExplainer1 => LightGeneExplainer2,
-                LightGeneExplainer2 => Breeding1,
-                Breeding1          => Breeding2,
-                Breeding2          => Breeding3,
-                Breeding3          => Breeding4,
-                Breeding4          => BadgeRecap,
-                BadgeRecap         => TokenIntro1,
-                TokenIntro1        => TokenIntro2,
-                TokenIntro2        => TokenIntro3,
-                TokenIntro3        => InfoScreen,
-                InfoScreen         => End,
-                End                => End,  // terminal — stays put
-            }
-            custom {
-                Self::Welcome { seen_press } => {
-                    // only advance if the jog dial press in is discovered: the point
-                    // of this screen is to make sure users are aware of this interaction
-                    // pattern.
-                    let seen_press = seen_press || k == '∴';
-                    // log::info!("k: {}, seen_press: {:?}", k, seen_press);
-                    if seen_press {
-                        Self::LightGeneExplainer1 { seen_press: false }
-                    } else {
-                        Self::Welcome { seen_press }
-                    }
-                },
-                Self::Error(e) => Self::Error(e)
-            }
-        )
-    }
-
-    fn is_terminal(&self) -> bool { matches!(self, TourState::End { seen_press: _ } | TourState::Error(_)) }
-}
-
-enum HelpState {
-    BadgeRecap { seen_press: bool },
-    InfoScreen { seen_press: bool },
-    End { seen_press: bool },
-    Error(String),
-}
-
-impl HelpState {
-    fn handle_input(self, k: char) -> Self {
-        tour_advance!(self, k;
-            auto {
-                BadgeRecap         => InfoScreen,
-                InfoScreen         => End,
-                End                => End,  // terminal — stays put
-            }
-            custom {
-                Self::Error(e) => Self::Error(e)
-            }
-        )
-    }
-
-    fn is_terminal(&self) -> bool { matches!(self, HelpState::End { seen_press: _ } | HelpState::Error(_)) }
-}
-
-enum TokenHelpState {
-    TokenRecap { seen_press: bool },
-    Extension { seen_press: bool },
-    InfoScreen { seen_press: bool },
-    End { seen_press: bool },
-    Error(String),
-}
-
-impl TokenHelpState {
-    fn handle_input(self, k: char) -> Self {
-        tour_advance!(self, k;
-            auto {
-                TokenRecap         => Extension,
-                Extension          => InfoScreen,
-                InfoScreen         => End,
-                End                => End,  // terminal — stays put
-            }
-            custom {
-                Self::Error(e) => Self::Error(e)
-            }
-        )
-    }
-
-    fn is_terminal(&self) -> bool {
-        matches!(self, TokenHelpState::End { seen_press: _ } | TokenHelpState::Error(_))
-    }
-}
-enum TokenTourState {
-    TokenTour1 { seen_press: bool },
-    TokenTour2 { seen_press: bool },
-    TokenTour3 { seen_press: bool },
-    TokenRecap { seen_press: bool },
-    BrowserExtension { seen_press: bool },
-    InfoScreen { seen_press: bool },
-    End { seen_press: bool },
-    Error(String),
-}
-
-impl TokenTourState {
-    fn handle_input(self, k: char) -> Self {
-        tour_advance!(self, k;
-            auto {
-                TokenTour1         => TokenTour2,
-                TokenTour2         => TokenTour3,
-                TokenTour3         => TokenRecap,
-                TokenRecap         => BrowserExtension,
-                BrowserExtension   => InfoScreen,
-                End                => End,  // terminal — stays put
-            }
-            custom {
-                Self::InfoScreen { seen_press } => {
-                    if seen_press || is_tour_advance_key(k) {
-                        crate::config::side_effect_skip_token_tour(true);
-                        Self::End { seen_press: false }
-                    } else {
-                        Self::InfoScreen { seen_press }
-                    }
-                },
-                Self::Error(e) => Self::Error(e)
-            }
-        )
-    }
-
-    fn is_terminal(&self) -> bool {
-        matches!(self, TokenTourState::End { seen_press: _ } | TokenTourState::Error(_))
-    }
-}
-
-// AboutState - a six-screen slideshow with its own advance logic - used to live here. It was
-// write-only: constructed, reset by an opcode no menu sends, and never once read by a redraw.
-// The About screen it belonged to now shows a QR of the project instead.
-
+// Five state machines used to sit here: StandAloneTestState, TourState, HelpState,
+// TokenHelpState, TokenTourState and an AboutState slideshow, driven by a tour_advance!
+// macro. Every one was write-only - constructed in VaultUi::new, reset by opcodes no menu
+// sends, and never once read by a redraw or a key handler. They were the DEFCON badge's
+// guided tour, which S-CAM does not have. FactoryTestState above is the one that is still
+// driven, from update_factory_test().
 /// Centralizes tunable UI parameters for TOTP
 struct TotpLayout {}
 impl TotpLayout {
@@ -502,14 +229,8 @@ pub struct VaultUi {
     start_hold_time: u64,
     tt: ticktimer_server::Ticktimer,
 
-    // various state machines
-    start_time: Option<Instant>,
+    // the one state machine still driven
     factory_test: FactoryTestState,
-    tour_state: TourState,
-    token_tour_state: TokenTourState,
-    token_help_state: TokenHelpState,
-    help_state: HelpState,
-    standalone_test: StandAloneTestState,
 
     // when Some(), override the display state with this String in QR code format
     pub qr_override: Option<QrCode>,
@@ -555,10 +276,7 @@ pub struct VaultUi {
     batt_polled: bool,
     low_batt_since: Option<Instant>,
 
-    // modals for ShowUrl confirmation (type-out flow)
-    modals: modals::Modals,
     pub user_bitmap: Option<[u32; 512]>,
-    phase: bool,
     edge: bool,
     last_mode: VaultMode,
     pub bio_loaded: bool,
@@ -683,13 +401,7 @@ impl VaultUi {
             tt,
             last_key_time: now,
             start_hold_time: now,
-            start_time: None,
             factory_test: FactoryTestState::InitWait { start_time: std::time::Instant::now() },
-            tour_state: TourState::Welcome { seen_press: false },
-            token_tour_state: TokenTourState::TokenTour1 { seen_press: false },
-            help_state: HelpState::BadgeRecap { seen_press: false },
-            standalone_test: StandAloneTestState::JogPress { seen_press: false },
-            token_help_state: TokenHelpState::TokenRecap { seen_press: false },
             global_config: None,
             qr_override: None,
             qr_caption: None,
@@ -709,12 +421,10 @@ impl VaultUi {
             bookmark_cursor: 0,
             list_quantum: 0,
             list_focus_ms: 0,
-            modals: modals::Modals::new(xns).unwrap(),
             adc: Adc::new(),
             batt_polled: false,
             low_batt_since: None,
             user_bitmap: None,
-            phase: false,
             edge: false,
             last_mode: VaultMode::Idle,
             bio_loaded: false,
@@ -766,7 +476,6 @@ impl VaultUi {
         self.bookmark_cache = entries;
     }
 
-    pub fn reset_help_state(&mut self) { self.help_state = HelpState::BadgeRecap { seen_press: false }; }
 
 
     pub fn reset_factory_test(&mut self) {
@@ -845,29 +554,6 @@ impl VaultUi {
     pub(crate) fn basis_change(&mut self) {
         self.item_lists.lock().unwrap().clear_all();
         self.display_list.clear();
-    }
-
-    pub(crate) fn store_glyph_style(&mut self, style: GlyphStyle) {
-        self.pddb
-            .borrow()
-            .delete_key(VAULT_CONFIG_DICT, VAULT_CONFIG_KEY_FONT, Some(pddb::PDDB_DEFAULT_SYSTEM_BASIS))
-            .ok();
-
-        match self.pddb.borrow().get(
-            VAULT_CONFIG_DICT,
-            VAULT_CONFIG_KEY_FONT,
-            Some(pddb::PDDB_DEFAULT_SYSTEM_BASIS),
-            true,
-            true,
-            Some(32),
-            Some(dc34_vault::basis_change),
-        ) {
-            Ok(mut style_key) => {
-                style_key.write(style_to_name(&style).as_bytes()).ok();
-            }
-            _ => panic!("PDDB access erorr"),
-        };
-        self.pddb.borrow().sync().ok();
     }
 
     pub(crate) fn apply_glyph_style(&mut self) {

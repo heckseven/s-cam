@@ -1,7 +1,6 @@
 mod ux;
 mod sanitize;
 use crate::sanitize::{CAP_BOOKMARK_URL, CAP_URL_DISPLAY, SanitizedUrl};
-use aes::{Aes256, cipher::BlockSizeUser};
 use ux::*;
 mod itemcache;
 use itemcache::*;
@@ -1141,11 +1140,6 @@ fn main() -> ! {
                 )
                 .ok();
                 vault_ui.refresh_draw_list();
-                vault_ui.redraw();
-            }
-            Some(VaultOp::DefconHelp) => {
-                *mode.lock().unwrap() = VaultMode::Idle;
-                vault_ui.reset_help_state();
                 vault_ui.redraw();
             }
             Some(VaultOp::PowerOff) => {

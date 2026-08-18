@@ -51,6 +51,8 @@ echo "===== Checking wiring ====="
 python3 "$here/check-menu-wiring.py"
 python3 "$here/check-camera-wiring.py"
 python3 "$here/check-jog-press.py"
+# Runs cargo again, but the vault was just built so this is a cache hit and costs seconds.
+(cd "$vault" && python3 "$here/check-dead-code.py")
 
 echo "===== Bundling ====="
 (

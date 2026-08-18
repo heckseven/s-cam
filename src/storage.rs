@@ -397,48 +397,6 @@ impl Manager {
         }
     }
 
-    pub(crate) fn bookmark_list(&mut self) -> Result<Vec<Bookmark>, BookmarkError> {
-        let all_keys = match self.pddb.list_keys(VAULT_BOOKMARKS_DICT, None) {
-            Ok(keys) => keys,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
-            Err(e) => return Err(BookmarkError::IoError(e)),
-        };
-        let mut bm_keys: Vec<String> = all_keys
-            .into_iter()
-            .filter(|k| k.as_str() != VAULT_BOOKMARKS_COUNTER_KEY)
-            .collect();
-        bm_keys.sort();
-        let mut bookmarks = Vec::with_capacity(bm_keys.len());
-        for key in &bm_keys {
-            let data = match self.pddb.get(
-                VAULT_BOOKMARKS_DICT,
-                key,
-                None,
-                false,
-                false,
-                None,
-                Some(dc34_vault::basis_change),
-            ) {
-                Ok(mut record) => {
-                    let mut buf = Vec::new();
-                    record.read_to_end(&mut buf)?;
-                    buf
-                }
-                Err(e) => return Err(BookmarkError::IoError(e)),
-            };
-            bookmarks.push(Self::parse_bookmark_body(key, &data)?);
-        }
-        Ok(bookmarks)
-    }
-
-    pub(crate) fn bookmark_delete(&mut self, key: &str) -> Result<(), BookmarkError> {
-        self.pddb
-            .delete_key(VAULT_BOOKMARKS_DICT, key, None)
-            .map_err(BookmarkError::IoError)?;
-        self.pddb.sync().unwrap_or(());
-        Ok(())
-    }
-
     fn parse_bookmark_body(key: &str, data: &[u8]) -> Result<Bookmark, BookmarkError> {
         let body = std::str::from_utf8(data)
             .map_err(|_| BookmarkError::ParseError("non-UTF8 body".into()))?;
@@ -1158,47 +1116,6 @@ mod bookmark_tests {
 
 // ---- S-CAM settings: default bookmark ----
 pub(crate) const VAULT_SETTINGS_DICT: &str = "vault.settings";
-pub(crate) const SETTING_DEFAULT_BOOKMARK: &str = "default_bookmark";
-
-/// Record which bookmark the idle screen's left button shows.
-///
-/// The idle button depended on a "default bookmark" that nothing defined; this is that
-/// definition. Stored as the bookmark's PDDB key so renaming its label cannot orphan it.
-pub(crate) fn set_default_bookmark(pddb: &pddb::Pddb, key: &str) -> Result<(), std::io::Error> {
-    let mut k = pddb.get(
-        VAULT_SETTINGS_DICT, SETTING_DEFAULT_BOOKMARK, None, true, true, Some(64), None::<fn()>,
-    )?;
-    use std::io::Write;
-    k.write_all(key.as_bytes())?;
-    Ok(())
-}
-
-/// The PDDB key of the default bookmark, if one has been marked.
-pub(crate) fn default_bookmark_key(pddb: &pddb::Pddb) -> Option<String> {
-    let mut buf = [0u8; 64];
-    let mut k = pddb.get(
-        VAULT_SETTINGS_DICT, SETTING_DEFAULT_BOOKMARK, None, false, false, Some(64), None::<fn()>,
-    ).ok()?;
-    use std::io::Read;
-    let n = k.read(&mut buf).ok()?;
-    let key = core::str::from_utf8(&buf[..n]).ok()?.trim_end_matches('\0').trim().to_string();
-    if key.is_empty() { None } else { Some(key) }
-}
-
-/// The URL of the default bookmark, read straight from its dict entry.
-pub(crate) fn default_bookmark_url(pddb: &pddb::Pddb) -> Option<String> {
-    let key = default_bookmark_key(pddb)?;
-    let mut buf = [0u8; crate::vault_api::VAULT_ALLOC_HINT];
-    let mut k = pddb.get(
-        crate::vault_api::VAULT_BOOKMARKS_DICT, &key, None, false, false, None, None::<fn()>,
-    ).ok()?;
-    use std::io::Read;
-    let n = k.read(&mut buf).ok()?;
-    let raw = core::str::from_utf8(&buf[..n]).ok()?;
-    // stored form is label\nurl; fall back to the whole record if there is no newline
-    Some(raw.split('\n').last().unwrap_or(raw).trim().to_string())
-}
-
 // ---- PASSKEYS: FIDO2 / U2F credential listing ----
 //
 // These credentials were stored but had no screen: the badge acted as a security key without
@@ -1244,10 +1161,6 @@ fn read_passkey_name(pddb: &pddb::Pddb, key: &str) -> Option<String> {
     k.read_to_end(&mut buf).ok()?;
     let info = crate::vault_api::deserialize_app_info(buf)?;
     if info.name.trim().is_empty() { None } else { Some(info.name) }
-}
-
-pub(crate) fn passkey_delete(pddb: &pddb::Pddb, key: &str) -> Result<(), std::io::Error> {
-    pddb.delete_key(crate::vault_api::U2F_APP_DICT, key, None)
 }
 
 // ---- PHOTOS and standby images ----

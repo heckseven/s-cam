@@ -70,11 +70,6 @@ impl SanitizedUrl {
     /// Returns the validated URL as a string slice.
     pub fn as_str(&self) -> &str { &self.0 }
 
-    /// Returns the byte length of the URL.
-    pub fn len(&self) -> usize { self.0.len() }
-
-    /// Returns true if the URL is empty.
-    pub fn is_empty(&self) -> bool { self.0.is_empty() }
 }
 
 impl AsRef<str> for SanitizedUrl {

@@ -1,12 +1,9 @@
 use std::io::{Read, Write};
 
-use aes_gcm_siv::{Aes256GcmSiv, KeyInit, Nonce};
 use bao1x_api::{IoSetup, IoxValue};
 use dc34_api::*;
 use num_traits::*;
 use pddb::Pddb;
-use rand::RngCore;
-use sha2::{Digest, Sha256};
 
 use crate::VaultMode;
 
@@ -36,12 +33,7 @@ impl AttachState {
 /// Structure for tracking global shared state. Everything in here
 /// needs to be suitable for sticking in an Arc/Mutex
 pub(crate) struct GlobalConfig {
-    is_developer: bool,
     attach_state: AttachState,
-    was_cold_boot: bool,
-    k0: [u8; 32],
-    skip_tour: bool,
-    skip_token_tour: bool,
     badge_type: BadgeType,
     led_server: xous::CID,
     power_server: xous::CID,
@@ -57,10 +49,6 @@ pub(crate) struct GlobalConfig {
     prior_gene: Option<Diploid>,
     /// tracks the dynamic rate as users try to increase it
     mutation_rate: MutationRate,
-    /// snapshots the rate at a given point to make the protocol less frustrating
-    /// (i.e. if there's some goof-ups or delays you don't lose the rate you "earned")
-    final_rate: MutationRate,
-    nonce_mine: Option<[u8; 12]>,
     previous_mode: Option<VaultMode>,
 }
 
@@ -198,12 +186,7 @@ impl GlobalConfig {
 
         (
             GlobalConfig {
-                is_developer,
                 attach_state,
-                was_cold_boot,
-                k0,
-                skip_tour,
-                skip_token_tour,
                 badge_type,
                 led_server: conn,
                 power_server,
@@ -211,51 +194,24 @@ impl GlobalConfig {
                 gene_cache: gene,
                 prior_gene: None,
                 mutation_rate: MutationRate::Baseline,
-                final_rate: MutationRate::Baseline,
-                nonce_mine: None,
                 previous_mode: None,
             },
             initial_mode,
         )
     }
 
-    #[allow(dead_code)]
-    pub fn skip_tour(&self) -> bool { self.skip_tour }
-
-    #[allow(dead_code)]
-    pub fn skip_token_tour(&self) -> bool { self.skip_token_tour }
-
-    pub fn is_developer(&self) -> bool { self.is_developer }
-
     pub fn attachment_state(&self) -> AttachState { self.attach_state }
-
-    #[allow(dead_code)]
-    pub fn was_cold_boot(&self) -> bool { self.was_cold_boot }
-
-    pub fn k0_hash(&self) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(&self.k0);
-        let digest: [u8; 32] = hasher.finalize().try_into().unwrap();
-        let mut buffer = [0u8; 64];
-        hex::encode_to_slice(digest, &mut buffer).unwrap();
-        let hex_str = core::str::from_utf8(&buffer).unwrap();
-        hex_str[..8].to_string()
-    }
 
     pub fn update_power_state(&mut self, current_mode: VaultMode) {
         #[cfg(not(feature = "uber"))]
         const SHORT_TIMEOUT: usize = 36;
         #[cfg(not(feature = "uber"))]
         const MEDIUM_TIMEOUT: usize = 69;
-        #[cfg(not(feature = "uber"))]
-        const LONG_TIMEOUT: usize = 0x69;
 
         #[cfg(feature = "uber")]
         const SHORT_TIMEOUT: usize = 4 * 60 * 60; // four hours
         #[cfg(feature = "uber")]
         const MEDIUM_TIMEOUT: usize = 8 * 60 * 60;
-        #[cfg(feature = "uber")]
-        const LONG_TIMEOUT: usize = 8 * 60 * 60;
         // handles None case, as well as Some(previous_mode) not the same as Some(current_mode)
         if self.previous_mode != Some(current_mode) {
             let (enable, duration_sec) = match current_mode {
@@ -298,69 +254,7 @@ impl GlobalConfig {
 
     pub fn set_mutation_rate(&mut self, new_rate: MutationRate) { self.mutation_rate = new_rate; }
 
-    pub fn lock_rate(&mut self) { self.final_rate = self.mutation_rate; }
-
     pub fn get_mutation_rate(&self) -> MutationRate { self.mutation_rate }
-
-    pub fn get_final_rate(&self) -> MutationRate { self.final_rate }
-
-    pub fn generate_my_nonce(&mut self) {
-        loop {
-            let mut nonce = [0u8; 12];
-            rand::thread_rng().fill_bytes(&mut nonce);
-            if nonce == DC34_HEADER[..12] {
-                // generate a new one
-                continue;
-            }
-            if let Some(prev) = self.nonce_mine {
-                if prev != nonce {
-                    self.nonce_mine = Some(nonce);
-                    break;
-                } else {
-                    // generate a new one
-                }
-            } else {
-                self.nonce_mine = Some(nonce);
-                break;
-            }
-        }
-    }
-
-    pub fn get_my_nonce(&self) -> Option<Nonce> {
-        if let Some(n) = self.nonce_mine { Some(Nonce::clone_from_slice(&n)) } else { None }
-    }
-
-    pub fn get_padded_gamete(&self) -> Option<[u8; 16]> {
-        if let Some(gene) = self.gene_cache {
-            let mut d = [0u8; 16];
-            let mut gamete = gene.meiosis();
-            mutate(&mut gamete, self.final_rate);
-            let serialized = gamete.serialize();
-            let len = serialized.len().min(15); // save last byte for badge type
-            d[..len].copy_from_slice(&serialized[..len]);
-            d[15] = self.badge_type as u8;
-            Some(d)
-        } else {
-            None
-        }
-    }
-
-    pub fn get_egg(&self, rate: Option<MutationRate>) -> Option<Haploid> {
-        if let Some(gene) = self.gene_cache {
-            let mut gamete = gene.meiosis();
-            // pick the larger of the internal rate or the passed-in rate
-            mutate(&mut gamete, rate.unwrap_or(self.final_rate).max(self.final_rate));
-            Some(gamete)
-        } else {
-            None
-        }
-    }
-
-    // this automatically copies the old gene to the backup location
-    pub fn replace_gene(&mut self, egg: Haploid, sperm: Haploid) {
-        self.prior_gene = self.gene_cache.take();
-        self.gene_cache = Some(Diploid([egg, sperm]))
-    }
 
     pub fn revert_gene(&mut self) {
         if let Some(backup_gene) = self.prior_gene.take() {
@@ -400,15 +294,6 @@ impl GlobalConfig {
             gene.send(self.led_server, LedManagerOp::SetGene.to_usize().unwrap());
         }
     }
-
-    pub fn nonce_data(&mut self) -> Vec<u8> {
-        self.generate_my_nonce();
-        [DC34_HEADER.as_slice(), self.nonce_mine.unwrap().as_slice()].concat()
-    }
-
-    pub fn cipher(&self) -> Aes256GcmSiv { Aes256GcmSiv::new((&self.k0).into()) }
-
-    pub fn clear_nonces(&mut self) { self.nonce_mine.take(); }
 
     pub fn display_fading(&mut self, enable: bool) {
         if self.display_fade_cache != enable {
@@ -502,29 +387,6 @@ pub fn read_pddb(pddb: &Pddb, key: &str, buf: &mut [u8]) -> usize {
         .get(DC34_DICT, key, None, true, true, Some(buf.len()), None::<fn()>)
         .expect("couldn't get PDDB key");
     key.read(buf).expect("couldn't read key")
-}
-
-/// The side-effect call allows us to set global mutable state on disk
-/// without having to actually share the GlobalConfig object
-pub fn side_effect_skip_token_tour(state: bool) {
-    // disable repeating the tour - show it only once
-    let pddb = pddb::Pddb::new();
-    let mut key = pddb
-        .get(
-            crate::config::DC34_DICT,
-            crate::config::DC34_TOKEN_TOUR,
-            None,
-            true,
-            true,
-            Some(1),
-            None::<fn()>,
-        )
-        .expect("couldn't get PDDB key");
-    if state {
-        key.write(&[1]).ok();
-    } else {
-        key.write(&[0]).ok();
-    }
 }
 
 pub fn read_badgetype_pins() -> BadgeType {
