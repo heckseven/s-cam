@@ -1144,8 +1144,17 @@ pub(crate) fn passkey_list(pddb: &pddb::Pddb) -> Vec<Passkey> {
     let mut out = Vec::new();
     for key in keys {
         let name = read_passkey_name(pddb, &key)
-            // an unnamed credential still deserves a stable label rather than a blank row
-            .unwrap_or_else(|| format!("({}…)", &key[..key.len().min(8)]));
+            // an unnamed credential still deserves a stable label rather than a blank row.
+            //
+            // Boundary-safe without allocating. `key.len().min(8)` bounds the length but not
+            // the UTF-8 boundary, so a key whose 8th byte lands mid-character panics - and
+            // this process is the whole UI. char_indices() finds the real boundary and we
+            // still slice, where 15d6e5a collected into a new String; that allocation and its
+            // instantiations moved enough code to boot-loop the badge (see 779a359).
+            .unwrap_or_else(|| {
+                let end = key.char_indices().nth(8).map_or(key.len(), |(i, _)| i);
+                format!("({}…)", &key[..end])
+            });
         out.push(Passkey { key, name });
     }
     out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
