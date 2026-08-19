@@ -1,8 +1,10 @@
 # Symbol Map — DC34 Tier 1
 
-All paths are relative to the sibling repo root (dc34-vault/, dc34-api/, xous-core/).
-Verified against: dc34-vault@7954e62, dc34-api@617f0f3, xous-core@616bf65f (pinned).
+All paths are relative to the sibling repo root (s-cam/, s-cam-api/, xous-core/).
+Verified against the upstream pins: dc34-vault@7954e62, dc34-api@617f0f3, xous-core@616bf65f.
 dc34-console@bf64e03 has no symbols relevant to Tier 1 tasks and is not listed below.
+The **Repo:** labels below use the crate names, which did not change in this fork: `dc34-vault`
+is checked out as `s-cam/`, `dc34-api` as `s-cam-api/`, `dc34-console` as `s-cam-console/`.
 
 ---
 
@@ -126,13 +128,13 @@ dc34-console@bf64e03 has no symbols relevant to Tier 1 tasks and is not listed b
 
 **Answer: `src/ux.rs`** — always active.
 
-`dc34-vault/src/main.rs` declares `mod ux;` with no `#[cfg]` guard, so it compiles unconditionally. Rust resolves `mod ux;` to `src/ux.rs` because that file exists. The directory `src/ux/` (containing `src/ux/framework.rs` and `src/ux/icontray.rs`) is a separate subtree that is only included if `src/ux.rs` explicitly declares `mod framework;` or `mod icontray;` — it does not. `src/ux/framework.rs` is NOT compiled under any feature configuration.
+`s-cam/src/main.rs` declares `mod ux;` with no `#[cfg]` guard, so it compiles unconditionally. Rust resolves `mod ux;` to `src/ux.rs` because that file exists. The directory `src/ux/` (containing `src/ux/framework.rs` and `src/ux/icontray.rs`) is a separate subtree that is only included if `src/ux.rs` explicitly declares `mod framework;` or `mod icontray;` — it does not. `src/ux/framework.rs` is NOT compiled under any feature configuration.
 
 There is no cfg condition distinguishing the two in Cargo.toml or in the `mod ux;` declaration. The Precursor/framework path is structurally dead code that is not wired into the build.
 
 ### Q2: Is `char_to_hid_code_us101` reachable from dc34-vault without editing usb-bao1x?
 
-**Answer: NO — Task 5 (hid-url-typeout) must use a local copy defined in `dc34-vault/src/sanitize.rs`.**
+**Answer: NO — Task 5 (hid-url-typeout) must use a local copy defined in `s-cam/src/sanitize.rs`.**
 
 Detailed analysis:
 - `char_to_hid_code_us101` in `xous-core/services/usb-bao1x/src/mappings.rs` is declared `pub` but is gated behind `#[cfg(any(feature = "precursor", feature = "renode", feature = "bao1x"))]`.
@@ -140,4 +142,4 @@ Detailed analysis:
 - The `usb-bao1x/board-baosec` feature does NOT include `bao1x` as a sub-feature (it enables `utralib/bao1x` and `bao1x-hal`, but the `bao1x` feature flag itself — which gates `char_to_hid_code_us101` — is a separate standalone feature of usb-bao1x).
 - Therefore, under the standard `board-baosec` build path, `char_to_hid_code_us101` is compiled out and not accessible from dc34-vault.
 - The constraints also prohibit editing usb-bao1x or adding `[patch]` entries.
-- **Conclusion:** The character-to-HID mapping must live in `dc34-vault/src/sanitize.rs` (a Task 3 deliverable alongside `SanitizedUrl`). Task 5 references it from there. This is consistent with the shared context document's pre-decision.
+- **Conclusion:** The character-to-HID mapping must live in `s-cam/src/sanitize.rs` (a Task 3 deliverable alongside `SanitizedUrl`). Task 5 references it from there. This is consistent with the shared context document's pre-decision.

@@ -12,7 +12,7 @@ handle the jog press itself or swallow it. Only a screen that falls through to `
 leaks it to the main loop, so that is what this looks for - a screen ending in `None` has
 already absorbed the press and is fine.
 
-Run from the dc34-vault checkout: python3 tools/check-jog-press.py
+Run from the s-cam checkout: python3 tools/check-jog-press.py
 """
 
 import re

@@ -11,7 +11,7 @@ test was "is anything loaded?", which is true the moment one photo has been open
 selecting a second photo and exporting sent the first one's bits again. It looks like a
 corrupted transfer rather than the wrong file, which is what made it hard to spot.
 
-Run from the dc34-vault checkout: python3 tools/check-photo-buffer.py
+Run from the s-cam checkout: python3 tools/check-photo-buffer.py
 """
 
 import sys

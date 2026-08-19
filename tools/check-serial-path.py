@@ -10,7 +10,7 @@ terminal needs is not obvious enough to reimplement correctly by eye.
 
 So `serial_send` may only be called from serial_out. Everything else calls serial_out.
 
-Run from the dc34-vault checkout: python3 tools/check-serial-path.py
+Run from the s-cam checkout: python3 tools/check-serial-path.py
 """
 
 import re

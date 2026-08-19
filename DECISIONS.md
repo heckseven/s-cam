@@ -68,7 +68,7 @@ name now maps to exactly one store:
 | # | Decision | Rationale |
 |---|---|---|
 | 1 | `BADGE_NAME = "S-CAM"`, single constant | Name may change; repo will be renamed to something S-CAM-like. |
-| 2 | **Plain Rust constants for new UI strings — not `t!()`** | Avoids the locales trap: `dc34-vault/locales/i18n.json` is never read, and patching it would force every new string into the shared xous-core image. Translation is not needed. |
+| 2 | **Plain Rust constants for new UI strings — not `t!()`** | Avoids the locales trap: `s-cam/locales/i18n.json` is never read, and patching it would force every new string into the shared xous-core image. Translation is not needed. |
 | 3 | Departure Mono **11px only** | 22px comes free later via integer 2x scaling of the same pack. |
 | 4 | Font lives in the flash-resident gfx server | Text renders via `gfx.draw_textview()`, so the font costs the app's page budget ~0. |
 

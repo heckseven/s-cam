@@ -15,7 +15,7 @@ Capacity is deliberately pessimistic. The panel is 128px and the font's tables c
 glyph, but the server lays out fewer than the tables promise - which is the whole reason this
 file exists - so budget 8px, giving 16 cells.
 
-Run from the dc34-vault checkout: python3 tools/check-button-labels.py
+Run from the s-cam checkout: python3 tools/check-button-labels.py
 """
 
 import re

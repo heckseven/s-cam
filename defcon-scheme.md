@@ -199,7 +199,7 @@ modes bypass the URL check and go directly to base45 decode, as before.
 ## SanitizedUrl and its role
 
 A raw scanned string is never passed directly to URL display or HID type-out code. Instead, it is
-first wrapped in a `SanitizedUrl` value (defined in `dc34-vault/src/sanitize.rs`). The
+first wrapped in a `SanitizedUrl` value (defined in `s-cam/src/sanitize.rs`). The
 `SanitizedUrl` constructor rejects the string if it contains control characters, characters
 unmapped in the US-101 HID table, or a byte length exceeding `CAP_URL_DISPLAY` (for display/
 type-out) or `CAP_BOOKMARK_URL` (for bookmark storage and QR re-render).

@@ -17,7 +17,7 @@ a different thing from dead code:
 None of them costs space in the binary. Removing information from an error or a record is a
 regression, not a cleanup, so they are allowed rather than deleted.
 
-Run from the dc34-vault checkout: python3 tools/check-dead-code.py
+Run from the s-cam checkout: python3 tools/check-dead-code.py
 """
 
 import json

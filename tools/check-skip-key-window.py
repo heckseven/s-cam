@@ -11,7 +11,7 @@ through to the preview screen, where RIGHT means save, so every photo went strai
 storage and the keep/retake/discard step was never offered. It looked like the badge was
 saving pictures the instant they were taken.
 
-Run from the dc34-vault checkout: python3 tools/check-skip-key-window.py
+Run from the s-cam checkout: python3 tools/check-skip-key-window.py
 """
 
 import sys

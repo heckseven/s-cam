@@ -11,7 +11,7 @@ its focused row must have painted the rest of itself first. `list_quantum == 0` 
 "paint all of it", so every path that arrives at the bookmark list has to reset it. Miss one
 and the list paints a single row over whatever screen came before.
 
-Run from the dc34-vault checkout: python3 tools/check-list-wiring.py
+Run from the s-cam checkout: python3 tools/check-list-wiring.py
 """
 
 import re

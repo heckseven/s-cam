@@ -14,7 +14,7 @@ on hardware read as the screen being slow to respond rather than as a bug.
 The rule: arm it only inside a handler for an opcode that a menu entry actually dispatches.
 The entry tables in idlemenu.rs are the authority on which those are.
 
-Run from the dc34-vault checkout: python3 tools/check-menu-just-opened.py
+Run from the s-cam checkout: python3 tools/check-menu-just-opened.py
 """
 
 import re

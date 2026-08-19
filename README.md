@@ -1,9 +1,11 @@
-# DC34 `vault` Application
+# S-CAM
 
 > [!WARNING]
 > Loading your own firmware onto your badge will wipe the light encryption key and cause your badge to enter developer mode.
 
-This is the `vault` application as customized for Defcon34.
+S-CAM is a fork of the `vault` application as customized for Defcon34 (upstream:
+[bunnie/dc34-vault](https://github.com/bunnie/dc34-vault)). The repo is named `s-cam`, but the
+crate and the binary it builds are still called `dc34-vault`.
 
 It provides the in-conference badge interactivity, namely, customizing lights by scanning encrypted QR codes between badges.
 
@@ -11,43 +13,51 @@ There's a couple easter eggs buried in the code here, if you care to look for th
 
 ## Building
 
-Assumes the following directory structure:
+Assumes the four repos are checked out side by side:
 
 ```
  .
- ├── dc34-api
- ├── dc34-console
- ├── dc34-vault
+ ├── s-cam           <- this repo (the `dc34-vault` app)
+ ├── s-cam-api
+ ├── s-cam-console
  └── xous-core
 ```
 
-And that these commands are run from *inside* the xous-core directory. Prerequisites:
+Prerequisites:
 
 - Latest Rust
 - Run `cargo xtask install-toolkit` inside the `xous-core` repo
 
+Then build from this repo:
+
 ```shell
-echo "===== Building Console ====="
-(
-    cd ../dc34-console &&
-    cargo build --release --target riscv32imac-unknown-xous-elf --features board-baosec --features oem-baosec-lite --features bao1x --features utralib/bao1x &&
-) || {
-    echo "dc34-console build failed!"
-    exit 1
-}
-
-echo "===== Building Vault ====="
-(
-    cd ../dc34-vault &&
-    cargo build --release --target riscv32imac-unknown-xous-elf --features board-baosec &&
-) || {
-    echo "dc34-vault build failed!"
-    exit 1
-}
-
-cargo xtask baosec-lite ../dc34-console/target/riscv32imac-unknown-xous-elf/release/dc34-console~flash ../dc34-vault/target/riscv32imac-unknown-xous-elf/release/dc34-vault \
-    --no-timestamp --feature usb --kernel-feature debug-proc --no-verify
+./tools/build.sh
 ```
+
+That builds the console and the vault, checks the app against the 307-page loader limit,
+runs the source wiring guards, and bundles the result. Output is `loader.uf2`, `xous.uf2`
+and `swap.uf2` under `../xous-core/target/riscv32imac-unknown-xous-elf/release/`.
+
+Do not call `cargo xtask baosec-lite` on its own. xtask bundles whatever app ELFs it is
+pointed at; it does not build them, so on its own it will happily package a stale
+`dc34-vault` and print a successful-looking build the whole way through. For reference,
+`tools/build.sh` runs the equivalent of:
+
+```shell
+(cd ../s-cam-console && cargo build --release --target riscv32imac-unknown-xous-elf \
+    --features board-baosec --features oem-baosec-lite --features bao1x --features utralib/bao1x)
+
+(cd ../s-cam && cargo build --release --target riscv32imac-unknown-xous-elf --features board-baosec)
+
+(cd ../xous-core && cargo xtask baosec-lite \
+    ../s-cam-console/target/riscv32imac-unknown-xous-elf/release/dc34-console~flash \
+    ../s-cam/target/riscv32imac-unknown-xous-elf/release/dc34-vault \
+    --no-timestamp --feature usb --kernel-feature debug-proc --no-verify)
+```
+
+The crate and binary names are still `dc34-vault`, `dc34-console` and `dc34-api`; only the
+repo directories were renamed. See [docs/PINS.md](./docs/PINS.md) for the upstream commits
+this fork descends from.
 
 ## Conference Mode
 
@@ -74,7 +84,7 @@ Thus detached, you can plug your badge into a computer via USB and use it as a 2
 
 ## Updates
 
-Get firmware updates at [https://ci.betrusted.io/releases/latest/baochip/dc34-badge/latest.zip](https://ci.betrusted.io/releases/latest/baochip/dc34-badge/latest.zip). The zip file must be extracted into the three constituent files (xous.uf2, swap.uf2, loader.uf2) prior to copying to the device!
+Get *stock* firmware updates at [https://ci.betrusted.io/releases/latest/baochip/dc34-badge/latest.zip](https://ci.betrusted.io/releases/latest/baochip/dc34-badge/latest.zip) — this is upstream's build, and flashing it replaces anything built from this fork. The zip file must be extracted into the three constituent files (xous.uf2, swap.uf2, loader.uf2) prior to copying to the device!
 
 To perform an update:
 

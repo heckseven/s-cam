@@ -13,7 +13,7 @@ reader who has no prior context on this codebase but can read Rust.
 
 ### What SanitizedUrl guarantees
 
-`SanitizedUrl` is a newtype over `String` defined in `dc34-vault/src/sanitize.rs`. Its constructor
+`SanitizedUrl` is a newtype over `String` defined in `s-cam/src/sanitize.rs`. Its constructor
 is the only place in the codebase where a raw scanned string is converted into a value that URL
 code paths will consume. The constructor is fallible and performs exactly three checks, in order:
 
@@ -34,8 +34,8 @@ path anywhere in the constructor. A string is either accepted unchanged or rejec
 
 ### Two caps: CAP_URL_DISPLAY vs CAP_BOOKMARK_URL
 
-Both constants are defined in `dc34-vault/src/capacity.rs` (the source of truth for display and QR
-capacity measurements) and re-exported from `dc34-vault/src/sanitize.rs` so callers have a single
+Both constants are defined in `s-cam/src/capacity.rs` (the source of truth for display and QR
+capacity measurements) and re-exported from `s-cam/src/sanitize.rs` so callers have a single
 import path.
 
 | Constant | Applies to | Binding constraint |
@@ -58,9 +58,9 @@ usable area of the ShowUrl screen before reaching the QR limit. In that case:
 
 ### Where the caps live
 
-Both constants are defined in `dc34-vault/src/capacity.rs` (where the measured display and QR
+Both constants are defined in `s-cam/src/capacity.rs` (where the measured display and QR
 capacity values live, alongside documentation of their measurement method) and re-exported from
-`dc34-vault/src/sanitize.rs` so callers have a single import path.
+`s-cam/src/sanitize.rs` so callers have a single import path.
 
 ---
 
@@ -69,7 +69,7 @@ capacity values live, alongside documentation of their measurement method) and r
 ### Entry point
 
 `send_str_sanitized(&SanitizedUrl)` is the only legal entry point for URL type-out over USB HID.
-It is implemented in `dc34-vault/src/sanitize.rs` and must never be bypassed by callers that hold
+It is implemented in `s-cam/src/sanitize.rs` and must never be bypassed by callers that hold
 a raw `&str`.
 
 The existing password autotype path (`pwauth://`) uses a separate `send_str` call in `usb-bao1x`
@@ -131,7 +131,7 @@ reading the confirmation screen.
 pub const VAULT_BOOKMARKS_DICT: &str = "vault.bookmarks";
 ```
 
-Defined alongside `VAULT_PASSWORD_DICT` and `VAULT_TOTP_DICT` in `dc34-vault/src/vault_api.rs`.
+Defined alongside `VAULT_PASSWORD_DICT` and `VAULT_TOTP_DICT` in `s-cam/src/vault_api.rs`.
 
 ### Key format
 
@@ -219,7 +219,7 @@ no URL.
 
 Two locations in dc34-vault enforce the URL-first rule:
 
-**`dc34-vault/src/main.rs` — `VaultOp::HandleQr` arm**
+**`s-cam/src/main.rs` — `VaultOp::HandleQr` arm**
 
 This is the top-level dispatcher. When a QR scan result arrives in `VaultMode::Idle` or
 `VaultMode::IdleDevMode`, the code checks whether the decoded string starts with `http://` or
@@ -230,7 +230,7 @@ never attempted for that payload.
 Gene-protocol modes (`GeneScan`, `ResponseGene`, `ShowKey`) are matched before the URL check;
 those modes feed their payloads directly to base45 without a URL prefix test.
 
-**`dc34-vault/src/actions.rs` — match arm in `ActionOp::HandleQr`**
+**`s-cam/src/actions.rs` — match arm in `ActionOp::HandleQr`**
 
 The action handler mirrors the same precedence. The URL scheme check is the first arm inside the
 QR handler; the existing `_ => qr_unrecognized` fallback arm catches anything that is neither a

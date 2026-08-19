@@ -10,7 +10,7 @@ That is what happened to the QR actions menu. It only showed up there because th
 and 2fa screens have the same fault and no records to test them with, so nobody could reach
 it. This checks all of them rather than the one that was noticed.
 
-Run from the dc34-vault checkout: python3 tools/check-key-consumption.py
+Run from the s-cam checkout: python3 tools/check-key-consumption.py
 """
 
 import re

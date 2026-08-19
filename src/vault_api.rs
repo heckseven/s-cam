@@ -167,7 +167,7 @@ pub(crate) enum VaultOp {
 // These discriminants cross service boundaries and are invisible to the type system:
 //   * `KeyPress` is handed to the graphics service by value via `gfx.register_listener()`
 //     (see main.rs) -- the graphics service sends this number back on every key event.
-//   * `SkipKey` (1026) is written as a bare literal in dc34-console/src/power.rs.
+//   * `SkipKey` (1026) is written as a bare literal in s-cam-console/src/power.rs.
 // Inserting a variant *above* any of these silently renumbers them: the code still
 // compiles, but key input or power handling breaks at runtime. Pin them here so that
 // mistake is a build failure instead of a field debugging session.

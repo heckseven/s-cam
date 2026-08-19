@@ -71,7 +71,7 @@ reachable from the menu.
 ### Decision 3 — `FactoryNew` needs a target regardless
 
 `FactoryNew` is not a factory-only state. Three live routes reach it: zeroed `k0` (permanent
-here), `dc34-console/src/cmds/bio.rs:107` calling `delete_dict(DC34_DICT, None)`, and the
+here), `s-cam-console/src/cmds/bio.rs:107` calling `delete_dict(DC34_DICT, None)`, and the
 `factory-new` cargo feature. Cutting `FactoryTest` without adding an arm leaves the
 production path with no target — which would not bite on this badge, because developer mode
 routes it to `IdleDevMode`, and would bite on any other.

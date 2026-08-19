@@ -14,7 +14,7 @@ A widget passes if its key_action matches '←' and does something in that arm. 
 are not questions - a notification dismissed by any key, a progress bar with no input - have
 no arm to check and are skipped.
 
-Run from the dc34-vault checkout: python3 tools/check-modal-exits.py
+Run from the s-cam checkout: python3 tools/check-modal-exits.py
 """
 
 import os
@@ -56,7 +56,7 @@ def is_effectively_empty(body):
 
 def main():
     if not os.path.isdir(WIDGETS):
-        print(f"cannot find {WIDGETS} - run this from the dc34-vault checkout")
+        print(f"cannot find {WIDGETS} - run this from the s-cam checkout")
         sys.exit(2)
 
     problems, checked = [], 0

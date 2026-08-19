@@ -13,7 +13,7 @@ badge set to the DEFCON image showed the splash, then a flash of S-CAM bling, th
 So the two standby bitmaps may only be named inside VaultUi::standby_bitmap(). The boot
 splash is a different image and is exempt - it is the same on every badge.
 
-Run from the dc34-vault checkout: python3 tools/check-standby-image.py
+Run from the s-cam checkout: python3 tools/check-standby-image.py
 """
 
 import re

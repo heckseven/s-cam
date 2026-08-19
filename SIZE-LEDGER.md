@@ -95,7 +95,7 @@ storage depended on the cipher. It does not:
 
 - `cipher()` has exactly two call sites, `main.rs:708` and `main.rs:762`, both gene
   *exchange* encrypt/decrypt.
-- `save_light_gene()` / `get_light_gene()` (`dc34-api/src/lib.rs:424,445`), `mutate()`
+- `save_light_gene()` / `get_light_gene()` (`s-cam-api/src/lib.rs:424,445`), `mutate()`
   (`:537`) and `render_gene()` (`config.rs:374`) never touch `cipher()` or `k0`. The local
   gene is stored in plaintext.
 

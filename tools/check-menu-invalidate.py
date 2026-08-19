@@ -11,7 +11,7 @@ So every site that clears `active_menu` has to call `vault_ui.invalidate()`. It 
 uniformly rather than only where a list is involved, because the cost of a needless full
 repaint is one frame and the cost of a missed one is a visibly broken screen.
 
-Run from the dc34-vault checkout: python3 tools/check-menu-invalidate.py
+Run from the s-cam checkout: python3 tools/check-menu-invalidate.py
 """
 
 import re
