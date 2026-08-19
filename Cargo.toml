@@ -38,7 +38,11 @@ modals = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e3
 userprefs = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 ux-api = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 bao1x-api = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
-bao1x-hal = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683", features = ["board-baosec", "oem-baosec-lite"] }
+# Features are NOT set here. Setting them on the dependency line applies them to every
+# build, so a hosted build still got bao1x-hal/board-baosec -> utralib/bao1x, which
+# collided with utralib/hosted-baosec and panicked utralib's build script with
+# "Multiple targets specified". They are selected per-profile in [features] instead.
+bao1x-hal = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 bao1x-hal-service = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683", optional = true }
 bao1x-emu = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683", optional = true }
 blitstr2 = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683", features = [
@@ -123,6 +127,8 @@ keystore = { path = "../xous-core/services/keystore" }
 production = []
 board-baosec = [
     "bao1x-hal-service",
+    "bao1x-hal/board-baosec",
+    "bao1x-hal/oem-baosec-lite",
     "ux-api/board-baosec",
     "ux-api/bip39entry",
     "blitstr2/board-baosec",
@@ -132,6 +138,13 @@ board-baosec = [
 ]
 hosted-baosec = [
     "bao1x-emu",
+    "bao1x-hal/hosted-baosec",
+    # keystore/hosted-baosec is what turns on keystore-api/gen2. Without it keystore-api
+    # compiles with neither gen1 nor gen2, and common.rs fails on `use crate::TOTAL_CHECKSUMS`
+    # because that constant only exists inside those feature gates. The hardware build gets
+    # gen2 transitively; nothing was doing the same for hosted.
+    "keystore/hosted-baosec",
+    "modals/hosted-baosec",
     "ux-api/bip39entry",
     "ux-api/hosted-baosec",
     "usb-bao1x/hosted-baosec",

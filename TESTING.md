@@ -11,9 +11,27 @@
 | host-side scripts against the source | **works** — `tools/check-menu-wiring.py` |
 | on-hardware human checklist | **works** — the only way to verify behaviour |
 
-Why hosted fails: `Cargo.toml:41` pins `bao1x-hal` with `features = ["board-baosec",
-"oem-baosec-lite"]` **unconditionally**, while the crate's `hosted-baosec` feature selects
-`ux-api/hosted-baosec` and never `bao1x-hal/hosted-baosec`. A hosted build therefore requests
+**Update 2026-08-18.** The feature-wiring half of this is now fixed and the hosted build gets
+three layers further, but it still does not compile. What was wrong, and what is left:
+
+| layer | problem | status |
+|---|---|---|
+| `utralib` | `bao1x-hal` features were set on the dependency line, so `utralib/bao1x` was forced into hosted builds too and collided with `utralib/hosted-baosec` - the build script's *"Multiple targets specified"* panic, not *"None"* | **fixed** - selected per-profile in `[features]` |
+| `keystore-api` | nothing selected `keystore/hosted-baosec`, so `keystore-api` compiled with neither `gen1` nor `gen2` and `common.rs` failed on `use crate::TOTAL_CHECKSUMS` | **fixed** |
+| `modals` | nothing selected `modals/hosted-baosec` | **fixed** |
+| `bao1x-emu`, `pddb` | real source rot in the hosted paths at pin `616bf65f`: a `draw` trait signature mismatch, a non-exhaustive match on `KeyboardOpcode::SetOrientation`, `pddb` referencing `precursor_hal` and undefined `token` | **open - needs porting, not configuration** |
+
+The hardware build is unaffected by all of the above: `dc34-vault` is byte-identical before
+and after (`d1544755…`), which is the check that matters given the layout hazard.
+
+Finishing this means porting xous-core's hosted paths, in the fork, against a pinned rev. It
+is the highest-leverage work available on this repo - every verification today needed physical
+hardware and a human - but it is a real job, not a config tweak.
+
+Historical note on the original diagnosis: `Cargo.toml:41` pinned `bao1x-hal` with
+`features = ["board-baosec", "oem-baosec-lite"]` **unconditionally**, while the crate's
+`hosted-baosec` feature selects `ux-api/hosted-baosec` and never `bao1x-hal/hosted-baosec`. A
+hosted build therefore requested
 two conflicting `ux-api` board sets plus a RISC-V UTRA on x86. Making it work means untangling
 that feature graph — a project in its own right, not a prerequisite for this one.
 

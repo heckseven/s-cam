@@ -5,6 +5,22 @@
 - dc34-console: bf64e03f019532cca5055fcdbe51977d572e3630
 - xous-core: 616bf65f6e379165464f50b1e79ec42aff77a683 (pinned by this repo's Cargo.lock, NOT HEAD)
 
+## What this fork builds against
+
+The pins below are upstream's, for reproducing the stock DEFCON build. **This firmware does
+not build against them.** It needs `heckseven/xous-core` at `spike/acquire-frame`
+(`06c90f058` as of 2026-08-18), which carries commits absent from betrusted-io's tree:
+
+| commit | why it is needed |
+|---|---|
+| `06c90f058` | names the USB device `S-CAM`, which is how you tell running firmware from the bootloader (`Baochip-1x`) |
+| `2e31860a8` | retries a refused serial write instead of dropping the rest - pass verdict, build 77 |
+| `dab635f0b` | applies back-pressure to bulk IN endpoints - the fix build 76 got half right |
+
+`spike/acquire-frame` is that fork's default branch, so `git clone` gets it without a
+checkout step. It is named here anyway: the dependency is otherwise invisible, and the
+commits are **not** on the fork's `main`, which is a stale artifact of the original fork.
+
 ## Fork naming
 
 The `dc34-*` names below are upstream's, and the repos and directory names in this document are

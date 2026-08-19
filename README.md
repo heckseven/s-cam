@@ -26,6 +26,12 @@ Assumes the four repos are checked out side by side:
  └── xous-core
 ```
 
+`xous-core` must be the fork, not upstream: this firmware needs commits that are not in
+betrusted-io's tree (the S-CAM USB device name, and the serial back-pressure and retry fixes).
+They live on `heckseven/xous-core` at branch `spike/acquire-frame`, which is that fork's
+default branch - a plain clone lands on it, and this is recorded so a future default-branch
+change cannot break clones silently. They are NOT on that fork's `main`.
+
 Prerequisites:
 
 - Latest Rust
