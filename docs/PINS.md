@@ -8,7 +8,7 @@
 ## What this fork builds against
 
 The pins below are upstream's, for reproducing the stock DEFCON build. **This firmware does
-not build against them.** It needs `heckseven/xous-core` at `spike/acquire-frame`
+not build against them.** It needs `heckseven/xous-core` at branch `s-cam`
 (`06c90f058` as of 2026-08-18), which carries commits absent from betrusted-io's tree:
 
 | commit | why it is needed |
@@ -17,9 +17,14 @@ not build against them.** It needs `heckseven/xous-core` at `spike/acquire-frame
 | `2e31860a8` | retries a refused serial write instead of dropping the rest - pass verdict, build 77 |
 | `dab635f0b` | applies back-pressure to bulk IN endpoints - the fix build 76 got half right |
 
-`spike/acquire-frame` is that fork's default branch, so `git clone` gets it without a
-checkout step. It is named here anyway: the dependency is otherwise invisible, and the
-commits are **not** on the fork's `main`, which is a stale artifact of the original fork.
+`s-cam` is that fork's default branch, so `git clone` gets it without a checkout step. It is
+named here anyway: the dependency is otherwise invisible, and the commits are **not** on the
+fork's `main`, which is a stale artifact of the original fork and is kept only so nothing that
+once referenced it breaks.
+
+All four repos in this line use `s-cam` as their default branch. The branch was renamed from
+`spike/acquire-frame` on 2026-08-18 - a spike name is a poor thing for production firmware to
+depend on. GitHub redirects the old name, so existing clones keep working.
 
 ## Fork naming
 
