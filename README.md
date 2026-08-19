@@ -151,6 +151,16 @@ and flash with a rollback staged.
 
 ## Updates
 
+Firmware for **this** fork is published at
+[github.com/heckseven/s-cam/releases](https://github.com/heckseven/s-cam/releases). Download
+`loader.uf2`, `xous.uf2` and `swap.uf2` from the same release and flash all three - they are
+built as a matched set and are not interchangeable between releases. `SHA256SUMS` is attached
+to check them against.
+
+To cut a release, see [docs/RELEASING.md](./docs/RELEASING.md).
+
+### Stock firmware
+
 Get *stock* firmware updates at [https://ci.betrusted.io/releases/latest/baochip/dc34-badge/latest.zip](https://ci.betrusted.io/releases/latest/baochip/dc34-badge/latest.zip) — this is upstream's build, and flashing it replaces anything built from this fork. The zip file must be extracted into the three constituent files (xous.uf2, swap.uf2, loader.uf2) prior to copying to the device!
 
 To perform an update:
