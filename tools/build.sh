@@ -48,14 +48,18 @@ python3 "$vault/check-app-size.py" "$vault_elf"
 # each shipped to hardware before: a menu entry wired to a handler that cannot receive it, and
 # a camera call site that ignores what the camera reported.
 echo "===== Checking wiring ====="
-python3 "$here/check-menu-wiring.py"
-python3 "$here/check-camera-wiring.py"
-python3 "$here/check-jog-press.py"
-python3 "$here/check-menu-invalidate.py"
-python3 "$here/check-menu-just-opened.py"
-python3 "$here/check-standby-image.py"
-python3 "$here/check-serial-path.py"
-python3 "$here/check-skip-key-window.py"
+# Every check-*.py in this directory, found by glob rather than listed by hand. The list was
+# hand-maintained and had drifted: five checkers - photo-buffer, button-labels,
+# key-consumption, list-wiring, modal-exits - existed in the repo and were never run by a
+# build, so they only fired when someone remembered them. A guard that is not wired in is
+# not a guard. Adding a checker now enforces it automatically.
+#
+# check-dead-code.py is excluded here and run below instead: it shells out to cargo and must
+# run from the vault checkout, not from tools/.
+for check in "$here"/check-*.py; do
+    [ "$(basename "$check")" = "check-dead-code.py" ] && continue
+    python3 "$check"
+done
 # Runs cargo again, but the vault was just built so this is a cache hit and costs seconds.
 (cd "$vault" && python3 "$here/check-dead-code.py")
 

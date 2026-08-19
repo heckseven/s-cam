@@ -45,8 +45,23 @@ done
 # does. Warn rather than require, and never advance to a rollback without asking.
 last=$(basename "${BUILDS[-1]}")
 if ! grep -qi 'rollback\|known-good' <<<"$last" && [ ! -f "${BUILDS[-1]}/ROLLBACK" ]; then
-  echo "  NOTE: this queue does not end with a rollback. That is correct for deploying a"
-  echo "        single build. For a bisection ladder, add the known-good triple last."
+  # This used to be a NOTE that printed and carried on. It was read past, and the build that
+  # followed boot-looped the badge with no staged way back - the recovery image had to be dug
+  # out of an old queue while the badge sat dead. A warning that does not stop anything is
+  # not a safeguard, so refuse by default and make the exception deliberate.
+  if [ "${NO_ROLLBACK:-0}" != "1" ]; then
+    echo "  REFUSING: this queue does not end with a rollback." >&2
+    echo "            A build that does not boot leaves the badge looping or hung, and the" >&2
+    echo "            only way back is a known-good triple you staged BEFORE you needed it." >&2
+    echo >&2
+    echo "            Add one last, named 99-rollback or carrying a ROLLBACK file. It is" >&2
+    echo "            withheld unless you ask for it, so it costs a queue slot and nothing" >&2
+    echo "            else - flash-queue.sh will not flash it on a normal run." >&2
+    echo >&2
+    echo "            To proceed without one anyway: NO_ROLLBACK=1 $0 $*" >&2
+    exit 1
+  fi
+  echo "  NOTE: no rollback staged, proceeding because NO_ROLLBACK=1."
   echo
 fi
 [ "$fail" -eq 0 ] || { echo "preflight failed - fix before starting a session" >&2; exit 1; }
