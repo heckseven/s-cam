@@ -87,9 +87,25 @@ present — but the collapse removes the last use of `k0`. See [STATE-TABLE.md](
 
 ## Constraints that shape all of the above
 
-- **dc34-vault must stay <= 307 pages**, currently 298 with `incremental = false`
-  (9 pages headroom). Over the limit, the badge hangs at a textless progress bar with no
+- **dc34-vault must stay <= 307 pages**, currently 277 with `incremental = false`
+  (30 pages headroom). Over the limit, the badge hangs at a textless progress bar with no
   error and needs reflashing.
+- **Fitting is necessary, not sufficient: this badge is sensitive to code LAYOUT.** Three
+  recorded cases, all well under the page limit:
+    1. `panic = "abort"` — failed to boot at ~259 pages, purely by changing section order.
+    2. `4433a0a`'s warm-up standby draw — one line, reverted in `6f74166`, bisected on
+       hardware.
+    3. `15d6e5a`'s passkey label — reverted in `779a359`. This is the sharpest case, because
+       the change cannot run at boot at all: `passkey_list()` is reached only through
+       `load_passkeys()`, whose one call site is a menu opcode. Swapping a byte slice for
+       `chars().take(8).collect::<String>()` added an allocation and moved what came after
+       it; that alone boot-looped the badge. Every build in the range measured 277 pages,
+       and the looping build's top vaddr sat *between* two that booted. Rewriting the same
+       fix to slice instead of collect (`35d69d5`) boots.
+  The failure looks like: boot past the loader, splash, restart, repeat. Something on the
+  boot path is marginal and tens of bytes of movement decide whether it survives. The cause
+  is not found — see [TESTING.md](TESTING.md) for the test plan. Until it is, **flash with a
+  rollback staged**, which `tools/flash-queue.sh` now requires.
 - **`k0` is already wiped** and is one-way — it happened at the first custom flash. It was
   the DEFCON population-wide shared key, and only gene exchange used it. Now moot except
   that `config.rs:136-142` derives `AttachState::FactoryNew` from it, so **removing k0

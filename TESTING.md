@@ -96,3 +96,46 @@ Run for **every** idle state, not just the one on your bench — `Idle`, `IdleDe
 
 - [ ] `./check-app-size.py <elf>` reports **at least 2 pages of margin**
 - [ ] The staged queue's last entry is the known-good triple
+
+---
+
+## Open: the boot-path layout fault
+
+**Status: not diagnosed. Deferred deliberately, not forgotten.**
+
+Something on the boot path is marginal enough that tens of bytes of code movement decide
+whether the badge comes up. It has bitten three times (see the layout constraint in
+[DECISIONS.md](DECISIONS.md)); the sharpest case is `15d6e5a`, a change to a function that
+cannot run at boot, which boot-looped the badge anyway and was reverted in `779a359`.
+
+Symptom: boots past the loader, shows the splash, restarts, repeats. **Not** the >307-page
+loader hang, which stalls a textless progress bar instead.
+
+### What is already ruled out, with evidence
+
+| Ruled out | How |
+|---|---|
+| The page limit | Every build in the failing range is 277/307 |
+| Total size alone | The looping build's top vaddr sits *between* two builds that boot |
+| `eb0af9c`'s boot-time `vault_ui.redraw()` | Removed it; still looped |
+| The upstream merge, the rename, the SVGs, docs | `git diff 58b62c6 3927e52 -- src/` is empty; the rest compile to nothing |
+| `78cbace`, `44c550e` | A build containing both boots |
+
+### The test plan
+
+1. **Padding control** — the method `check-app-size.py`'s docstring already describes. Take a
+   booting build, add inert static bytes, reflash. If padding *alone* reproduces the loop,
+   the trigger is coarse layout; if it never does, it is specific arrangement or codegen.
+   This is the one experiment that separates the two, and it needs no source change.
+2. **Narrow to the window.** Both earlier cases point at the `dry_run` region in `main.rs`
+   around line 347, where the app draws while still paging itself in. Instrument there
+   rather than reasoning about it.
+3. **Do not trust the last log line.** `6f74166` records that on this badge the log ends
+   where the USB buffer stopped draining, not where execution stopped — two theories were
+   built on that and both were wrong. A third was built on it in the session that produced
+   this note, and was also wrong.
+
+### While it is open
+
+Flash with a rollback staged. `tools/flash-queue.sh` refuses a queue without one unless you
+pass `NO_ROLLBACK=1`.
